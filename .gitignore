@@ -1,6 +1,8 @@
 # Игнорировать приватные данные
 **/secrets.yaml
 **/*secret*
+**/secrets/
+**/.env
 
 # Игнорировать кеши
 **/.cache/
@@ -15,3 +17,25 @@ __pycache__/
 # Логи
 *.log
 qtile/.config/qtile/wallpapers/
+
+# Обои и медиа
+**/wallpapers/
+**/backgrounds/
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.mp4
+*.mkv
+
+# Большие файлы
+*.iso
+*.tar.gz
+*.zip
+
+# Temporaries
+*.swp
+*.swo
+*~
+.DS_Store
