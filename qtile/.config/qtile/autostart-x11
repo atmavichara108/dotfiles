@@ -1,0 +1,6 @@
+#!/usr/bin/env zsh
+
+nm-applet &
+systemctl --user start mpd &
+picom --daemon &
+feh --randomize --recursive --bg-fill ~/wallpapers/ &

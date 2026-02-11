@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# HiDPI scaling for 4K
+xrandr --dpi 192
+
+# Qt scaling
+export QT_AUTO_SCREEN_SCALE_FACTOR=1
+
+# Cursor
+export XCURSOR_SIZE=48

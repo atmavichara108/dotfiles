@@ -1,0 +1,17 @@
+# Игнорировать приватные данные
+**/secrets.yaml
+**/*secret*
+
+# Игнорировать кеши
+**/.cache/
+**/cache/
+__pycache__/
+*.pyc
+
+# Игнорировать плагины (если используешь plugin manager)
+**/nvim/plugin/
+**/zsh/plugins/
+
+# Логи
+*.log
+qtile/.config/qtile/wallpapers/

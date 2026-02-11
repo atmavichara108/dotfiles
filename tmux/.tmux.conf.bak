@@ -1,0 +1,134 @@
+# === БАЗОВЫЕ НАСТРОЙКИ ===
+set -g default-terminal "screen-256color"
+set -g mouse on
+set -g base-index 1
+setw -g pane-base-index 1
+set -g history-limit 10000
+
+# Prefix: Ctrl+a
+unbind C-b
+set -g prefix C-a
+bind C-a send-prefix
+
+# === НАВИГАЦИЯ ПО ПАНЕЛЯМ (стрелки) ===
+bind Up select-pane -U
+bind Down select-pane -D
+bind Left select-pane -L
+bind Right select-pane -R
+
+# Vim-style навигация (Ctrl+hjkl через vim-tmux-navigator)
+is_vim="ps -o state= -o comm= -t '#{pane_tty}' | grep -iqE '^[^TXZ ]+ +(\\S+\\/)?g?(view|n?vim?x?)(diff)?$'"
+bind-key -n 'C-h' if-shell "$is_vim" 'send-keys C-h' 'select-pane -L'
+bind-key -n 'C-j' if-shell "$is_vim" 'send-keys C-j' 'select-pane -D'
+bind-key -n 'C-k' if-shell "$is_vim" 'send-keys C-k' 'select-pane -U'
+bind-key -n 'C-l' if-shell "$is_vim" 'send-keys C-l' 'select-pane -R'
+
+# === РАЗДЕЛЕНИЕ ОКНА ===
+bind '-' split-window -v
+bind '\' split-window -h
+unbind '"'
+unbind %
+
+# === RESIZE ПАНЕЛЕЙ ===
+bind -r h resize-pane -L 5
+bind -r j resize-pane -D 5
+bind -r k resize-pane -U 5
+bind -r l resize-pane -R 5
+
+bind -r C-Up resize-pane -U
+bind -r C-Down resize-pane -D
+bind -r C-Left resize-pane -L
+bind -r C-Right resize-pane -R
+
+bind -r M-Up resize-pane -U 5
+bind -r M-Down resize-pane -D 5
+bind -r M-Left resize-pane -L 5
+bind -r M-Right resize-pane -R 5
+
+# === УПРАВЛЕНИЕ ОКНАМИ ===
+bind c new-window
+bind n next-window
+bind p previous-window
+bind l last-window
+bind & kill-window
+bind , command-prompt "rename-window '%%'"
+bind w choose-window
+bind . command-prompt "move-window -t '%%'"
+
+# === УПРАВЛЕНИЕ СЕССИЯМИ ===
+bind C new-session
+bind '$' command-prompt "rename-session '%%'"
+bind s choose-session
+bind d detach-client
+bind D choose-client
+bind '(' switch-client -p
+bind ')' switch-client -n
+bind g command-prompt "switch-client -t '%%'"
+
+# === УПРАВЛЕНИЕ ПАНЕЛЯМИ ===
+bind o select-pane -t :.+
+bind q display-panes
+bind x kill-pane
+bind z resize-pane -Z
+bind '!' break-pane
+bind '{' swap-pane -U
+bind '}' swap-pane -D
+bind ';' last-pane
+bind m setw monitor-activity
+bind Space next-layout
+bind E select-layout -E
+
+# === COPY MODE (прокрутка) ===
+bind '[' copy-mode
+bind ']' paste-buffer
+bind '=' choose-buffer
+
+# === MOUSE COPY-PASTE с системным буфером ===
+set -g mouse on
+set -g set-clipboard on
+
+# При выделении мышью копировать в PRIMARY
+bind -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe "xclip -i -selection primary"
+bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe "xclip -i -selection primary"
+
+# Средняя кнопка напрямую в приложение (минуя tmux buffer)
+unbind -T root MouseDown2Pane
+bind -T root MouseDown2Pane run "xdotool type --clearmodifiers \"$(xclip -o -selection primary)\""
+
+# Vi mode в copy mode
+setw -g mode-keys vi
+bind -T copy-mode-vi v send -X begin-selection
+bind -T copy-mode-vi y send -X copy-selection-and-cancel
+
+# === ИНФОРМАЦИЯ ===
+bind i display-message
+bind '?' list-keys
+bind ':' command-prompt
+bind '~' show-messages
+bind t clock-mode
+
+# === LAYOUTS ===
+bind M-1 select-layout even-horizontal
+bind M-2 select-layout even-vertical
+bind M-3 select-layout main-horizontal
+bind M-4 select-layout main-vertical
+bind M-5 select-layout tiled
+
+# === RELOAD CONFIG ===
+bind r source-file ~/.tmux.conf \; display "Config reloaded!"
+
+# === TPM ПЛАГИНЫ ===
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-sensible'
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+set -g @plugin 'tmux-plugins/tmux-continuum'
+set -g @plugin 'christoomey/vim-tmux-navigator'
+
+# === АВТОСОХРАНЕНИЕ СЕССИЙ ===
+set -g @resurrect-strategy-nvim 'session'
+set -g @continuum-restore 'on'
+set -g @continuum-save-interval '15'
+
+# Инициализация TPM (держи в конце!)
+run '~/.tmux/plugins/tpm/tpm'
+
