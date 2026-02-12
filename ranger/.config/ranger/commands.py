@@ -1,5 +1,6 @@
 from ranger.api.commands import Command
 import os
+import subprocess
 
 class paste_as_root(Command):
 	def execute(self):
@@ -60,3 +61,66 @@ class bgremove(Command):
         cmd = f'bgremove -i "{src}" -o "{out}"'
         self.fm.notify(f"Запускаю: {cmd}")
         self.fm.run(cmd, flags='p')  # 'p' = показывать вывод в pager-е
+
+class fzf_select(Command):
+    """
+    :fzf_select
+
+    Найти файл/директорию через fzf с preview.
+    """
+    def execute(self):
+        command = """
+        fzf +m \
+        --preview 'bat --style=numbers --color=always {} 2>/dev/null || eza --tree --level=2 --color=always {} 2>/dev/null' \
+        --preview-window right:60%:wrap \
+        --height 95% \
+        --border
+        """
+
+        fzf = self.fm.execute_command(
+            command,
+            universal_newlines=True,
+            stdout=subprocess.PIPE
+        )
+        stdout, _ = fzf.communicate()
+
+        if fzf.returncode == 0:
+            selected = os.path.abspath(stdout.rstrip('\n'))
+            if os.path.isdir(selected):
+                self.fm.cd(selected)
+            else:
+                self.fm.select_file(selected)
+
+class fzf_rg(Command):
+    """
+    :fzf_rg [поисковый запрос]
+
+    Поиск по содержимому файлов через ripgrep + fzf
+    """
+    def execute(self):
+        if self.arg(1):
+            query = self.rest(1)
+        else:
+            query = ""
+
+        command = f"""
+        rg --line-number --no-heading --color=always --smart-case '{query}' | \
+        fzf --ansi \
+        --delimiter : \
+        --preview 'bat --color=always {{1}} --highlight-line {{2}}' \
+        --preview-window '+{{2}}/2'
+        """
+
+        fzf = self.fm.execute_command(
+            command,
+            universal_newlines=True,
+            stdout=subprocess.PIPE,
+            shell=True
+        )
+        stdout, _ = fzf.communicate()
+
+        if fzf.returncode == 0:
+            result = stdout.strip().split(':')
+            if len(result) >= 2:
+                filepath = result[0]
+                self.fm.select_file(filepath)
