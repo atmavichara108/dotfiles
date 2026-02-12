@@ -3,6 +3,8 @@
 **/*secret*
 **/secrets/
 **/.env
+**/.env.local
+**/tokens
 
 # Игнорировать кеши
 **/.cache/
@@ -37,5 +39,35 @@ qtile/.config/qtile/wallpapers/
 # Temporaries
 *.swp
 *.swo
+*.swn
 *~
 .DS_Store
+.directory
+
+# Compiled
+*.o
+*.so
+*.dylib
+*.dll
+
+# Archives
+*.iso
+*.tar
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# System
+Thumbs.db
+Desktop.ini
+
+# Backup files
+*.backup
+*.bak
+*.old
