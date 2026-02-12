@@ -154,6 +154,9 @@ keys = [
     # Favorites (F12) — твоя кастомизация, например rofi drun
     Key([], "XF86Favorites", lazy.spawn("rofimoji --action type copy")),
     
+    # Открыть flameshot для выделения области
+    Key([], "Print", lazy.spawn("flameshot gui")),
+    
     # Emacs programs launched using the key chord SUPER+e followed by 'key'
     KeyChord([mod],"e", [
         Key([], "e", lazy.spawn(myEmacs), desc='Emacs Dashboard'),
