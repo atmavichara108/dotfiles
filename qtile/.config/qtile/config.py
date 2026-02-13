@@ -6,6 +6,11 @@ from libqtile.config import Click, Drag, Group, Key, KeyChord, Match, Screen
 from libqtile.lazy import lazy
 from qtile_extras import widget
 import colors
+from pathlib import Path
+
+HOME = Path.home()
+WALLPAPERS_DIR = HOME / "wallpapers"
+CONFIG_DIR = HOME / ".config" / "qtile"
 
 IS_WAYLAND = qtile.core.name == "wayland"
 IS_X11 = qtile.core.name == "x11"
@@ -305,7 +310,7 @@ treetab_config = layout.TreeTab(
     section_bottom=15,
     level_shift=8,
     vspace=3,
-    panel_width=350,               # шире для 4K чтобы имена окон были читаемы
+    panel_width=300,               # шире для 4K чтобы имена окон были читаемы
 )
 
 # MonadThreeCol — три колонки с центральным мастером
