@@ -167,7 +167,7 @@ keys = [
 
     # Цикл по воркспейсам (дополнительно)
     Key(["mod1"], "Right", lazy.screen.next_group(), desc="Next workspace"),
-    Key(["mod1"], "Left",  lazy.screen.prev_group(), desc="Previous workspace"),
+    Key([mod], "Left",  lazy.screen.prev_group(), desc="Previous workspace"),
     
     # Emacs programs launched using the key chord SUPER+e followed by 'key'
     KeyChord([mod],"e", [

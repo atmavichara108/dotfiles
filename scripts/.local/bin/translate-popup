@@ -1,0 +1,19 @@
+#!/bin/bash
+
+TEXT=$(xclip -selection clipboard -o)
+
+if [ -z "$TEXT" ]; then
+  echo "Нет текста" | rofi -dmenu -p "Ошибка" -font "JetBrains Mono 24"
+  exit 1
+fi
+
+TRANSLATED=$(trans -brief "$TEXT" en:ru 2>/dev/null)
+
+if [ -z "$TRANSLATED" ]; then
+  echo "Ошибка перевода" | rofi -dmenu -p "Ошибка" -font "JetBrains Mono 24"
+  exit 1
+fi
+
+OUTPUT="📝 ОРИГИНАЛ:\n$TEXT\n\n━━━━━━━━━━━━━━━━━━━━━\n\n🌐 ПЕРЕВОД:\n$TRANSLATED"
+
+echo -e "$OUTPUT" | rofi -dmenu -p "Translate" -font "JetBrains Mono 24" -lines 20 -width 1000
