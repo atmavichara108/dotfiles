@@ -1,0 +1,27 @@
+git:
+  pagers:
+    - colorArg: always
+  commit:
+    signOff: false
+  merging:
+    manualCommit: false
+  skipHookPrefix: WIP
+  autoFetch: true
+  autoRefresh: true
+  branchLogCmd: "git log --graph --color=always --abbrev-commit --decorate --date=relative --pretty=medium {{branchName}} --"
+  allBranchesLogCmds:
+    - git log --graph --all --color=always --abbrev-commit --decorate --date=relative --pretty=medium
+refresher:
+  refreshInterval: 10
+gui:
+  theme:
+    activeBorderColor:
+      - green
+      - bold
+    inactiveBorderColor:
+      - white
+    selectedLineBgColor:
+      - blue
+  commitLength:
+    show: true
+notARepository: 'skip'
