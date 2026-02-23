@@ -1,0 +1,61 @@
+# Данные
+data.location=~/.task
+
+# Тема
+include dark-256.theme
+
+# Хуки (timewarrior)
+hooks=1
+
+# Приоритизация через теги
+urgency.user.tag.current.coefficient=+9
+urgency.user.tag.following.coefficient=+6
+urgency.user.tag.soon.coefficient=+3
+urgency.user.tag.capture.coefficient=+8
+urgency.user.tag.short.coefficient=+1.5
+urgency.user.tag.docs.coefficient=+2
+urgency.user.tag.solarpunk.coefficient=+1
+urgency.user.tag.permaculture.coefficient=+1
+urgency.user.tag.auto.coefficient=+1       # автомалярка
+urgency.user.tag.health.coefficient=+2     # здоровье
+urgency.blocked.coefficient=-11
+urgency.blocking.coefficient=0.5
+urgency.active.coefficient=6.0
+urgency.annotations.coefficient=0.0
+
+# Приоритеты
+urgency.uda.priority.H.coefficient=1.5
+urgency.uda.priority.M.coefficient=0.0
+urgency.uda.priority.L.coefficient=-0.5
+uda.priority.default=M
+
+# Цвета тегов
+color.tag.current=rgb035
+color.tag.following=rgb043
+color.tag.soon=rgb150
+color.tag.capture=rgb405
+color.tag.docs=rgb205
+
+# Контексты
+context.personal.read=project.not:auto
+context.personal.write=
+context.auto.read=project:auto
+context.auto.write=project:auto
+context.solarpunk.read=+solarpunk or +permaculture
+context.solarpunk.write=
+
+# Форматирование отчётов
+report.next.columns=id,project,priority,due,start.active,entry.age,urgency,description.count
+report.next.labels=ID,Proj,Pri,Due,A,Age,Urg,Description
+
+# Производительность (важно для больших баз)
+verbose=blank,header,footnote,label,new-id,news,affected,edit,special,sync,override,recur,context
+
+# Синхронизация 
+sync.server.url=http://localhost:8080
+sync.server.client_id=f13e1c18-1e67-412d-bd84-289fde52b95e
+sync.encryption_secret=jnanamarga108
+
+# Автозаполнение
+complete.all.tags=1
+list.all.projects=1
