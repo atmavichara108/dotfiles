@@ -1,0 +1,14 @@
+hide_hud = false
+silent = false
+
+[location]
+latitude = 47.519679
+longitude = 40.115877
+auto = false
+hide = false
+display = "city"
+
+[units]
+temperature = "celsius"
+wind_speed = "ms"
+precipitation = "mm"
