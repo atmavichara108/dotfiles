@@ -6,7 +6,8 @@ latitude = 47.519679
 longitude = 40.115877
 auto = false
 hide = false
-display = "city"
+display = "coordinates"
+city = "Home"
 
 [units]
 temperature = "celsius"
