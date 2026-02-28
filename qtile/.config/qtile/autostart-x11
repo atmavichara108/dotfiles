@@ -4,3 +4,4 @@ nm-applet &
 systemctl --user start mpd &
 picom --daemon &
 feh --randomize --recursive --bg-fill ~/wallpapers/ &
+sudo hiddify &
