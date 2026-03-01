@@ -5,7 +5,7 @@ configuration {
     font: "Noto Sans 25";
 }
 
-@import "~/.cache/wal/colors-rofi-light.rasi"
+@import "~/.cache/wal/colors-rofi.rasi"
 
 //@theme "/usr/share/rofi/themes/arthur.rasi"
 

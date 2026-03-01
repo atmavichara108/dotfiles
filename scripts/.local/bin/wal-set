@@ -1,0 +1,28 @@
+#!/bin/bash
+WALLDIR="$HOME/wallpapers"
+SATURATION="0.5"
+ALPHA="75"
+
+if [ -n "$1" ]; then
+    IMAGE="$1"
+else
+    IMAGE=$(find "$WALLDIR" -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.webp' \) | shuf -n 1)
+fi
+
+if [ -z "$IMAGE" ]; then
+    notify-send "wal-set" "Нет обоев в $WALLDIR" -u critical
+    exit 1
+fi
+
+# Генерируем палитру, ставим обои, прозрачность для tmux
+wal -i "$IMAGE" --cols16 --saturate "$SATURATION" -a "$ALPHA" -q
+
+# Обои через feh
+feh --bg-fill "$(cat ~/.cache/wal/wal)"
+
+# Перезапускаем dunst с новыми цветами
+pkill dunst
+dunst -conf "$HOME/.cache/wal/dunstrc" &
+
+# НЕ перезагружаем Qtile — бар подхватит палитру при следующем логине
+notify-send "Wallpaper" "$(basename "$IMAGE")" -i "$IMAGE" -t 3000
