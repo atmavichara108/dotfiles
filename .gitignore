@@ -82,3 +82,4 @@ zsh/.oh-my-zsh/custom/plugins/example/
 # Игнорировать сторонние плагины (устанавливаются отдельно)
 zsh/.oh-my-zsh/custom/plugins/zsh-*
 zsh/.oh-my-zsh/custom/themes/powerlevel10k/
+x11/.fehbg
