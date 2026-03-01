@@ -225,12 +225,12 @@ FZF-EOF"
 export EDITOR=nvim
 
 # TMUX
-
-if [ -z "$TMUX" ]; then
-  tmux start-server            # пустой сервер, Continuum подцепит снапшот
-  tmux attach || tmux new -s main
-  exit
-fi
-
+#
+# if [ -z "$TMUX" ]; then
+#   tmux start-server            # пустой сервер, Continuum подцепит снапшот
+#   tmux attach || tmux new -s main
+#   exit
+# fi
+#
 # TheFuck
 eval $(thefuck --alias)
