@@ -231,3 +231,6 @@ if [ -z "$TMUX" ]; then
   tmux attach || tmux new -s main
   exit
 fi
+
+# TheFuck
+eval $(thefuck --alias)
