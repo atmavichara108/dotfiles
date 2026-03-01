@@ -1,0 +1,7 @@
+[Unit]
+Description=Cycle wallpaper and colorscheme
+
+[Service]
+Type=oneshot
+Environment=DISPLAY=:0
+ExecStart=%h/.local/bin/wal-set
