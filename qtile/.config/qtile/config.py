@@ -172,20 +172,9 @@ keys = [
     Key(["mod1"], "Right", lazy.screen.next_group(), desc="Next workspace"),
     Key([mod], "Left",  lazy.screen.prev_group(), desc="Previous workspace"),
     
-    # Emacs programs launched using the key chord SUPER+e followed by 'key'
-    KeyChord([mod],"e", [
-        Key([], "e", lazy.spawn(myEmacs), desc='Emacs Dashboard'),
-        Key([], "a", lazy.spawn(myEmacs + "--eval '(emms-play-directory-tree \"~/Music/\")'"), desc='Emacs EMMS'),
-        Key([], "b", lazy.spawn(myEmacs + "--eval '(ibuffer)'"), desc='Emacs Ibuffer'),
-        Key([], "d", lazy.spawn(myEmacs + "--eval '(dired nil)'"), desc='Emacs Dired'),
-        Key([], "i", lazy.spawn(myEmacs + "--eval '(erc)'"), desc='Emacs ERC'),
-        Key([], "s", lazy.spawn(myEmacs + "--eval '(eshell)'"), desc='Emacs Eshell'),
-        Key([], "v", lazy.spawn(myEmacs + "--eval '(vterm)'"), desc='Emacs Vterm'),
-        Key([], "w", lazy.spawn(myEmacs + "--eval '(eww \"distro.tube\")'"), desc='Emacs EWW'),
-        Key([], "F4", lazy.spawn("killall emacs"),
-                      lazy.spawn("/usr/bin/emacs --daemon"),
-                      desc='Kill/restart the Emacs daemon')
-    ]),
+    # Смена обоев
+    Key([mod], "F5", lazy.spawn("wal-set"), desc="Random wallpaper + new palette"),
+
     # Dmenu/rofi scripts launched using the key chord SUPER+p followed by 'key'
     KeyChord([mod], "p", [
         Key([], "h", lazy.spawn("dm-hub -r"), desc='List all dmscripts'),
@@ -208,7 +197,7 @@ keys = [
 ]
 
 
-colors = colors.SolarizedDark
+colors = colors.WalColors
 
 layout_theme = {"border_width": 3,
                 "margin": 13,
@@ -266,7 +255,7 @@ ratiotile_config = layout.RatioTile(
 # TreeTab — навигация по дереву
 treetab_config = layout.TreeTab(
     font="Ubuntu Bold",
-    fontsize=22,                   # для 4K
+    fontsize=28,                   # для 4K
     border_width=0,
     bg_color=colors[0],
     active_bg=colors[8],
@@ -277,7 +266,7 @@ treetab_config = layout.TreeTab(
     padding_x=16,
     padding_y=12,
     sections=["MAIN", "SECONDARY", "OTHER"],
-    section_fontsize=20,           # для 4K
+    section_fontsize=31,           # для 4K
     section_fg=colors[7],
     section_top=15,
     section_bottom=15,
@@ -422,7 +411,7 @@ layouts = [
 
 widget_defaults = dict(
     font="Ubuntu Bold",
-    fontsize = 22,
+    fontsize = 28,
     padding = 0,
     background=colors[0]
 )
@@ -513,7 +502,7 @@ def init_widgets_list(include_tray=True):
 
         # Индикатор активного KeyChord
         extrawidget.Chord(
-            fontsize=20,
+            fontsize=25,
             foreground=colors[3],
             fmt="🎹 {}",
             padding=8,
@@ -595,20 +584,20 @@ def init_widgets_list(include_tray=True):
         extrawidget.WidgetBox(
             text_closed=" ⏵ SYS ",
             text_open=" ⏷ SYS ",
-            fontsize=18,
+            fontsize=28,
             foreground=colors[8],
             **rect_decoration(colors[2]),
             widgets=[
                 extrawidget.CPU(
                     format=" CPU {load_percent:>4}% ",
-                    fontsize=18,
+                    fontsize=28,
                     foreground=colors[4],
                     update_interval=3,
                     mouse_callbacks={"Button1": lambda: qtile.cmd_spawn(myTerm + " -e htop")},
                 ),
                 extrawidget.Memory(
                     format=" MEM {MemUsed:.0f}{mm} ",
-                    fontsize=18,
+                    fontsize=28,
                     foreground=colors[8],
                     measure_mem="M",
                     update_interval=3,
@@ -616,7 +605,7 @@ def init_widgets_list(include_tray=True):
                 ),
                 extrawidget.ThermalSensor(
                     tag_sensor="Core 0",
-                    fontsize=18,
+                    fontsize=28,
                     foreground=colors[5],
                     foreground_alert=colors[3],
                     threshold=75,
@@ -625,7 +614,7 @@ def init_widgets_list(include_tray=True):
                 ),
                 extrawidget.NvidiaSensors(
                     format=" GPU {temp}°C ",
-                    fontsize=18,
+                    fontsize=28,
                     foreground=colors[5],
                     foreground_alert=colors[3],
                     threshold=80,
@@ -633,7 +622,7 @@ def init_widgets_list(include_tray=True):
                 extrawidget.DF(
                     partition="/",
                     format=" DISK {uf}{m} ",
-                    fontsize=18,
+                    fontsize=28,
                     foreground=colors[5],
                     visible_on_warn=False,
                     update_interval=60,
@@ -647,7 +636,7 @@ def init_widgets_list(include_tray=True):
         extrawidget.WidgetBox(
             text_closed=" ⏵ ♫ ",
             text_open=" ⏷ ♫ ",
-            fontsize=18,
+            fontsize=28,
             foreground=colors[7],
             **rect_decoration(colors[2]),
             widgets=[
@@ -655,7 +644,7 @@ def init_widgets_list(include_tray=True):
                     name="browser",
                     display_metadata=["xesam:title", "xesam:artist"],
                     fmt=" {} ",
-                    fontsize=18,
+                    fontsize=28,
                     max_chars=35,
                     foreground=colors[7],
                     paused_text="⏸ {track}",
@@ -670,7 +659,7 @@ def init_widgets_list(include_tray=True):
         extrawidget.GenPollText(
             func=get_keyboard_layout,
             update_interval=0.5,
-            fontsize=20,
+            fontsize=28,
             foreground=colors[1],
             fmt=" {} ",
             padding=8,
@@ -679,7 +668,7 @@ def init_widgets_list(include_tray=True):
 
         extrawidget.Net(
             format=" {down:.0f}{down_suffix}↓ {up:.0f}{up_suffix}↑ ",
-            fontsize=18,
+            fontsize=28,
             foreground=colors[6],
             update_interval=3,
         ),
@@ -689,7 +678,7 @@ def init_widgets_list(include_tray=True):
         # Громкость
         extrawidget.Volume(
             fmt=" ♪ {} ",
-            fontsize=20,
+            fontsize=28,
             foreground=colors[7],
             step=5,
             padding=4,
@@ -703,7 +692,7 @@ def init_widgets_list(include_tray=True):
         #     interface="wlp4s0",
         #     format=" {essid} {percent:2.0%} ",
         #     disconnected_message=" ⚠ WiFi ",
-        #     fontsize=18,
+        #     fontsize=28,
         #     foreground=colors[6],
         #     padding=4,
         #     mouse_callbacks={"Button1": lambda: qtile.cmd_spawn(myTerm + " -e nmtui")},
@@ -714,7 +703,7 @@ def init_widgets_list(include_tray=True):
         # Батарея
         extrawidget.Battery(
             format=" {char}{percent:2.0%} ",
-            fontsize=20,
+            fontsize=22,
             charge_char="⚡",
             discharge_char="🔋",
             full_char="✓ ",
@@ -735,7 +724,7 @@ def init_widgets_list(include_tray=True):
                 ["curl", "-s", "wttr.in/47.519679,40.115877?format=%c+%t&m"],
                 timeout=10,
             ).decode("utf-8").strip(),
-            update_interval=600,
+            update_interval=60,
             fontsize=28,
             foreground=colors[5],
             padding=4,
@@ -750,7 +739,7 @@ def init_widgets_list(include_tray=True):
 
         # Pomodoro
         widget.Pomodoro(
-            fontsize=22,
+            fontsize=26,
             color_active=colors[3],
             color_break=colors[4],
             color_inactive=colors[9],
@@ -772,7 +761,7 @@ def init_widgets_list(include_tray=True):
 
         # Уведомления
         extrawidget.Notify(
-            fontsize=18,
+            fontsize=25,
             foreground=colors[1],
             default_timeout=5,
             fmt=" {} ",
@@ -809,15 +798,17 @@ def init_screens():
             widgets=init_widgets_screen1(),
             size=70,
             margin=[12, 16, 0, 16],
-            background=colors[0],
-            # background="#282c34e6",  # раскомментируй для полупрозрачности
+            # background=colors[0],
+            background="#282c34e6",  # раскомментируй для полупрозрачности
             border_width=[0, 0, 0, 0],
+            opacity=0.8,
         )),
         Screen(top=bar.Bar(
             widgets=init_widgets_screen2(),
             size=80,
             margin=[12, 16, 0, 16],
             background=colors[0],
+            opacity=0.9,
         )),
     ]
 
