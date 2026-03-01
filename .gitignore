@@ -71,3 +71,14 @@ Desktop.ini
 *.backup
 *.bak
 *.old
+
+# Oh-My-Zsh — не версионировать сам фреймворк
+zsh/.oh-my-zsh/*
+!zsh/.oh-my-zsh/custom/
+
+# Игнорировать example плагин
+zsh/.oh-my-zsh/custom/plugins/example/
+
+# Игнорировать сторонние плагины (устанавливаются отдельно)
+zsh/.oh-my-zsh/custom/plugins/zsh-*
+zsh/.oh-my-zsh/custom/themes/powerlevel10k/
