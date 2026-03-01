@@ -65,3 +65,28 @@ Ranger has fzf integration for fuzzy search
 Zsh configured with custom aliases and functions
 ---
 Managed with ❤️ and GNU Stow
+
+## Zsh Setup
+
+### Install Oh My Zsh
+```bash
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+Install Powerlevel10k theme
+￼Copygit clone --depth=1 https://github.com/romkatv/powerlevel10k.git \
+  ${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k
+Install plugins
+￼Copy# zsh-autosuggestions
+git clone https://github.com/zsh-users/zsh-autosuggestions \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+
+# zsh-syntax-highlighting
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+
+# fzf-tab
+git clone https://github.com/Aloxaf/fzf-tab \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/fzf-tab
+Apply dotfiles
+￼Copycd ~/dotfiles
+stow zsh p10k
+source ~/.zshrc
