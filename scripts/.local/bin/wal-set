@@ -1,17 +1,17 @@
 #!/bin/bash
 WALLDIR="$HOME/wallpapers"
 SATURATION="0.5"
-ALPHA="75"
+ALPHA="85"
 
 if [ -n "$1" ]; then
-    IMAGE="$1"
+  IMAGE="$1"
 else
-    IMAGE=$(find "$WALLDIR" -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.webp' \) | shuf -n 1)
+  IMAGE=$(find "$WALLDIR" -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.webp' \) | shuf -n 1)
 fi
 
 if [ -z "$IMAGE" ]; then
-    notify-send "wal-set" "Нет обоев в $WALLDIR" -u critical
-    exit 1
+  notify-send "wal-set" "Нет обоев в $WALLDIR" -u critical
+  exit 1
 fi
 
 # Генерируем палитру, ставим обои, прозрачность для tmux
