@@ -1,8 +1,29 @@
-#!/usr/bin/env zsh
+#!/usr/bin/env bash
 
+# Монитор
+~/.local/bin/monitor-setup &
+
+# Композитор
+picom --daemon
+
+# Обои + палитра
+sleep 1 && wal-set &
+
+# Трей-апплеты
 nm-applet &
-systemctl --user start mpd &
-picom --daemon &
-wal-set &
+flameshot &
+
+# Уведомления
+dunst &
+
+# VPN (через polkit, без sudo)
 sudo hiddify &
 
+# Курсор
+xsetroot -cursor_name left_ptr &
+
+# Раскладка клавиатуры (us/ru, переключение alt+shift)
+setxkbmap -layout us,ru -option grp:alt_shift_toggle &
+
+# Скринлок после бездействия
+# xautolock -time 10 -locker "betterlockscreen -l" &
