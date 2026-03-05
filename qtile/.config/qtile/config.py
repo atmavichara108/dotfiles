@@ -50,8 +50,6 @@ keys = [
     Key([mod], "Return", lazy.spawn(myTerm), desc="Terminal"),
     # Use 'rofi' as your run launcher.
     Key([mod, "shift"], "Return", lazy.spawn("rofi -show drun -show-icons"), desc='Run Launcher'),
-    # Use 'emacs' as your run launcher
-    # Key([mod, "shift"], "Return", lazy.spawn('emacsclient -ce "(dt/emacs-run-launcher)" -F "((name . \\"emacs-run-launcher\\")(minibuffer . only)(width . 80)(height . 11))"'), desc='Run Launcher'),
     Key([mod], "w", lazy.spawn(myBrowser), desc='Web browser'),
     Key([mod], "b", lazy.hide_show_bar(position='all'), desc="Toggles the bar to show/hide"),
     Key([mod], "Tab", lazy.next_layout(), desc="Toggle between layouts"),
@@ -175,6 +173,18 @@ keys = [
     # Смена обоев
     Key([mod], "F5", lazy.spawn("wal-set"), desc="Random wallpaper + new palette"),
 
+    # Перемещение окон между мониторами
+    Key([mod, "shift"], "period",
+        lazy.window.toscreen(1),
+        desc="Move window to next monitor"),
+    Key([mod, "shift"], "comma",
+        lazy.window.toscreen(0),
+        desc="Move window to prev monitor"),
+
+    # обновить конфигурацию мониторов при включении/отключении второго монитора
+    Key([mod], "F6", lazy.spawn(os.path.expanduser("~/.local/bin/monitor-setup")), 
+        desc="Detect monitors"),
+
     # Dmenu/rofi scripts launched using the key chord SUPER+p followed by 'key'
     KeyChord([mod], "p", [
         Key([], "h", lazy.spawn("dm-hub -r"), desc='List all dmscripts'),
@@ -257,7 +267,7 @@ treetab_config = layout.TreeTab(
     font="Ubuntu Bold",
     fontsize=28,                   # для 4K
     border_width=0,
-    bg_color=colors[0],
+    bg_color="#282c34e6",
     active_bg=colors[8],
     active_fg=colors[2],
     inactive_bg=colors[1],
@@ -516,17 +526,17 @@ def init_widgets_list(include_tray=True):
             padding_y=0,
             padding_x=6,
             borderwidth=4,
-            active=colors[8],
+            active=colors[3],
             inactive=colors[9],
             rounded=False,
             highlight_color=colors[0],
             highlight_method="line",
-            this_current_screen_border=colors[8],
-            this_screen_border=colors[0],
+            this_current_screen_border=colors[5],
+            this_screen_border=colors[1],
             other_current_screen_border=colors[2],
             other_screen_border=colors[8],
             urgent_alert_method="line",
-            urgent_border=colors[8],
+            urgent_border=colors[6],
             disable_drag=True,
             **border_accent(colors[7]),
         ),

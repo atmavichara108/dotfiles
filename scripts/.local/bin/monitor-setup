@@ -1,0 +1,6 @@
+#!/bin/bash
+if xrandr --query | grep "^DP-3 connected"; then
+    ~/.screenlayout/dual-right.sh
+else
+    ~/.screenlayout/single.sh
+fi
