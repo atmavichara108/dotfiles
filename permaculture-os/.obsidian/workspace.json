@@ -1,0 +1,199 @@
+{
+  "main": {
+    "id": "b769405affaa7a2d",
+    "type": "split",
+    "children": [
+      {
+        "id": "c5193c546505acaa",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "06451f2b7bd47dfb",
+            "type": "leaf",
+            "state": {
+              "type": "canvas",
+              "state": {
+                "file": "00_Старт/Главная.canvas",
+                "viewState": {
+                  "x": 458.9965447693943,
+                  "y": -127.02418765295596,
+                  "zoom": -0.6000000000000001
+                }
+              },
+              "icon": "lucide-layout-dashboard",
+              "title": "Главная"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "c419982143e26b51",
+    "type": "split",
+    "children": [
+      {
+        "id": "e518313289e03850",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a800b13d97f76efb",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Файловый менеджер"
+            }
+          },
+          {
+            "id": "72bf205becaaf28c",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Поиск"
+            }
+          },
+          {
+            "id": "7b895aa62e862db4",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Закладки"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "97ae646babfe94ad",
+    "type": "split",
+    "children": [
+      {
+        "id": "f3356042a8c7d8ad",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "fa99d2515aa6fdc5",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "01_Обучение/Обучение_MOC.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Обратные ссылки для Обучение_MOC"
+            }
+          },
+          {
+            "id": "035c755f1244fc47",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "01_Обучение/Обучение_MOC.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Исходящие ссылки из Обучение_MOC"
+            }
+          },
+          {
+            "id": "d7255f60cb565b92",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Теги"
+            }
+          },
+          {
+            "id": "aed493568b4fba7e",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Все свойства"
+            }
+          },
+          {
+            "id": "d59df670f6a6cde6",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "01_Обучение/Обучение_MOC.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Структура Обучение_MOC"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Меню быстрого перехода": false,
+      "graph:Граф": false,
+      "canvas:Создать новый холст": false,
+      "daily-notes:Сегодняшняя заметка": false,
+      "templates:Вставить шаблон": false,
+      "command-palette:Открыть палитру команд": false,
+      "bases:Создать новую базу": false
+    }
+  },
+  "active": "06451f2b7bd47dfb",
+  "lastOpenFiles": [
+    "99_Архив/Без названия.canvas",
+    "05_Проекты/Проекты_MOC.md",
+    "04_Методичка/Методичка_MOC.md",
+    "03_Источники/Источники_MOC.md",
+    "02_Участок/Участок_MOC.md",
+    "01_Обучение/Обучение_MOC.md",
+    "00_Старт/Главная.canvas"
+  ]
+}

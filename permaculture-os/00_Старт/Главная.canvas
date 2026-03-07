@@ -1,0 +1,10 @@
+{
+	"nodes":[
+		{"id":"cd6ab6b6d00b245e","type":"file","file":"02_Участок/Участок_MOC.md","x":-200,"y":-359,"width":400,"height":400},
+		{"id":"2c78e27d26e6d8cf","type":"file","file":"03_Источники/Источники_MOC.md","x":280,"y":-359,"width":400,"height":400},
+		{"id":"178c449abb4abf6d","type":"file","file":"04_Методичка/Методичка_MOC.md","x":760,"y":-359,"width":400,"height":400},
+		{"id":"8869ff3ad4a00ce0","type":"file","file":"05_Проекты/Проекты_MOC.md","x":1240,"y":-359,"width":400,"height":400},
+		{"id":"f9f1a4a2d86e12e5","type":"file","file":"01_Обучение/Обучение_MOC.md","x":-680,"y":-359,"width":400,"height":400}
+	],
+	"edges":[]
+}
