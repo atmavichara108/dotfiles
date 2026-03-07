@@ -15,9 +15,9 @@
               "state": {
                 "file": "00_Старт/Главная.canvas",
                 "viewState": {
-                  "x": 458.9965447693943,
-                  "y": -127.02418765295596,
-                  "zoom": -0.6000000000000001
+                  "x": 480,
+                  "y": 202.42538071065988,
+                  "zoom": -0.6953607943084931
                 }
               },
               "icon": "lucide-layout-dashboard",
@@ -97,7 +97,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "01_Обучение/Обучение_MOC.md",
+                "file": "00_Старт/Главная.canvas",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -107,7 +107,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Обратные ссылки для Обучение_MOC"
+              "title": "Обратные ссылки для Главная"
             }
           },
           {
@@ -116,12 +116,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "01_Обучение/Обучение_MOC.md",
+                "file": "00_Старт/Главная.canvas",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Исходящие ссылки из Обучение_MOC"
+              "title": "Исходящие ссылки из Главная"
             }
           },
           {
@@ -159,13 +159,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "01_Обучение/Обучение_MOC.md",
+                "file": "00_Старт/Главная.canvas",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Структура Обучение_MOC"
+              "title": "Структура Главная"
             }
           }
         ]
@@ -188,12 +188,13 @@
   },
   "active": "06451f2b7bd47dfb",
   "lastOpenFiles": [
+    "02_Участок/Паспорт_участка.md",
+    "00_Старт/Главная.canvas",
     "99_Архив/Без названия.canvas",
     "05_Проекты/Проекты_MOC.md",
     "04_Методичка/Методичка_MOC.md",
     "03_Источники/Источники_MOC.md",
     "02_Участок/Участок_MOC.md",
-    "01_Обучение/Обучение_MOC.md",
-    "00_Старт/Главная.canvas"
+    "01_Обучение/Обучение_MOC.md"
   ]
 }
