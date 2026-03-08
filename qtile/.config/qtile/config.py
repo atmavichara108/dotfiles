@@ -50,10 +50,10 @@ keys = [
     Key([mod], "Return", lazy.spawn(myTerm), desc="Terminal"),
     # Use 'rofi' as your run launcher.
     Key([mod, "shift"], "Return", lazy.spawn("rofi -show drun -show-icons"), desc='Run Launcher'),
-    Key([mod], "w", lazy.spawn(myBrowser), desc='Web browser'),
+    Key([mod, "shift"], "w", lazy.spawn(myBrowser), desc='Web browser'),
     Key([mod], "b", lazy.hide_show_bar(position='all'), desc="Toggles the bar to show/hide"),
     Key([mod], "Tab", lazy.next_layout(), desc="Toggle between layouts"),
-    Key([mod, "shift"], "c", lazy.window.kill(), desc="Kill focused window"),
+    Key([mod], "w", lazy.window.kill(), desc="Kill focused window"),
     Key([mod, "shift"], "r", lazy.reload_config(), desc="Reload the config"),
     Key([mod, "control"], "r", lazy.restart(), desc="Restart Qtile (full)"),
     Key([mod, "shift"], "q", lazy.spawn("dm-logout -r"), desc="Logout menu"),
@@ -210,7 +210,7 @@ keys = [
 colors = colors.WalColors
 
 layout_theme = {"border_width": 3,
-                "margin": 13,
+                "margin": 8,
                 "border_focus": colors[8],
                 "border_normal": colors[0]
                 }
@@ -239,7 +239,7 @@ bsp_config = layout.Bsp(
     margin_on_single=0,
 )
 
-# Columns — i3-style
+# Columns
 columns_config = layout.Columns(
     **layout_theme,
     num_columns=2,                 # старт с 2 колонок
@@ -282,7 +282,7 @@ treetab_config = layout.TreeTab(
     section_bottom=15,
     level_shift=8,
     vspace=3,
-    panel_width=300,               # шире для 4K чтобы имена окон были читаемы
+    panel_width=200,               # шире для 4K чтобы имена окон были читаемы
 )
 
 # MonadThreeCol — три колонки с центральным мастером
@@ -348,19 +348,20 @@ group_configs = [
     # 1 - ॐ (ОМ / АУМ) — Изначальный Звук
     {"name": "1", "label": "ॐ", "layouts": [
         monadtall_config,
-        bsp_config,
     ]},
-    # 2 - श्री" (Шри) — Сияние Благодати
+    # 2 - श्री"  (Шри) — Сияние Благодати
     {"name": "2", "label": "श्री", "layouts": [
+        bsp_config,
         columns_config,
-        ratiotile_config,
     ]},
     # 3 - ह्रीं — (Хрим) — Семя Шакти
     {"name": "3", "label": "ह्रीं", "layouts": [
         treetab_config,
+        ratiotile_config,
     ]},
     # 4 - क्लीं — притяжение
     {"name": "4", "label": "क्लीं", "layouts": [
+        monadthreecol_config,
         zoomy_config,
     ]},
     # 5 - ऐं — знание/Сарасвати
@@ -370,21 +371,21 @@ group_configs = [
     ]},
     # 6 - सौः — лунная энергия
     {"name": "6", "label": "सौः", "layouts": [
-        monadthreecol_config,
         columns_config,
+        plasma_config,
     ]},
     # 7 - हूं — защита/Шива
     {"name": "7", "label": "हूं", "layouts": [
-        slice_config,
-        ratiotile_config,
+        plasma_config,
     ]},
     # 8 - रां — огонь (Манипура)
     {"name": "8", "label": "रां", "layouts": [
         spiral_config,
+        ratiotile_config,
     ]},
     # 9 - वं — вода (Свадхистана)
     {"name": "9", "label": "वं", "layouts": [
-        plasma_config,
+        slice_config,
     ]},
     # 0 - लं — земля (Муладхара)
     {"name": "0", "label": "लं", "layouts": [
@@ -532,13 +533,13 @@ def init_widgets_list(include_tray=True):
             highlight_color=colors[0],
             highlight_method="line",
             this_current_screen_border=colors[5],
-            this_screen_border=colors[1],
-            other_current_screen_border=colors[2],
+            this_screen_border=colors[8],
+            other_current_screen_border=colors[5],
             other_screen_border=colors[8],
             urgent_alert_method="line",
             urgent_border=colors[6],
             disable_drag=True,
-            **border_accent(colors[7]),
+            **border_accent(colors[0]),
         ),
 
         widget.Spacer(length=8),
