@@ -25,5 +25,8 @@ xsetroot -cursor_name left_ptr &
 # Раскладка клавиатуры (us/ru, переключение alt+shift)
 setxkbmap -layout us,ru -option grp:alt_shift_toggle &
 
+# архив буфера
+copyq &
+
 # Скринлок после бездействия
 # xautolock -time 10 -locker "betterlockscreen -l" &
