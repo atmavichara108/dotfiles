@@ -11,17 +11,14 @@
             "id": "06451f2b7bd47dfb",
             "type": "leaf",
             "state": {
-              "type": "canvas",
+              "type": "markdown",
               "state": {
-                "file": "00_Старт/Главная.canvas",
-                "viewState": {
-                  "x": 480,
-                  "y": 202.42538071065988,
-                  "zoom": -0.6953607943084931
-                }
+                "file": "04_Методичка/Методичка_MOC.md",
+                "mode": "source",
+                "source": false
               },
-              "icon": "lucide-layout-dashboard",
-              "title": "Главная"
+              "icon": "lucide-file",
+              "title": "Методичка_MOC"
             }
           }
         ]
@@ -97,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "00_Старт/Главная.canvas",
+                "file": "04_Методичка/Методичка_MOC.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -107,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Обратные ссылки для Главная"
+              "title": "Обратные ссылки для Методичка_MOC"
             }
           },
           {
@@ -116,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "00_Старт/Главная.canvas",
+                "file": "04_Методичка/Методичка_MOC.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Исходящие ссылки из Главная"
+              "title": "Исходящие ссылки из Методичка_MOC"
             }
           },
           {
@@ -159,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "00_Старт/Главная.canvas",
+                "file": "04_Методичка/Методичка_MOC.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Структура Главная"
+              "title": "Структура Методичка_MOC"
             }
           }
         ]
@@ -188,13 +185,24 @@
   },
   "active": "06451f2b7bd47dfb",
   "lastOpenFiles": [
-    "02_Участок/Паспорт_участка.md",
+    "03_Источники/Источники_MOC.md",
     "00_Старт/Главная.canvas",
+    "01_Обучение/Обучение_MOC.md",
+    "03_Источники/Реестр_каналов.md",
+    "01_Обучение/Основы_пермакультуры/Паттерны_в_природе.md",
+    "01_Обучение/Чтение_участка/Чтение_участка.md",
+    "01_Обучение/Чтение_участка/Зоны_и_сектора.md",
+    "01_Обучение/Основы_пермакультуры/Принципы_пермакультуры.md",
+    "01_Обучение/Основы_пермакультуры/Этика_пермакультуры.md",
+    "templates/tpl_методичка.md",
+    "templates/tpl_тема.md",
+    "templates/tpl_источник.md",
+    "01_Обучение/Основы_пермакультуры/Без названия.md",
+    "templates",
+    "02_Участок/Паспорт_участка.md",
     "99_Архив/Без названия.canvas",
     "05_Проекты/Проекты_MOC.md",
     "04_Методичка/Методичка_MOC.md",
-    "03_Источники/Источники_MOC.md",
-    "02_Участок/Участок_MOC.md",
-    "01_Обучение/Обучение_MOC.md"
+    "02_Участок/Участок_MOC.md"
   ]
 }
