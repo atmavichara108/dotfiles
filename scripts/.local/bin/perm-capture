@@ -1,0 +1,91 @@
+#!/bin/bash
+# perm-capture — захват YouTube видео в Permaculture OS
+# Использование: perm-capture "URL" [тема]
+
+URL="$1"
+TOPIC="${2:-inbox}"
+VAULT="$HOME/dotfiles/permaculture-os"
+MEDIA="$VAULT/03_Источники/.media"
+SOURCES="$VAULT/03_Источники/youtube"
+DATE=$(date +%Y-%m-%d)
+
+# Получаем метаданные видео
+echo "📡 Получаю метаданные..."
+TITLE=$(yt-dlp --get-title "$URL" 2>/dev/null)
+CHANNEL=$(yt-dlp --print "%(channel)s" "$URL" 2>/dev/null)
+DURATION=$(yt-dlp --print "%(duration_string)s" "$URL" 2>/dev/null)
+
+# Безопасное имя файла
+SAFE_TITLE=$(echo "$TITLE" | tr '/' '_' | tr ':' '-' | head -c 80)
+
+echo "📺 $TITLE"
+echo "📡 $CHANNEL"
+echo "⏱  $DURATION"
+
+# Скачиваем субтитры
+echo "📝 Скачиваю субтитры..."
+yt-dlp --write-auto-sub --sub-lang en --skip-download \
+  --convert-subs srt \
+  -o "$MEDIA/transcripts/$SAFE_TITLE.%(ext)s" \
+  "$URL" 2>/dev/null
+
+# Проверяем, скачались ли
+TRANSCRIPT="$MEDIA/transcripts/$SAFE_TITLE.en.srt"
+HAS_SUBS="false"
+if [ -f "$TRANSCRIPT" ]; then
+  HAS_SUBS="true"
+  echo "✅ Субтитры получены"
+else
+  echo "⚠️  Субтитры не найдены. Используй perm-whisper для транскрипции."
+fi
+
+# Создаём заметку-источник
+NOTEFILE="$SOURCES/src_${SAFE_TITLE// /_}.md"
+cat > "$NOTEFILE" << EOF
+---
+type: источник
+format: youtube
+title: "$TITLE"
+url: "$URL"
+channel: "$CHANNEL"
+duration: "$DURATION"
+language: en
+topics: [$TOPIC]
+status: inbox
+date_added: $DATE
+date_processed: 
+has_transcript: $HAS_SUBS
+---
+
+# $TITLE
+
+## Зачем я это сохранил
+
+
+## Ключевые идеи
+1. 
+2. 
+3. 
+
+## Привязка к темам
+- [[]]
+
+## Цитаты / таймкоды
+
+
+## Статус обработки
+- [ ] Просмотрено
+- [ ] Ключевые идеи извлечены
+- [ ] Привязано к теме
+- [ ] Переработано в тему
+EOF
+
+echo "📄 Заметка создана: $NOTEFILE"
+echo ""
+echo "Следующие шаги:"
+echo "  1. Открой заметку в Obsidian"
+echo "  2. Посмотри видео"
+echo "  3. Заполни 'Зачем я это сохранил' и 'Ключевые идеи'"
+if [ "$HAS_SUBS" = "true" ]; then
+  echo "  4. Транскрипт: $TRANSCRIPT"
+fi
