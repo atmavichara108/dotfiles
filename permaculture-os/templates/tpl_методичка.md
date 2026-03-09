@@ -6,6 +6,7 @@ created: {{date:YYYY-MM-DD}}
 updated: {{date:YYYY-MM-DD}}
 tested: false
 ---
+> **Статус:** 🔴 draft | 🟠 review | 🟢 done | 🔵 tested | 🟡 shared 
 
 # {{title}} — методичка
 
