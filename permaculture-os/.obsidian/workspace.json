@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "00_Старт/Как_пользоваться_системой.md",
+                "file": "templates/tpl_тема.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Как_пользоваться_системой"
+              "title": "tpl_тема"
             }
           }
         ]
@@ -53,7 +53,7 @@
             "state": {
               "type": "search",
               "state": {
-                "query": "[\"title\"]",
+                "query": "пайплайн",
                 "matchingCase": false,
                 "explainSearch": false,
                 "collapseAll": false,
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "00_Старт/Как_пользоваться_системой.md",
+                "file": "templates/tpl_тема.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": false
               },
               "icon": "links-coming-in",
-              "title": "Обратные ссылки для Как_пользоваться_системой"
+              "title": "Обратные ссылки для tpl_тема"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "00_Старт/Как_пользоваться_системой.md",
+                "file": "templates/tpl_тема.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Исходящие ссылки из Как_пользоваться_системой"
+              "title": "Исходящие ссылки из tpl_тема"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "00_Старт/Как_пользоваться_системой.md",
+                "file": "templates/tpl_тема.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Структура Как_пользоваться_системой"
+              "title": "Структура tpl_тема"
             }
           },
           {
@@ -171,10 +171,10 @@
             "state": {
               "type": "file-properties",
               "state": {
-                "file": "00_Старт/Как_пользоваться_системой.md"
+                "file": "templates/tpl_тема.md"
               },
               "icon": "lucide-info",
-              "title": "Свойства файла для Как_пользоваться_системой"
+              "title": "Свойства файла для tpl_тема"
             }
           }
         ],
@@ -198,9 +198,11 @@
   },
   "active": "dbfca9bd0347060b",
   "lastOpenFiles": [
-    "03_Источники/youtube/extract txt.md",
+    "01_Обучение/Обучение_MOC.md",
     "00_Старт/Как_пользоваться_системой.md",
     "03_Источники/Источники_MOC.md",
+    "02_Участок/Паспорт_участка.md",
+    "03_Источники/youtube/extract txt.md",
     "templates/tpl_источник.md",
     "03_Источники/media/transcripts",
     "03_Источники/media/youtube",
@@ -208,7 +210,6 @@
     "templates/tpl_тема.md",
     "templates/tpl_методичка.md",
     "04_Методичка/Методичка_MOC.md",
-    "01_Обучение/Обучение_MOC.md",
     "00_Старт/Главная.canvas",
     "02_Участок/Участок_MOC.md",
     "99_Архив/Без названия.canvas",
@@ -220,7 +221,6 @@
     "01_Обучение/Основы_пермакультуры/Этика_пермакультуры.md",
     "01_Обучение/Основы_пермакультуры/Без названия.md",
     "templates",
-    "02_Участок/Паспорт_участка.md",
     "05_Проекты/Проекты_MOC.md"
   ]
 }
