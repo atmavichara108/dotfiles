@@ -2,13 +2,15 @@
 type: методичка
 topic: "[[]]"
 status: draft
-created: {{date:YYYY-MM-DD}}
-updated: {{date:YYYY-MM-DD}}
+created:
+  <% tp.date.now("YYYY-MM-DD") %>
+updated:
+  <% tp.date.now("YYYY-MM-DD") %>
 tested: false
 ---
 > **Статус:** 🔴 draft | 🟠 review | 🟢 done | 🔵 tested | 🟡 shared 
 
-# {{title}} — методичка
+# <% tp.file.title %> — методичка
 
 ## Суть
 <!-- 3-5 предложений. Если не можешь уложить — ты ещё не понял тему. -->

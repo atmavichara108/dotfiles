@@ -7,7 +7,7 @@ channel: ""
 language: ""
 topics: []
 status: inbox
-date_added: {{date:YYYY-MM-DD}}
+date_added: <% tp.date.now("YYYY-MM-DD") %>
 date_processed: 
 ---
 
