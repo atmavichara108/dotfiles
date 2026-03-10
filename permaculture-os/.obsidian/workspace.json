@@ -198,8 +198,9 @@
   },
   "active": "dbfca9bd0347060b",
   "lastOpenFiles": [
-    "01_Обучение/Обучение_MOC.md",
     "00_Старт/Как_пользоваться_системой.md",
+    "templates/tpl_тема.md",
+    "01_Обучение/Обучение_MOC.md",
     "03_Источники/Источники_MOC.md",
     "02_Участок/Паспорт_участка.md",
     "03_Источники/youtube/extract txt.md",
@@ -207,7 +208,6 @@
     "03_Источники/media/transcripts",
     "03_Источники/media/youtube",
     "03_Источники/media",
-    "templates/tpl_тема.md",
     "templates/tpl_методичка.md",
     "04_Методичка/Методичка_MOC.md",
     "00_Старт/Главная.canvas",
