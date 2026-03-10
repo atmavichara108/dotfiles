@@ -134,9 +134,9 @@ keys = [
     Key([mod], "comma", lazy.prev_screen(), desc='Move focus to prev monitor'),
 
     # Громкость (pactl — твой основной инструмент)
-    Key([], "XF86AudioRaiseVolume", lazy.spawn("pactl set-sink-volume 0 +5%")),
-    Key([], "XF86AudioLowerVolume", lazy.spawn("pactl set-sink-volume 0 -5%")),
-    Key([], "XF86AudioMute", lazy.spawn("pactl set-sink-mute 0 toggle")),
+    Key([], "XF86AudioRaiseVolume", lazy.spawn("pactl set-sink-volume @DEFAULT_SINK@ +5%")),
+    Key([], "XF86AudioLowerVolume", lazy.spawn("pactl set-sink-volume @DEFAULT_SINK@ -5%")),
+    Key([], "XF86AudioMute", lazy.spawn("pactl set-sink-mute @DEFAULT_SINK@ toggle")),
 
     # Микрофон
     Key([], "XF86AudioMicMute", lazy.spawn("pactl set-source-mute @DEFAULT_SOURCE@ toggle")),
@@ -653,12 +653,14 @@ def init_widgets_list(include_tray=True):
             widgets=[
                 extrawidget.Mpris2(
                     name="browser",
-                    display_metadata=["xesam:title", "xesam:artist"],
+                    format="{xesam:title} - {xesam:artist}",
                     fmt=" {} ",
                     fontsize=28,
                     max_chars=35,
                     foreground=colors[7],
                     paused_text="⏸ {track}",
+                    width=220,
+                    scroll_fixed_width=True,
                     scroll=True,
                 ),
             ],
