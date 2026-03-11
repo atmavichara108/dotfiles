@@ -8,7 +8,7 @@
         "type": "tabs",
         "children": [
           {
-            "id": "95bb523f1dea44a7",
+            "id": "efc08d27e7881b7a",
             "type": "leaf",
             "state": {
               "type": "markdown",
@@ -22,6 +22,41 @@
             }
           }
         ]
+      },
+      {
+        "id": "5099de989b61c84b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "d3a66e44b6c7fade",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "03_Источники/youtube/Permaculture Site Analysis.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Permaculture Site Analysis"
+            }
+          },
+          {
+            "id": "9c398d64ce07f5a4",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "03_Источники/youtube/Microclimate Mapping.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Microclimate Mapping"
+            }
+          }
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -94,7 +129,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "templates/tpl_тема.md",
+                "file": "03_Источники/youtube/Microclimate Mapping.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +139,7 @@
                 "unlinkedCollapsed": false
               },
               "icon": "links-coming-in",
-              "title": "Обратные ссылки для tpl_тема"
+              "title": "Обратные ссылки для Microclimate Mapping"
             }
           },
           {
@@ -177,8 +212,7 @@
               "title": "Свойства файла для tpl_тема"
             }
           }
-        ],
-        "currentTab": 3
+        ]
       }
     ],
     "direction": "horizontal",
@@ -197,17 +231,26 @@
       "templater-obsidian:Templater": false
     }
   },
-  "active": "95bb523f1dea44a7",
+  "active": "9c398d64ce07f5a4",
   "lastOpenFiles": [
+    "01_Обучение/Чтение_участка.md",
+    "03_Источники/youtube/Microclimate Mapping.md",
+    "03_Источники/youtube/Permaculture Site Analysis.md",
+    "templates/tpl_тема.md",
+    "03_Источники/youtube/src_.md",
+    "03_Источники/media/youtube",
+    "03_Источники/media/transcripts",
+    "03_Источники/media",
+    "03_Источники/youtube/media/youtube",
+    "03_Источники/youtube/media/transcripts",
+    "03_Источники/youtube/media",
     "01_Обучение/Паттерны_в_природе.md",
     "01_Обучение/Принципы_пермакультуры.md",
     "01_Обучение/Этика_пермакультуры.md",
-    "01_Обучение/Чтение_участка.md",
     "01_Обучение/Зоны_и_сектора.md",
     "00_Старт/Справочник_свойств.md",
     "00_Старт/Главная.md",
     "templates/tpl_источник.md",
-    "templates/tpl_тема.md",
     "templates/tpl_методичка.md",
     "00_Старт/Воркфлоу - полный жизненный цикл от темы до методички.md",
     "01_Обучение/Обучение_MOC.md",
@@ -218,18 +261,12 @@
     "00_Старт/Как_пользоваться_системой.md",
     "02_Участок/Паспорт_участка.md",
     "03_Источники/youtube/extract txt.md",
-    "03_Источники/media/transcripts",
-    "03_Источники/media/youtube",
-    "03_Источники/media",
     "04_Методичка/Методичка_MOC.md",
     "00_Старт/Главная.canvas",
     "02_Участок/Участок_MOC.md",
     "99_Архив/Без названия.canvas",
     "03_Источники/Реестр_каналов.md",
     "01_Обучение/Чтение_участка/Чтение_участка.md",
-    "01_Обучение/Чтение_участка/Зоны_и_сектора.md",
-    "01_Обучение/Основы_пермакультуры/Без названия.md",
-    "templates",
-    "05_Проекты/Проекты_MOC.md"
+    "templates"
   ]
 }
