@@ -1,91 +1,196 @@
 #!/bin/bash
-# perm-capture — захват YouTube видео в Permaculture OS
-# Использование: perm-capture "URL" [тема]
+# perm-capture — захват YouTube видео → конспект в Permaculture OS
+# Использование: perm-capture <URL> <тема> [ru|en]
+# Примеры:
+#   perm-capture "https://www.youtube.com/watch?v=ABC123" "Чтение_участка"
+#   perm-capture "https://www.youtube.com/watch?v=ABC123" "Обрезка_плодовых" ru
 
-URL="$1"
-TOPIC="${2:-inbox}"
+set -euo pipefail
+
+URL=$(echo "$1" | sed 's/\\//g')
+TOPIC="${2:?Укажи тему: perm-capture URL тема [ru|en]}"
+PREF_LANG="${3:-}" # пустое = пробовать ru, потом en
+
 VAULT="$HOME/dotfiles/permaculture-os"
-MEDIA="$VAULT/03_Источники/.media"
+MEDIA="$VAULT/03_Источники/media"
 SOURCES="$VAULT/03_Источники/youtube"
 DATE=$(date +%Y-%m-%d)
+TMP_DIR=$(mktemp -d)
+trap "rm -rf $TMP_DIR" EXIT
 
-# Получаем метаданные видео
+mkdir -p "$MEDIA/transcripts" "$SOURCES"
+
+# ── 1. Метаданные ──────────────────────────────────────
 echo "📡 Получаю метаданные..."
-TITLE=$(yt-dlp --get-title "$URL" 2>/dev/null)
-CHANNEL=$(yt-dlp --print "%(channel)s" "$URL" 2>/dev/null)
-DURATION=$(yt-dlp --print "%(duration_string)s" "$URL" 2>/dev/null)
+META=$(yt-dlp --no-download --print "%(title)s|||%(channel)s|||%(duration_string)s|||%(id)s" "$URL" 2>/dev/null || true)
 
-# Безопасное имя файла
-SAFE_TITLE=$(echo "$TITLE" | tr '/' '_' | tr ':' '-' | head -c 80)
+if [ -z "$META" ]; then
+  echo "❌ Не удалось получить метаданные. Проверь URL: $URL"
+  exit 1
+fi
+
+IFS='|||' read -r TITLE _ _ CHANNEL _ _ DURATION _ _ VID_ID _ <<<"$META"
+TITLE="${TITLE:-Untitled}"
+CHANNEL="${CHANNEL:-Unknown}"
+DURATION="${DURATION:-00:00}"
+VID_ID="${VID_ID:-unknown}"
 
 echo "📺 $TITLE"
 echo "📡 $CHANNEL"
 echo "⏱  $DURATION"
 
-# Скачиваем субтитры
-echo "📝 Скачиваю субтитры..."
-yt-dlp --write-auto-sub --sub-lang en --skip-download \
-  --convert-subs srt \
-  -o "$MEDIA/transcripts/$SAFE_TITLE.%(ext)s" \
-  "$URL" 2>/dev/null
-
-# Проверяем, скачались ли
-TRANSCRIPT="$MEDIA/transcripts/$SAFE_TITLE.en.srt"
-HAS_SUBS="false"
-if [ -f "$TRANSCRIPT" ]; then
-  HAS_SUBS="true"
-  echo "✅ Субтитры получены"
-else
-  echo "⚠️  Субтитры не найдены. Используй perm-whisper для транскрипции."
+# Проверка дубликатов
+NOTEFILE="$SOURCES/src_${VID_ID}.md"
+if [ -f "$NOTEFILE" ]; then
+  echo "⚠️  Заметка уже существует: $NOTEFILE"
+  exit 0
 fi
 
-# Создаём заметку-источник
-NOTEFILE="$SOURCES/src_${SAFE_TITLE// /_}.md"
-cat > "$NOTEFILE" << EOF
+# ── 2. Субтитры ────────────────────────────────────────
+echo "📝 Скачиваю субтитры..."
+SUB_LANG=""
+SRT_FILE=""
+
+if [ -n "$PREF_LANG" ]; then
+  LANGS=("$PREF_LANG")
+else
+  LANGS=("ru" "en")
+fi
+
+for LANG in "${LANGS[@]}"; do
+  yt-dlp --write-auto-sub --sub-lang "$LANG" --skip-download \
+    --convert-subs srt \
+    -o "$TMP_DIR/${VID_ID}.%(ext)s" \
+    "$URL" 2>/dev/null || true
+
+  if [ -f "$TMP_DIR/${VID_ID}.${LANG}.srt" ]; then
+    SUB_LANG="$LANG"
+    SRT_FILE="$TMP_DIR/${VID_ID}.${LANG}.srt"
+    echo "✅ Субтитры получены ($LANG)"
+    break
+  fi
+done
+
+if [ -z "$SUB_LANG" ]; then
+  echo "❌ Субтитры не найдены ни на одном языке."
+  echo "   Попробуй: perm-capture \"$URL\" \"$TOPIC\" en"
+  exit 1
+fi
+
+# ── 3. SRT → чистый текст ─────────────────────────────
+echo "🔄 Очищаю транскрипт..."
+CLEAN_TEXT="$TMP_DIR/clean.txt"
+
+sed '/^[0-9]*$/d; /^$/d; /-->/d' "$SRT_FILE" |
+  awk '!seen[$0]++' |
+  awk '{
+      printf "%s ", $0
+      if (NR % 5 == 0) printf "\n\n"
+    }
+    END { printf "\n" }' \
+    >"$CLEAN_TEXT"
+
+WORDS=$(wc -w <"$CLEAN_TEXT")
+echo "📊 $WORDS слов в транскрипте"
+
+# Сохраняем чистый транскрипт как бэкап
+cp "$CLEAN_TEXT" "$MEDIA/transcripts/tr_${VID_ID}.${SUB_LANG}.txt"
+
+# ── 4. AI-конспект ─────────────────────────────────────
+echo "🤖 Генерирую конспект через ollama..."
+
+# Обрезаем до ~4000 слов чтобы влезть в контекст
+TRUNCATED=$(head -c 16000 "$CLEAN_TEXT")
+
+if [ "$SUB_LANG" = "ru" ]; then
+  PROMPT="Ты — ассистент по пермакультуре. Составь конспект этого видео на русском языке.
+
+Структура:
+1. **Главная мысль** — 2-3 предложения, о чём видео
+2. **Ключевые концепции** — пронумерованный список (макс 17 пунктов), каждый пункт: название + объяснение в 1-2 предложения
+3. **Практические выводы** — что конкретно можно применить на участке 0.006 га, зона 6b, чернозём, незначительный северный уклон
+4. **Важные цитаты/моменты** — 5-8 самых ценных мысли из видео
+
+Будь конкретным, не лей воду.
+
+Транскрипт:
+$TRUNCATED"
+else
+  PROMPT="Ты — ассистент по пермакультуре. Составь конспект этого видео на русском языке.
+
+Структура:
+1. **Главная мысль** — 2-3 предложения, о чём видео
+2. **Ключевые концепции** — пронумерованный список (макс 17 пунктов), каждый пункт: название + объяснение в 1-2 предложения
+3. **Практические выводы** — что конкретно можно применить на участке 0.006 га, зона 6b, чернозём, незначительный северный уклон
+4. **Важные цитаты/моменты** — 5-8 самых ценных мысли из видео
+
+Будь конкретным, не лей воду.
+
+Транскрипт:
+$TRUNCATED"
+  PROMPT="You are a permaculture study assistant. Create a summary of this video IN RUSSIAN.
+
+Structure:
+1. **Главная мысль** — 2-3 sentences, what the video is about
+2. **Ключевые концепции** — numbered list (max 7), each: name + 1-2 sentence explanation
+3. **Практические выводы** — what can be applied on a 0.06ha plot, zone 6b, chernozem soil, north-facing slope
+4. **Важные цитаты/моменты** — 2-3 most valuable insights
+
+Be specific, no fluff. Write entirely in Russian.
+
+Transcript:
+$TRUNCATED"
+fi
+
+SUMMARY=$(echo "$PROMPT" | ollama run gemma3:4b 2>/dev/null || echo "⚠️ Ollama недоступен. Заполни конспект вручную.")
+
+# ── 5. Создаём заметку ─────────────────────────────────
+cat >"$NOTEFILE" <<EOF
 ---
 type: источник
 format: youtube
-title: "$TITLE"
-url: "$URL"
-channel: "$CHANNEL"
-duration: "$DURATION"
-language: en
-topics: [$TOPIC]
+title: "${TITLE//\"/\\\"}"
+url: "https://www.youtube.com/watch?v=${VID_ID}"
+channel: "${CHANNEL//\"/\\\"}"
+duration: "${DURATION}"
+language: ${SUB_LANG}
+words: ${WORDS}
+topics:
+  - ${TOPIC}
 status: inbox
-date_added: $DATE
-date_processed: 
-has_transcript: $HAS_SUBS
+date_added: ${DATE}
+date_processed:
 ---
 
-# $TITLE
+# ${TITLE}
 
-## Зачем я это сохранил
+> **Канал:** ${CHANNEL} | **Длительность:** ${DURATION} | **Слов:** ${WORDS}
+> **Тема:** [[${TOPIC}]]
 
+## Конспект
 
-## Ключевые идеи
-1. 
-2. 
-3. 
+${SUMMARY}
+
+## Мои заметки
+
+<!-- После просмотра: что зацепило, с чем не согласен, что применить -->
+
 
 ## Привязка к темам
-- [[]]
-
-## Цитаты / таймкоды
-
+- [[${TOPIC}]]
 
 ## Статус обработки
 - [ ] Просмотрено
-- [ ] Ключевые идеи извлечены
+- [ ] Конспект проверен после просмотра
 - [ ] Привязано к теме
 - [ ] Переработано в тему
 EOF
 
-echo "📄 Заметка создана: $NOTEFILE"
+echo ""
+echo "✅ Готово: $NOTEFILE"
+echo "📄 Открой в Obsidian: 03_Источники/youtube/src_${VID_ID}"
 echo ""
 echo "Следующие шаги:"
-echo "  1. Открой заметку в Obsidian"
-echo "  2. Посмотри видео"
-echo "  3. Заполни 'Зачем я это сохранил' и 'Ключевые идеи'"
-if [ "$HAS_SUBS" = "true" ]; then
-  echo "  4. Транскрипт: $TRANSCRIPT"
-fi
+echo "  1. Посмотри видео"
+echo "  2. Сверь конспект с видео, допиши 'Мои заметки'"
+echo "  3. Отметь чекбоксы"
