@@ -125,6 +125,7 @@ alias tt='taskwarrior-tui'
 alias sq='cd ~/dotfiles/ && stow -R qtile'
 alias termx="ssh -p 8022 '192.168.0.24'"
 alias termxm="ssh -p 8022 '10.192.172.83'"
+alias copyx="xclip -sel c"
 
 export PATH="$HOME/bin:$PATH"
 export PATH=$PATH:~/go/bin
