@@ -1,13 +1,69 @@
+# ============================================================
+# ALACRITTY — Dual 4K / tmux primary workflow
+# ============================================================
+# Opacity управляется picom rules (0.88 для Alacritty).
+# Цвета не задаём — во второй волне подключим через тему.
+# ============================================================
+
+[env]
+TERM = "xterm-256color"
+
 [window]
-opacity = 0.75
-padding = { x = 10, y = 10 }
+decorations = "None"
+dynamic_padding = true
+dynamic_title = true
+opacity = 1.0          # picom управляет opacity, здесь 1.0 чтобы не множить
+startup_mode = "Maximized"
+padding = { x = 8, y = 4 }
+
+[scrolling]
+history = 5000         # Минимум — основной скроллинг через tmux
+multiplier = 3
 
 [font]
-size = 12.0
+size = 12.0            # 14pt на 4K eDP = читаемо без напряга
 
-[colors.primary]
-background = "#1a1e1a"
-foreground = "#e6eee6"
+[font.normal]
+family = "JetBrainsMono Nerd Font"
+style = "Regular"
+
+[font.bold]
+family = "JetBrainsMono Nerd Font"
+style = "Bold"
+
+[font.italic]
+family = "JetBrainsMono Nerd Font"
+style = "Italic"
+
+[font.bold_italic]
+family = "JetBrainsMono Nerd Font"
+style = "Bold Italic"
+
+[font.offset]
+x = 0
+y = 2                  # Чуть больше межстрочный — легче читать в tmux splits
+
+[cursor]
+unfocused_hollow = true
+
+[cursor.style]
+shape = "Block"
+blinking = "On"
+
+[cursor.vi_mode_style]
+shape = "Beam"
+blinking = "Off"
+
+[mouse]
+hide_when_typing = true
 
 [selection]
 save_to_clipboard = true
+semantic_escape_chars = ",│`|:\"' ()[]{}<>\t"
+
+[terminal]
+osc52 = "CopyPaste"   # OSC52 clipboard — работает через SSH + tmux
+
+[keyboard]
+# Не перехватываем ничего — всё через tmux prefix
+bindings = []
