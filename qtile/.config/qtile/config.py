@@ -50,7 +50,6 @@ keys = [
     Key([mod], "Return", lazy.spawn(myTerm), desc="Terminal"),
     # Use 'rofi' as your run launcher.
     Key([mod, "shift"], "Return", lazy.spawn("rofi -show drun -show-icons"), desc='Run Launcher'),
-    Key([mod, "shift"], "w", lazy.spawn(myBrowser), desc='Web browser'),
     Key([mod], "b", lazy.hide_show_bar(position='all'), desc="Toggles the bar to show/hide"),
     Key([mod], "Tab", lazy.next_layout(), desc="Toggle between layouts"),
     Key([mod], "w", lazy.window.kill(), desc="Kill focused window"),
@@ -70,6 +69,14 @@ keys = [
     Key([mod], "j", lazy.layout.down(), desc="Move focus down"),
     Key([mod], "k", lazy.layout.up(), desc="Move focus up"),
     Key([mod], "space", lazy.layout.next(), desc="Move window focus to other window"),
+
+    #Apps
+    Key([mod, "shift"], "w", lazy.spawn(myBrowser),
+        desc='Web browser'),
+    Key([mod, "shift"], "n", lazy.spawn("notion-app --proxy-server=socks5://127.0.0.1:9050"),
+        desc="Launch Notion"),
+    Key([mod, "shift"], "g", lazy.spawn("gtk-launch genspark-tor"),
+        desc="Genspark"),
 
     # Move windows between left/right columns or move up/down in current stack.
     # Moving out of range in Columns layout will create new column.
@@ -154,8 +161,10 @@ keys = [
     # ThinkVantage/Tools (F9) — обычно система/диагностика, можно назначить на меню или терминал
     # Key([], "XF86Tools", lazy.spawn("alacritty -e htop")),
 
-    # Bluetooth (F10)
+    # Bluetooth (F10) + locksrine
     Key([], "XF86Bluetooth", lazy.spawn("bluetoothctl power $(bluetoothctl show | grep Powered | awk '{print $2}' | grep -q yes && echo 'off' || echo 'on')")),
+    Key([mod], "F10", lazy.spawn("/usr/local/bin/lock.sh"),
+        desc="Lock screen"),
 
     # Favorites (F12) — твоя кастомизация, например rofi drun
     Key([], "XF86Favorites", lazy.spawn("rofimoji --action type copy")),

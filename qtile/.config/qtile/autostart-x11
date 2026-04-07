@@ -16,9 +16,6 @@ flameshot &
 # Уведомления
 dunst &
 
-# VPN (через polkit, без sudo)
-sudo hiddify &
-
 # Курсор
 xsetroot -cursor_name left_ptr &
 
@@ -29,4 +26,4 @@ setxkbmap -layout us,ru -option grp:alt_shift_toggle &
 copyq &
 
 # Скринлок после бездействия
-# xautolock -time 10 -locker "betterlockscreen -l" &
+xautolock -time 30 -locker "/usr/local/bin/lock.sh" -detectsleep &
