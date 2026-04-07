@@ -26,3 +26,6 @@ dunst -conf "$HOME/.cache/wal/dunstrc" &
 
 # НЕ перезагружаем Qtile — бар подхватит палитру при следующем логине
 notify-send "Wallpaper" "$(basename "$IMAGE")" -i "$IMAGE" -t 3000
+
+# локскрин с текущими обоями
+betterlockscreen -u "$IMAGE" --display 1 &

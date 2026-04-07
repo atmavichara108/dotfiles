@@ -1,0 +1,27 @@
+#!/bin/bash
+
+NAME=$1
+URL=$2
+ICON=${3:-applications-internet}
+
+if [ -z "$NAME" ] || [ -z "$URL" ]; then
+    echo "Usage: create-tor-webapp <name> <url> [icon]"
+    exit 1
+fi
+
+PROFILE_DIR="$HOME/.config/chromium-tor-${NAME,,}"
+DESKTOP_FILE="$HOME/.local/share/applications/${NAME,,}-tor.desktop"
+
+cat > "$DESKTOP_FILE" << EOF
+[Desktop Entry]
+Name=$NAME (Tor)
+Exec=chromium --user-data-dir=$PROFILE_DIR --app=$URL --proxy-server="socks5://127.0.0.1:9050" --enable-features=WebAppTabStrip
+Icon=$ICON
+Type=Application
+Categories=Network;WebApp;
+StartupWMClass=${URL#https://}
+EOF
+
+update-desktop-database ~/.local/share/applications/
+
+echo "✅ $NAME web app через Tor создан"

@@ -19,6 +19,7 @@ application/pdf=mupdf.desktop
 application/x-bittorrent=deluge.desktop
 x-scheme-handler/about=google-chrome.desktop
 x-scheme-handler/unknown=google-chrome.desktop
+x-scheme-handler/notion=notion-app.desktop
 
 [Added Associations]
 x-scheme-handler/http=userapp-Pale Moon.desktop;

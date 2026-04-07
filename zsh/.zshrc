@@ -125,7 +125,7 @@ alias tt='taskwarrior-tui'
 alias sq='cd ~/dotfiles/ && stow -R qtile'
 alias termx="ssh -p 8022 '192.168.0.24'"
 alias termxm="ssh -p 8022 '10.192.172.83'"
-alias copyx="xclip -sel c"
+alias ccb="xclip -sel c"
 
 export PATH="$HOME/bin:$PATH"
 export PATH=$PATH:~/go/bin
@@ -235,3 +235,21 @@ export EDITOR=nvim
 #
 # TheFuck
 eval $(thefuck --alias)
+
+# CUDA
+export PATH=/usr/local/cuda-11.8/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH
+export CUDA_PATH=/usr/local/cuda-11.8
+
+# My ORACLE
+export ORACLE_HOME="$HOME/ai/system-oracle"
+export PATH="$HOME/ai/system-oracle/bin:$PATH"
+
+oraclepy() {
+  PYTHONPATH="$ORACLE_HOME/src" "$ORACLE_HOME/.venv/bin/python" "$@"
+}
+oraclemod() {
+  PYTHONPATH="$ORACLE_HOME/src" "$ORACLE_HOME/.venv/bin/python" -m "$@"
+}
+
+
