@@ -1,36 +1,182 @@
+/* ============================================================
+ * ROFI — Floating Panel / 4K@192dpi
+ * ============================================================
+ * Цвета нейтральные — будут заменены во второй волне.
+ * ============================================================ */
+
 configuration {
-    modi: "drun,run";
-    show-icons: true;
-    icon-theme: "Papirus";
-    font: "Noto Sans 25";
+    modi:                "drun,run,window,ssh,filebrowser";
+    show-icons:          true;
+    icon-theme:          "Papirus-Dark";
+    display-drun:        " Apps";
+    display-run:         " Run";
+    display-window:      " Windows";
+    display-ssh:         " SSH";
+    display-filebrowser: " Files";
+    drun-display-format: "{name}";
+    hover-select:        true;
+    me-select-entry:     "";
+    me-accept-entry:     "MousePrimary";
+    terminal:            "alacritty";
+    font:                "JetBrainsMono Nerd Font 26";
 }
 
-@import "~/.cache/wal/colors-rofi.rasi"
+/* --- Palette (нейтральная, готова к замене) --- */
+* {
+    bg:       #1a1b26cc;
+    bg-alt:   #24283bcc;
+    fg:       #c0caf5;
+    fg-dim:   #565f89;
+    accent:   #7aa2f7;
+    urgent:   #f7768e;
+    border-c: #3d59a1;
+    sel:      #283457;
+}
 
-//@theme "/usr/share/rofi/themes/arthur.rasi"
+/* --- Window --- */
+window {
+    width:            1680px;
+    transparency:     "real";
+    location:         center;
+    anchor:           center;
+    background-color: @bg;
+    border:           3px solid;
+    border-color:     @border-c;
+    border-radius:    24px;
+    padding:          0;
+}
 
-//@theme "/usr/share/rofi/themes/sidebar.rasi"
+/* --- Main container --- */
+mainbox {
+    background-color: transparent;
+    children:         [ inputbar, message, listview ];
+    spacing:          0;
+    padding:          0;
+}
 
-//@theme "/usr/share/rofi/themes/sidebar-v2.rasi"
+/* --- Input bar --- */
+inputbar {
+    background-color: @bg-alt;
+    text-color:       @fg;
+    padding:          28px 40px;
+    border:           0 0 2px 0;
+    border-color:     @border-c;
+    border-radius:    24px 24px 0 0;
+    children:         [ prompt, textbox-prompt-colon, entry, case-indicator ];
+}
 
-//@theme "/usr/share/rofi/themes/docu.rasi"
+prompt {
+    background-color: transparent;
+    text-color:       @accent;
+    enabled:          true;
+}
 
-//@theme "/usr/share/rofi/themes/sidebar-v2.rasi"
+textbox-prompt-colon {
+    expand:           false;
+    str:              "";
+    background-color: transparent;
+    text-color:       @fg-dim;
+    padding:          0 16px 0 8px;
+}
 
-//@theme "/usr/share/rofi/themes/sidebar.rasi"
+entry {
+    background-color: transparent;
+    text-color:       @fg;
+    placeholder:      "search...";
+    placeholder-color: @fg-dim;
+    cursor:           text;
+}
 
-//@theme "/usr/share/rofi/themes/Monokai.rasi"
+case-indicator {
+    background-color: transparent;
+    text-color:       @fg-dim;
+}
 
-//@theme "/usr/share/rofi/themes/sidebar-v2.rasi"
+/* --- List --- */
+listview {
+    background-color: transparent;
+    columns:          1;
+    lines:            10;
+    fixed-height:     true;
+    spacing:          0;
+    padding:          12px 0;
+    scrollbar:        false;
+    border:           0;
+}
 
-//@theme "/usr/share/rofi/themes/sidebar.rasi"
+/* --- Elements --- */
+element {
+    background-color: transparent;
+    text-color:       @fg;
+    padding:          18px 40px;
+    spacing:          24px;
+    border-radius:    0;
+}
 
-//@theme "/usr/share/rofi/themes/fullscreen-preview.rasi"
+element normal.normal {
+    background-color: transparent;
+    text-color:       @fg;
+}
 
-//@theme "/usr/share/rofi/themes/sidebar.rasi"
+element alternate.normal {
+    background-color: transparent;
+    text-color:       @fg;
+}
 
-//@theme "/usr/share/rofi/themes/fullscreen-preview.rasi"
+element selected.normal {
+    background-color: @sel;
+    text-color:       @accent;
+    border:           0 0 0 5px solid;
+    border-color:     @accent;
+}
 
-//@theme "/usr/share/rofi/themes/docu.rasi"
+element normal.urgent,
+element alternate.urgent {
+    text-color:       @urgent;
+}
 
-@theme "/usr/share/rofi/themes/DarkBlue.rasi"
+element selected.urgent {
+    background-color: @sel;
+    text-color:       @urgent;
+}
+
+element normal.active,
+element alternate.active {
+    text-color:       @accent;
+}
+
+element selected.active {
+    background-color: @sel;
+    text-color:       @accent;
+}
+
+element-icon {
+    background-color: transparent;
+    size:             48px;
+    cursor:           inherit;
+}
+
+element-text {
+    background-color: transparent;
+    text-color:       inherit;
+    cursor:           inherit;
+    vertical-align:   0.5;
+    highlight:        bold underline;
+}
+
+/* --- Message --- */
+message {
+    background-color: transparent;
+    border:           0;
+    padding:          16px 40px;
+}
+
+textbox {
+    background-color: transparent;
+    text-color:       @fg-dim;
+}
+
+/* --- Mode switcher --- */
+mode-switcher {
+    enabled:          false;
+}
