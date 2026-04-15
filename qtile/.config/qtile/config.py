@@ -442,16 +442,20 @@ extension_defaults = widget_defaults.copy()
 # ДЕКОРАТОРЫ — ПЕРЕИСПОЛЬЗУЕМЫЕ СТИЛИ
 # ============================================================
 
-# PowerLine стрелки между секциями
-powerline_right = {"decorations": [PowerLineDecoration(path="arrow_right", size=16)]}
-powerline_left = {"decorations": [PowerLineDecoration(path="arrow_left", size=16)]}
+# PowerLine стрелки
+def pl_right(bg, fg=None):
+    """PowerLine arrow_right с фоном секции."""
+    return {"decorations": [PowerLineDecoration(path="arrow_right", size=16)]}
 
-# Скруглённый фон для групп виджетов
-def rect_decoration(color, radius=8):
-    return {"decorations": [RectDecoration(colour=color, radius=radius, filled=True, padding_y=5, group=True)]}
+def pl_left(bg, fg=None):
+    return {"decorations": [PowerLineDecoration(path="arrow_left", size=16)]}
+
+# Pill-shaped (для GroupBox и одиночных акцентных виджетов)
+def pill(color, radius=10):
+    return {"decorations": [RectDecoration(colour=color, radius=radius, filled=True, padding_y=4, group=True)]}
 
 # Нижний акцент
-def border_accent(color):
+def underline(color):
     return {"decorations": [BorderDecoration(colour=color, border_width=[0, 0, 3, 0])]}
 
 
@@ -459,7 +463,6 @@ def border_accent(color):
 # ФУНКЦИИ-ХЕЛПЕРЫ
 # ============================================================
 
-# Раскладка клавиатуры без конфликта с alt+shift
 def get_keyboard_layout():
     try:
         output = subprocess.check_output(
@@ -467,7 +470,6 @@ def get_keyboard_layout():
         ).strip().upper()
         return output
     except FileNotFoundError:
-        # fallback если xkblayout-state не установлен
         try:
             output = subprocess.check_output(
                 ["setxkbmap", "-query"], text=True
@@ -475,17 +477,30 @@ def get_keyboard_layout():
             for line in output.splitlines():
                 if "layout" in line:
                     layouts = line.split(":")[1].strip().split(",")
-                    # Определяем активную через xset
                     xset = subprocess.check_output(
                         "xset -q | grep -oP 'LED mask:\\s+\\K\\d+'",
                         shell=True, text=True
                     ).strip()
-                    # Bit 12 = group2 active
                     idx = 1 if int(xset, 16) & (1 << 12) else 0
                     return layouts[min(idx, len(layouts)-1)].upper()
         except Exception:
             return "??"
     return "??"
+
+
+def get_weather():
+    """Погода с обработкой ошибок сети."""
+    try:
+        output = subprocess.check_output(
+            ["curl", "-s", "wttr.in/47.519679,40.115877?format=%c+%t&m"],
+            timeout=10,
+        ).decode("utf-8").strip()
+        # wttr.in иногда возвращает HTML при ошибке
+        if "<" in output or len(output) > 30:
+            return "  --"
+        return output
+    except Exception:
+        return "  --"
 
 
 # ============================================================
@@ -494,9 +509,21 @@ def get_keyboard_layout():
 
 def tray_widget():
     if IS_WAYLAND:
-        return widget.StatusNotifier(padding=6)
+        return widget.StatusNotifier(icon_size=28, padding=10)
     else:
-        return widget.Systray(padding=6)
+        return widget.Systray(icon_size=28, padding=10)
+
+
+# ============================================================
+# ЦВЕТА СЕКЦИЙ БАРА (фоны для powerline)
+# ============================================================
+# Используем pywal-палитру с прозрачностью.
+# Секции чередуют два тона для визуального ритма.
+
+bar_bg      = colors[0]       # основной фон бара
+sec_dark    = colors[2]       # тёмная секция
+sec_accent  = "#282c34e6"      # фон = бар (для "прозрачных" секций)
+
 
 # ============================================================
 # СБОРКА ВИДЖЕТОВ
@@ -505,30 +532,30 @@ def tray_widget():
 def init_widgets_list(include_tray=True):
     widgets_list = [
 
-        # ── ЛЕВАЯ СЕКЦИЯ: Лого + Groups + Layout ──────────────
+        # ══════════════════════════════════════════════════════
+        # ЛЕВАЯ ЧАСТЬ: Logo → GroupBox → Layout → WindowName
+        # ══════════════════════════════════════════════════════
 
         widget.Spacer(length=12),
 
-        # Логотип (замени на свою иконку)
         widget.Image(
-            filename="~/.config/qtile/icons/logo.svg",
+            filename="~/.config/qtile/icons/logo.png",
             scale=True,
             margin=6,
             mouse_callbacks={"Button1": lambda: qtile.cmd_spawn("rofi -show drun -show-icons")},
-            **rect_decoration(colors[2]),
+            **pill(colors[2]),
         ),
 
         widget.Spacer(length=8),
 
-        # Индикатор активного KeyChord
         extrawidget.Chord(
             fontsize=25,
             foreground=colors[3],
-            fmt="🎹 {}",
+            fmt=" {}",
             padding=8,
         ),
 
-        # Воркспейсы (санскрит биджа)
+        # GroupBox — pill-shaped
         extrawidget.GroupBox(
             fontsize=39,
             margin_y=5,
@@ -538,8 +565,8 @@ def init_widgets_list(include_tray=True):
             borderwidth=4,
             active=colors[3],
             inactive=colors[9],
-            rounded=False,
-            highlight_color=colors[0],
+            rounded=True,
+            highlight_color=colors[2],
             highlight_method="line",
             this_current_screen_border=colors[5],
             this_screen_border=colors[8],
@@ -548,30 +575,27 @@ def init_widgets_list(include_tray=True):
             urgent_alert_method="line",
             urgent_border=colors[6],
             disable_drag=True,
-            **border_accent(colors[0]),
+            **pill(colors[2], radius=12),
         ),
 
         widget.Spacer(length=8),
 
-        # Текущий layout (иконка)
         extrawidget.CurrentLayoutIcon(
-            custom_icon_paths=[os.path.expanduser("~/.config/qtile/icons/layout/"),],
+            custom_icon_paths=[os.path.expanduser("~/.config/qtile/icons/layout/")],
             scale=1.1,
             padding=0,
-            **rect_decoration(colors[2]),
+            **pill(colors[2]),
         ),
 
         widget.Spacer(length=8),
 
-        # Количество окон в группе
         extrawidget.WindowCount(
-            fmt="[{}]",
+            fmt=" [{}]",
             fontsize=25,
             foreground=colors[9],
             padding=4,
         ),
 
-        # Имя текущего окна
         extrawidget.WindowName(
             foreground=colors[6],
             max_chars=45,
@@ -579,7 +603,9 @@ def init_widgets_list(include_tray=True):
             fontsize=25,
         ),
 
-        # ── ЦЕНТР: Растяжка + Часы + Растяжка ────────────────
+        # ══════════════════════════════════════════════════════
+        # ЦЕНТР: Часы
+        # ══════════════════════════════════════════════════════
 
         widget.Spacer(length=bar.STRETCH),
 
@@ -593,34 +619,45 @@ def init_widgets_list(include_tray=True):
                     myTerm + " --class gcal-float -e calcurse"
                 ),
             },
-            **rect_decoration(colors[6], radius=12),
+            **pill(colors[6], radius=12),
         ),
 
         widget.Spacer(length=bar.STRETCH),
 
-        # ── ПРАВАЯ СЕКЦИЯ: WidgetBox + Quick Info + Tray ──────
 
-        # WidgetBox: Системный мониторинг (сворачиваемый)
+        # ══════════════════════════════════════════════════════
+        # ПРАВАЯ ЧАСТЬ: PowerLine секции
+        # ══════════════════════════════════════════════════════
+
+        # PowerLine декоратор — стрелка вправо, фон следующей секции
+        # Каждый виджет с этим декоратором получит стрелку справа.
+        # Чередуем background: colors[2] (dark) ↔ bar_bg (transparent)
+
+        # ── Секция 1: SYS (сворачиваемый) ────────────────────
+
         extrawidget.WidgetBox(
-            text_closed=" ⏵ SYS ",
-            text_open=" ⏷ SYS ",
+            text_closed="  SYS ",
+            text_open="  SYS ",
             fontsize=28,
             foreground=colors[8],
-            **rect_decoration(colors[2]),
+            close_button_location="right",
+            **pill(colors[3]),
             widgets=[
                 extrawidget.CPU(
-                    format=" CPU {load_percent:>4}% ",
+                    format="  {load_percent:>4}%",
                     fontsize=28,
                     foreground=colors[4],
                     update_interval=3,
+                    padding=8,
                     mouse_callbacks={"Button1": lambda: qtile.cmd_spawn(myTerm + " -e htop")},
                 ),
                 extrawidget.Memory(
-                    format=" MEM {MemUsed:.0f}{mm} ",
+                    format="  {MemUsed:.0f}{mm}",
                     fontsize=28,
                     foreground=colors[8],
                     measure_mem="M",
                     update_interval=3,
+                    padding=8,
                     mouse_callbacks={"Button1": lambda: qtile.cmd_spawn(myTerm + " -e htop")},
                 ),
                 extrawidget.ThermalSensor(
@@ -629,137 +666,63 @@ def init_widgets_list(include_tray=True):
                     foreground=colors[5],
                     foreground_alert=colors[3],
                     threshold=75,
-                    fmt=" TEMP {} ",
+                    fmt="  {}",
                     update_interval=5,
+                    padding=8,
                 ),
                 extrawidget.NvidiaSensors(
-                    format=" GPU {temp}°C ",
+                    format=" 󰍹  {temp}°C",
                     fontsize=28,
                     foreground=colors[5],
                     foreground_alert=colors[3],
                     threshold=80,
+                    padding=8,
                 ),
                 extrawidget.DF(
                     partition="/",
-                    format=" DISK {uf}{m} ",
+                    format=" 󰋊  {uf}{m}",
                     fontsize=28,
                     foreground=colors[5],
                     visible_on_warn=False,
                     update_interval=60,
+                    padding=8,
                 ),
             ],
         ),
 
-        widget.Spacer(length=8),
+        widget.Spacer(length=4),
 
-        # WidgetBox: Мультимедиа (сворачиваемый)
+        # ── Секция 2: Media (сворачиваемый) ──────────────────
+
         extrawidget.WidgetBox(
-            text_closed=" ⏵ ♫ ",
-            text_open=" ⏷ ♫ ",
+            text_closed=" 󰎈 ",
+            text_open=" 󰎈 ",
             fontsize=28,
             foreground=colors[7],
-            **rect_decoration(colors[2]),
+            close_button_location="right",
+            **pill(colors[4]),
             widgets=[
                 extrawidget.Mpris2(
                     name="browser",
+                    objname="chromium",
                     format="{xesam:title} - {xesam:artist}",
                     fmt=" {} ",
                     fontsize=28,
                     max_chars=35,
                     foreground=colors[7],
-                    paused_text="⏸ {track}",
+                    paused_text=" {track}",
                     width=220,
                     scroll_fixed_width=True,
                     scroll=True,
+                    padding=8,
                 ),
             ],
         ),
 
-        widget.Spacer(length=8),
-
-        # Раскладка клавиатуры (без конфликта)
-        extrawidget.GenPollText(
-            func=get_keyboard_layout,
-            update_interval=0.5,
-            fontsize=28,
-            foreground=colors[1],
-            fmt=" {} ",
-            padding=8,
-            **rect_decoration(colors[2]),
-        ),
-
-        extrawidget.Net(
-            format=" {down:.0f}{down_suffix}↓ {up:.0f}{up_suffix}↑ ",
-            fontsize=28,
-            foreground=colors[6],
-            update_interval=3,
-        ),
-
-        widget.Spacer(length=8),
-
-        # Громкость
-        extrawidget.Volume(
-            fmt=" ♪ {} ",
-            fontsize=28,
-            foreground=colors[7],
-            step=5,
-            padding=4,
-            mouse_callbacks={"Button3": lambda: qtile.cmd_spawn("pavucontrol")},
-        ),
-
         widget.Spacer(length=4),
 
-        # Wi-Fi
-        # extrawidget.Wlan(
-        #     interface="wlp4s0",
-        #     format=" {essid} {percent:2.0%} ",
-        #     disconnected_message=" ⚠ WiFi ",
-        #     fontsize=28,
-        #     foreground=colors[6],
-        #     padding=4,
-        #     mouse_callbacks={"Button1": lambda: qtile.cmd_spawn(myTerm + " -e nmtui")},
-        # ),
-        #
-        # widget.Spacer(length=4),
+        # ── Секция 3: Pomodoro ───────────────────────────────
 
-        # Батарея
-        extrawidget.Battery(
-            format=" {char}{percent:2.0%} ",
-            fontsize=22,
-            charge_char="⚡",
-            discharge_char="🔋",
-            full_char="✓ ",
-            empty_char="✗ ",
-            low_foreground=colors[3],
-            low_percentage=0.15,
-            notify_below=15,
-            foreground=colors[4],
-            update_interval=30,
-            **border_accent(colors[4]),
-        ),
-
-        widget.Spacer(length=4),
-
-        # Погода (одна строка)
-        widget.GenPollText(
-            func=lambda: subprocess.check_output(
-                ["curl", "-s", "wttr.in/47.519679,40.115877?format=%c+%t&m"],
-                timeout=10,
-            ).decode("utf-8").strip(),
-            update_interval=60,
-            fontsize=28,
-            foreground=colors[5],
-            padding=4,
-            mouse_callbacks={
-                "Button1": lambda: qtile.cmd_spawn(
-                    myTerm + " --class weathr-float,weathr-float -o 'window.dimensions.columns=90' -o 'window.dimensions.lines=30' -e weathr"
-                ),
-            },
-        ),
-
-        widget.Spacer(length=8),
-
-        # Pomodoro
         widget.Pomodoro(
             fontsize=26,
             color_active=colors[3],
@@ -769,32 +732,93 @@ def init_widgets_list(include_tray=True):
             length_short_break=5,
             length_long_break=15,
             num_pomodori=4,
-            fmt="  {} ",
-            prefix_inactive="🍅",
-            prefix_active="⏱",
-            prefix_break="☕",
-            prefix_long_break="🌿",
-            prefix_paused="⏸",
+            fmt=" {} ",
+            prefix_inactive="󰔟 ",
+            prefix_active="󱎫 ",
+            prefix_break="󰒜 ",
+            prefix_long_break="󰌪 ",
+            prefix_paused="󰏤 ",
             notification_on=True,
             update_interval=1,
+            **pill(colors[5]),
         ),
 
-        widget.Spacer(length=8),
+        widget.Spacer(length=4),
 
-        # Уведомления
-        extrawidget.Notify(
-            fontsize=25,
-            foreground=colors[1],
-            default_timeout=5,
-            fmt=" {} ",
+        # ── Секция 4: Раскладка → Сеть → Громкость (PowerLine chain) ──
+
+        extrawidget.GenPollText(
+            func=get_keyboard_layout,
+            update_interval=0.5,
+            fontsize=28,
+            foreground=colors[8],
+            fmt="  {} ",
+            padding=6,
+            background=colors[0],
+            decorations=[PowerLineDecoration(path="arrow_right", size=16)],
+        ),
+
+        extrawidget.Net(
+            format=" 󰈀  {down:.0f}{down_suffix}↓ {up:.0f}{up_suffix}↑ ",
+            fontsize=34,
+            foreground=colors[9],
+            update_interval=3,
+            padding=6,
+            background=colors[5],
+            decorations=[PowerLineDecoration(path="arrow_right", size=16)],
+        ),
+
+        extrawidget.Volume(
+            fmt="  {} ",
+            fontsize=30,
+            foreground=colors[8],
+            step=5,
+            padding=6,
+            background=colors[2],
+            mouse_callbacks={"Button3": lambda: qtile.cmd_spawn("pavucontrol")},
+            decorations=[PowerLineDecoration(path="arrow_right", size=16)],
+        ),
+
+        # ── Секция 5: Батарея → Погода (PowerLine chain) ─────
+
+        extrawidget.Battery(
+            format=" {char} {percent:2.0%} ",
+            fontsize=24,
+            charge_char="󰂄",
+            discharge_char="󰁾",
+            full_char="󰁹",
+            empty_char="󰂃",
+            low_foreground=colors[3],
+            low_percentage=0.15,
+            notify_below=15,
+            foreground=colors[4],
+            update_interval=30,
+            padding=6,
+            background=colors[8],
+            decorations=[PowerLineDecoration(path="arrow_right", size=16)],
+        ),
+
+        widget.GenPollText(
+            func=get_weather,
+            update_interval=60,
+            fontsize=38,
+            foreground=colors[5],
+            padding=6,
+            background=colors[9],
+            mouse_callbacks={
+                "Button1": lambda: qtile.cmd_spawn(
+                    myTerm + " --class weathr-float,weathr-float -o 'window.dimensions.columns=90' -o 'window.dimensions.lines=30' -e weathr"
+                ),
+            },
+            decorations=[PowerLineDecoration(path="arrow_right", size=16)],
         ),
 
     ]
 
-    # Systray добавляем только на основной монитор
+    # ── Tray (только основной монитор) ────────────────────
     if include_tray:
         widgets_list.extend([
-            widget.Spacer(length=8),
+            widget.Spacer(length=6, background=colors[0]),
             tray_widget(),
             widget.Spacer(length=12),
         ])
@@ -802,7 +826,6 @@ def init_widgets_list(include_tray=True):
         widgets_list.append(widget.Spacer(length=12))
 
     return widgets_list
-
 
 # ============================================================
 # ЭКРАНЫ
