@@ -1,0 +1,182 @@
+#!/bin/bash
+# kripta-capture — захват YouTube видео → конспект для крипто-обучения
+# Использование: kripta-capture <URL> <тема> [ru|en]
+# Примеры:
+#   kripta-capture "https://www.youtube.com/watch?v=bBC-nXj3Ng4" "Основы_блокчейна"
+#   kripta-capture "https://www.youtube.com/watch?v=EH6vE97qIP4" "Структура_рынка" en
+
+set -euo pipefail
+
+# ── Tor SOCKS5 прокси для yt-dlp ──────────────────────
+YT_PROXY="socks5://127.0.0.1:9050"
+
+URL=$(echo "$1" | sed 's/\\//g')
+TOPIC="${2:?Укажи тему: kripta-capture URL тема [ru|en]}"
+PREF_LANG="${3:-}"
+
+OUTDIR="$HOME/Projects/Notion/kripta/media-conspects"
+DATE=$(date +%Y-%m-%d)
+TMP_DIR=$(mktemp -d)
+trap "rm -rf $TMP_DIR" EXIT
+
+mkdir -p "$OUTDIR/transcripts"
+
+# ── 1. Метаданные ──────────────────────────────────────
+echo "📡 Получаю метаданные..."
+META=$(yt-dlp --no-download --print "%(title)s|||%(channel)s|||%(duration_string)s|||%(id)s" "$URL" 2>/dev/null || true)
+
+if [ -z "$META" ]; then
+  echo "❌ Не удалось получить метаданные. Проверь URL: $URL"
+  exit 1
+fi
+
+IFS='|||' read -r TITLE _ _ CHANNEL _ _ DURATION _ _ VID_ID _ <<<"$META"
+TITLE="${TITLE:-Untitled}"
+CHANNEL="${CHANNEL:-Unknown}"
+DURATION="${DURATION:-00:00}"
+VID_ID="${VID_ID:-unknown}"
+
+echo "📺 $TITLE"
+echo "📡 $CHANNEL"
+echo "⏱  $DURATION"
+
+# Проверка дубликатов
+NOTEFILE="$OUTDIR/${DATE}_${VID_ID}.md"
+if [ -f "$NOTEFILE" ]; then
+  echo "⚠️  Конспект уже существует: $NOTEFILE"
+  exit 0
+fi
+
+# ── 2. Субтитры ────────────────────────────────────────
+echo "📝 Скачиваю субтитры..."
+SUB_LANG=""
+SRT_FILE=""
+
+if [ -n "$PREF_LANG" ]; then
+  LANGS=("$PREF_LANG")
+else
+  LANGS=("ru" "en")
+fi
+
+for LANG in "${LANGS[@]}"; do
+  yt-dlp --write-auto-sub --sub-lang "$LANG" --skip-download \
+    --convert-subs srt \
+    -o "$TMP_DIR/${VID_ID}.%(ext)s" \
+    "$URL" 2>/dev/null || true
+
+  if [ -f "$TMP_DIR/${VID_ID}.${LANG}.srt" ]; then
+    SUB_LANG="$LANG"
+    SRT_FILE="$TMP_DIR/${VID_ID}.${LANG}.srt"
+    echo "✅ Субтитры получены ($LANG)"
+    break
+  fi
+done
+
+if [ -z "$SUB_LANG" ]; then
+  echo "❌ Субтитры не найдены."
+  echo "   Попробуй: kripta-capture \"$URL\" \"$TOPIC\" en"
+  exit 1
+fi
+
+# ── 3. SRT → чистый текст ─────────────────────────────
+echo "🔄 Очищаю транскрипт..."
+CLEAN_TEXT="$TMP_DIR/clean.txt"
+
+sed '/^[0-9]*$/d; /^$/d; /-->/d' "$SRT_FILE" |
+  awk '!seen[$0]++' |
+  awk '{
+      printf "%s ", $0
+      if (NR % 5 == 0) printf "\n\n"
+    }
+    END { printf "\n" }' \
+    >"$CLEAN_TEXT"
+
+WORDS=$(wc -w <"$CLEAN_TEXT")
+echo "📊 $WORDS слов в транскрипте"
+
+# Бэкап транскрипта
+cp "$CLEAN_TEXT" "$OUTDIR/transcripts/tr_${VID_ID}.${SUB_LANG}.txt"
+
+# ── 4. AI-конспект ─────────────────────────────────────
+echo "🤖 Генерирую конспект через ollama..."
+
+TRUNCATED=$(head -c 16000 "$CLEAN_TEXT")
+
+if [ "$SUB_LANG" = "ru" ]; then
+  PROMPT="Ты — ассистент по обучению криптотрейдингу. Составь конспект этого видео на русском.
+
+Структура:
+1. **Главная мысль** — 2-3 предложения, о чём видео
+2. **Ключевые концепции** — пронумерованный список (макс 10 пунктов), каждый: название + объяснение 1-3 предложения
+3. **Практические выводы** — что конкретно применить в торговле на Bybit (спот и фьючерсы), какие настройки/действия вытекают из материала, или другие выводы
+4. **Связь с другими темами** — как этот материал связан с риск-менеджментом, чтением графиков, типами ордеров или психологией торговли, или другими темами
+5. **Важные цитаты/моменты** — 2-5 ценных мысли из видео
+
+Будь конкретным, без воды, без рекламных выводов.
+
+Транскрипт:
+$TRUNCATED"
+else
+  PROMPT="You are a crypto trading study assistant. Create a summary of this video IN RUSSIAN.
+
+Structure:
+1. **Главная мысль** — 2-3 sentences, what the video is about
+2. **Ключевые концепции** — numbered list (max 10), each: name + 1-3 sentence explanation
+3. **Практические выводы** — what to apply in Bybit spot/futures trading, specific settings or actions, or other 
+4. **Связь с другими темами** — how this connects to risk management, chart reading, order types, or trading psychology, or other
+5. **Важные цитаты/моменты** — 2-5 most valuable insights
+
+Be specific, no fluff. Write entirely in Russian.
+
+Transcript:
+$TRUNCATED"
+fi
+
+SUMMARY=$(echo "$PROMPT" | ollama run gemma3:4b 2>/dev/null || echo "⚠️ Ollama недоступен. Заполни конспект вручную.")
+
+# ── 5. Создаём конспект ────────────────────────────────
+cat >"$NOTEFILE" <<EOF
+---
+type: конспект
+format: youtube
+title: "${TITLE//\"/\\\"}"
+url: "https://www.youtube.com/watch?v=${VID_ID}"
+channel: "${CHANNEL//\"/\\\"}"
+duration: "${DURATION}"
+language: ${SUB_LANG}
+words: ${WORDS}
+topic: ${TOPIC}
+module:
+status: inbox
+date_added: ${DATE}
+---
+
+# ${TITLE}
+
+> **Канал:** ${CHANNEL} | **Длительность:** ${DURATION} | **Слов:** ${WORDS}
+> **Тема:** ${TOPIC}
+> **Источник:** [YouTube](https://www.youtube.com/watch?v=${VID_ID})
+
+## Конспект
+
+${SUMMARY}
+
+## Мои заметки
+
+<!-- После просмотра: что зацепило, с чем не согласен, что применить в дашборде/торговле -->
+
+
+## Статус
+- [ ] Просмотрено
+- [ ] Конспект проверен после просмотра
+- [ ] Ключевые идеи перенесены в KB (Notion)
+EOF
+
+echo ""
+echo "✅ Готово: $NOTEFILE"
+echo "📊 Слов: $WORDS | Язык: $SUB_LANG"
+echo ""
+echo "Следующие шаги:"
+echo "  1. Посмотри видео"
+echo "  2. Сверь конспект, допиши 'Мои заметки'"
+echo "  3. Перенеси ключевое в Notion KB"
