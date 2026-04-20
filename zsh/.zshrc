@@ -241,15 +241,5 @@ export PATH=/usr/local/cuda-11.8/bin:$PATH
 export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH
 export CUDA_PATH=/usr/local/cuda-11.8
 
-# My ORACLE
-export ORACLE_HOME="$HOME/ai/system-oracle"
-export PATH="$HOME/ai/system-oracle/bin:$PATH"
-
-oraclepy() {
-  PYTHONPATH="$ORACLE_HOME/src" "$ORACLE_HOME/.venv/bin/python" "$@"
-}
-oraclemod() {
-  PYTHONPATH="$ORACLE_HOME/src" "$ORACLE_HOME/.venv/bin/python" -m "$@"
-}
-
-
+# Navi — interactive cheatsheet (Ctrl+G)
+eval "$(navi widget zsh)"

@@ -22,7 +22,7 @@ feh --bg-fill "$(cat ~/.cache/wal/wal)"
 
 # Перезапускаем dunst с новыми цветами
 pkill dunst
-dunst -conf "$HOME/.cache/wal/dunstrc" &
+dunst &
 
 # НЕ перезагружаем Qtile — бар подхватит палитру при следующем логине
 notify-send "Wallpaper" "$(basename "$IMAGE")" -i "$IMAGE" -t 3000
