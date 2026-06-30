@@ -7,8 +7,8 @@
 # --- Desktop Environment (для xdg-desktop-portal) ---
 export XDG_CURRENT_DESKTOP=qtile
 systemctl --user import-environment XDG_CURRENT_DESKTOP
-systemctl --user --no-block start graphical-session.target
-systemctl --user --no-block start xdg-desktop-portal xdg-desktop-portal-gtk
+# portal стартует через dbus-активацию при первом запросе
+# systemd override убирает Requisite=graphical-session.target
 
 # --- Монитор ---
 ~/.local/bin/monitor-setup &
@@ -26,7 +26,7 @@ dunst &
 nm-applet &
 
 # --- Скриншоты (после dunst + portal) ---
-sleep 0.5 && flameshot &
+flameshot &
 
 # --- Курсор ---
 xsetroot -cursor_name left_ptr &

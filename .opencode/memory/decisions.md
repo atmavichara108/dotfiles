@@ -31,21 +31,23 @@ timestamp: 2026-06-30
 ### ADR-002: Настройка xdg-desktop-portal для Flameshot
 **Дата:** 2026-06-30
 **Контекст:** После ребута Flameshot v14 перестал делать скриншоты на X11/Qtile. Ошибка: `org.freedesktop.portal.Desktop` не найден. Диагностика показала:
-- `xdg-desktop-portal.service` падает с Dependency failed
+- `xdg-desktop-portal.service` падает с Dependency failed из-за `Requisite=graphical-session.target`
+- `graphical-session.target` имеет `RefuseManualStart=yes` — нельзя запустить вручную
 - `XDG_CURRENT_DESKTOP` пустая — portal не может выбрать backend (gtk)
 - `dunst` стартует после `flameshot` — notification warning
 - Flameshot v14 требует portal даже на X11
 **Решение:**
-1. Установить `export XDG_CURRENT_DESKTOP=qtile` в autostart-x11
-2. Импортировать переменную в systemd user session: `systemctl --user import-environment`
-3. Активировать `graphical-session.target` и portal-сервисы при старте
-4. Переместить `dunst` перед `flameshot` в порядке запуска
-5. Добавить `sleep 0.5` перед flameshot для гарантии готовности сервисов
+1. Создан systemd override `01-qtile-desktop.conf`: убран `Requisite=` и `After=graphical-session.target` из `xdg-desktop-portal.service`
+2. Создан `environment.d/90-desktop.conf` с `XDG_CURRENT_DESKTOP=qtile`
+3. Установлен `export XDG_CURRENT_DESKTOP=qtile` в autostart-x11
+4. Импортируется env в systemd user session: `systemctl --user import-environment`
+5. Перемещён `dunst` перед `flameshot` в порядке запуска
 **Альтернативы:**
-- Удалить portal и использовать X11 fallback — flameshot v14 всё равно требует portal
+- Запускать portal напрямую (/usr/lib/xdg-desktop-portal &) — hack, не systemd-way
 - Заменить flameshot на maim/scrot — потеря GUI-редактора (стрелки, blur, рамка)
-- Не лечить portal, а патчить flameshot — нет гарантии что сработает
+- Создавать wrapper service для graphical-session.target — сложнее, чем override
 **Последствия:**
-- Portal работает корректно для всех portal-зависимых приложений
-- Порядок сервисов стал логичным: env → portal → dunst → flameshot
-- Одноразово нужно импортировать env в systemd (делается в autostart)
+- Portal работает без graphical-session.target (на Qtile он не нужен)
+- XDG_CURRENT_DESKTOP=qtile доступен с момента старта user-session
+- One-shot после stow: `systemctl --user daemon-reload` + `systemctl --user start xdg-desktop-portal`
+- Порядок сервисов логичный: env → portal (dbus-activation) → dunst → flameshot

@@ -20,12 +20,12 @@
 **Дата:** 2026-06-30
 **Контекст:** После ребута Flameshot v14 перестал делать скриншоты на X11/Qtile. Ошибка: `org.freedesktop.portal.Desktop` не найден.
 **Решение:**
-1. Установить `export XDG_CURRENT_DESKTOP=qtile` в autostart-x11
-2. Импортировать переменную в systemd user session
-3. Активировать `graphical-session.target` и portal-сервисы при старте
-4. Переместить `dunst` перед `flameshot` в порядке запуска
-5. Добавить `sleep 0.5` перед flameshot
+1. Systemd override для xdg-desktop-portal: убран Requisite=graphical-session.target
+2. environment.d/90-desktop.conf с XDG_CURRENT_DESKTOP=qtile
+3. export + import-environment в autostart-x11
+4. Перемещён dunst перед flameshot
 **Альтернативы:**
-- Удалить portal — flameshot v14 всё равно требует portal
+- Запускать portal напрямую (/usr/lib/xdg-desktop-portal &) — не systemd-way
 - Заменить flameshot на maim/scrot — потеря GUI-редактора
-**Последствия:** Portal работает корректно, порядок сервисов логичный.
+- Wrapper для graphical-session.target — сложнее override
+**Последствия:** Portal работает без graphical-session.target (Requisite= удалён). One-shot: daemon-reload. Порядок сервисов: env → portal → dunst → flameshot.
