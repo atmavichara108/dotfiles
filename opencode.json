@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "default_agent": "sysop",
+  "default_agent": "planner",
   "lsp": false,
   "model": "opencode/deepseek-v4-flash-free",
   "permission": {
@@ -47,5 +47,144 @@
     },
     "external_directory": "allow",
     "webfetch": "allow"
+  },
+  "agent": {
+    "sysop": {
+      "mode": "primary",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 20,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "ls*": "allow",
+          "cat*": "allow",
+          "grep*": "allow",
+          "find*": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "pacman -Q*": "allow",
+          "pacman -Qi*": "allow",
+          "pacman -Qm*": "allow",
+          "pacman -Qe*": "allow",
+          "which*": "allow",
+          "systemctl status*": "allow",
+          "stow -n*": "allow",
+          "uname*": "allow",
+          "hostnamectl*": "allow",
+          "df*": "allow",
+          "free*": "allow",
+          "ps*": "allow",
+          "echo*": "allow",
+          "du -sh*": "allow",
+          "lsblk*": "allow",
+          "ip addr*": "allow",
+          "ss -tlnp*": "allow"
+        }
+      }
+    },
+    "planner": {
+      "mode": "primary",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.2,
+      "steps": 20,
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "task": { "*": "allow" }
+      }
+    },
+    "builder": {
+      "mode": "primary",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 30,
+      "permission": {
+        "edit": "allow",
+        "bash": "ask",
+        "task": { "reviewer": "allow" }
+      }
+    },
+    "reviewer": {
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 15,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "grep*": "allow",
+          "cat*": "allow",
+          "ls*": "allow",
+          "stow -n*": "allow"
+        }
+      }
+    },
+    "qtile-dev": {
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 20,
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "deny",
+          "ls*": "allow",
+          "cat*": "allow",
+          "grep*": "allow",
+          "find*": "allow",
+          "git diff*": "allow",
+          "python -c*": "allow",
+          "python -m py_compile*": "allow",
+          "stow -n qtile": "allow"
+        }
+      }
+    },
+    "bash-dev": {
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 20,
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "deny",
+          "ls*": "allow",
+          "cat*": "allow",
+          "grep*": "allow",
+          "find*": "allow",
+          "git diff*": "allow",
+          "bash -n*": "allow",
+          "shellcheck*": "allow",
+          "stow -n*": "allow",
+          "chmod +x*": "allow"
+        }
+      }
+    },
+    "util-dev": {
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 20,
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "deny",
+          "ls*": "allow",
+          "cat*": "allow",
+          "grep*": "allow",
+          "find*": "allow",
+          "git diff*": "allow",
+          "stow -n*": "allow",
+          "dunstify*": "allow",
+          "notify-send*": "allow"
+        }
+      }
+    }
   }
 }
