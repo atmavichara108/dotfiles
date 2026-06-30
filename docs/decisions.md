@@ -29,3 +29,9 @@
 - Заменить flameshot на maim/scrot — потеря GUI-редактора
 - Wrapper для graphical-session.target — сложнее override
 **Последствия:** Portal работает без graphical-session.target (Requisite= удалён). Вместо drop-in — полный override unit (systemd 260 не сбрасывает Requisite= через пустое значение). Порядок сервисов: env → portal → dunst → flameshot.
+
+**Резолюция (2026-06-30):** Portal-fixes оказались ложным следом. 
+Реальная причина: регрессия Flameshot v14 + Qt 6.11 + NVIDIA на X11 — 
+`QScreen::grabWindow()` зависает в XCB/NVIDIA. Решение: даунгрейд 
+до `flameshot-imgur` (v13.3.0) — работает стабильно, тот же бинарник 
+`/usr/bin/flameshot`, все фичи сохранены.

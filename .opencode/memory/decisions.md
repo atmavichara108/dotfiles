@@ -35,7 +35,7 @@ timestamp: 2026-06-30
 - `graphical-session.target` имеет `RefuseManualStart=yes` — нельзя запустить вручную
 - `XDG_CURRENT_DESKTOP` пустая — portal не может выбрать backend (gtk)
 - `dunst` стартует после `flameshot` — notification warning
-- Flameshot v14 требует portal даже на X11
+- Реальная причина: Qt 6.11 + NVIDIA regression, не portal
 **Решение:**
 1. Создан полный override unit `systemd/.../xdg-desktop-portal.service`: убран `Requisite=` и `After=graphical-session.target` (drop-in не работает на systemd 260 — не сбрасывает list-директивы)
 2. Создан `environment.d/90-desktop.conf` с `XDG_CURRENT_DESKTOP=qtile`
@@ -51,3 +51,9 @@ timestamp: 2026-06-30
 - XDG_CURRENT_DESKTOP=qtile доступен с момента старта user-session
 - Вместо drop-in используется полный override unit (systemd 260 не сбрасывает Requisite= через пустое значение)
 - Порядок сервисов логичный: env → portal (dbus-activation) → dunst → flameshot
+
+**Резолюция (2026-06-30):** Portal-fixes оказались ложным следом. 
+Реальная причина: регрессия Flameshot v14 + Qt 6.11 + NVIDIA на X11 — 
+`QScreen::grabWindow()` зависает в XCB/NVIDIA. Решение: даунгрейд 
+до `flameshot-imgur` (v13.3.0) — работает стабильно, тот же бинарник 
+`/usr/bin/flameshot`, все фичи сохранены.
