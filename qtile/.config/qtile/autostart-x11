@@ -1,30 +1,41 @@
 #!/usr/bin/env bash
 
-# Монитор
+# ============================================================
+# Qtile X11 Autostart
+# ============================================================
+
+# --- Desktop Environment (для xdg-desktop-portal) ---
+export XDG_CURRENT_DESKTOP=qtile
+systemctl --user import-environment XDG_CURRENT_DESKTOP
+systemctl --user --no-block start graphical-session.target
+systemctl --user --no-block start xdg-desktop-portal xdg-desktop-portal-gtk
+
+# --- Монитор ---
 ~/.local/bin/monitor-setup &
 
-# Композитор
+# --- Композитор ---
 picom --daemon
 
-# Обои + палитра
+# --- Обои + палитра ---
 sleep 1 && wal-set &
 
-# Трей-апплеты
-nm-applet &
-flameshot &
-
-# Уведомления
+# --- Уведомления (ДО flameshot) ---
 dunst &
 
-# Курсор
+# --- Трей-апплеты ---
+nm-applet &
+
+# --- Скриншоты (после dunst + portal) ---
+sleep 0.5 && flameshot &
+
+# --- Курсор ---
 xsetroot -cursor_name left_ptr &
 
-# Раскладка клавиатуры (us/ru, переключение alt+shift)
+# --- Раскладка клавиатуры (us/ru, переключение alt+shift) ---
 setxkbmap -layout us,ru -option grp:alt_shift_toggle &
 
-# архив буфера
+# --- Буфер обмена ---
 copyq &
 
-# Скринлок после бездействия
-# xautolock -time 30 -locker "/usr/local/bin/lock.sh" -detectsleep &
+# --- Скринлок после бездействия ---
 xss-lock -- /usr/local/bin/lock.sh &

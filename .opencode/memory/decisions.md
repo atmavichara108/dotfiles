@@ -27,3 +27,25 @@ timestamp: 2026-06-30
 - Dotfiles стали управляемым проектом с пайплайнами
 - Все агенты read-only или с ограничениями — безопасность
 - Масштабируемо: можно добавлять субагентов и пайплайны
+
+### ADR-002: Настройка xdg-desktop-portal для Flameshot
+**Дата:** 2026-06-30
+**Контекст:** После ребута Flameshot v14 перестал делать скриншоты на X11/Qtile. Ошибка: `org.freedesktop.portal.Desktop` не найден. Диагностика показала:
+- `xdg-desktop-portal.service` падает с Dependency failed
+- `XDG_CURRENT_DESKTOP` пустая — portal не может выбрать backend (gtk)
+- `dunst` стартует после `flameshot` — notification warning
+- Flameshot v14 требует portal даже на X11
+**Решение:**
+1. Установить `export XDG_CURRENT_DESKTOP=qtile` в autostart-x11
+2. Импортировать переменную в systemd user session: `systemctl --user import-environment`
+3. Активировать `graphical-session.target` и portal-сервисы при старте
+4. Переместить `dunst` перед `flameshot` в порядке запуска
+5. Добавить `sleep 0.5` перед flameshot для гарантии готовности сервисов
+**Альтернативы:**
+- Удалить portal и использовать X11 fallback — flameshot v14 всё равно требует portal
+- Заменить flameshot на maim/scrot — потеря GUI-редактора (стрелки, blur, рамка)
+- Не лечить portal, а патчить flameshot — нет гарантии что сработает
+**Последствия:**
+- Portal работает корректно для всех portal-зависимых приложений
+- Порядок сервисов стал логичным: env → portal → dunst → flameshot
+- Одноразово нужно импортировать env в systemd (делается в autostart)
