@@ -20,7 +20,7 @@
 **Дата:** 2026-06-30
 **Контекст:** После ребута Flameshot v14 перестал делать скриншоты на X11/Qtile. Ошибка: `org.freedesktop.portal.Desktop` не найден.
 **Решение:**
-1. Systemd override для xdg-desktop-portal: убран Requisite=graphical-session.target
+1. Полный override unit для xdg-desktop-portal: убран Requisite= и After=graphical-session.target (drop-in не работает на systemd 260)
 2. environment.d/90-desktop.conf с XDG_CURRENT_DESKTOP=qtile
 3. export + import-environment в autostart-x11
 4. Перемещён dunst перед flameshot
@@ -28,4 +28,4 @@
 - Запускать portal напрямую (/usr/lib/xdg-desktop-portal &) — не systemd-way
 - Заменить flameshot на maim/scrot — потеря GUI-редактора
 - Wrapper для graphical-session.target — сложнее override
-**Последствия:** Portal работает без graphical-session.target (Requisite= удалён). One-shot: daemon-reload. Порядок сервисов: env → portal → dunst → flameshot.
+**Последствия:** Portal работает без graphical-session.target (Requisite= удалён). Вместо drop-in — полный override unit (systemd 260 не сбрасывает Requisite= через пустое значение). Порядок сервисов: env → portal → dunst → flameshot.

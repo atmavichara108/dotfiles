@@ -37,7 +37,7 @@ timestamp: 2026-06-30
 - `dunst` стартует после `flameshot` — notification warning
 - Flameshot v14 требует portal даже на X11
 **Решение:**
-1. Создан systemd override `01-qtile-desktop.conf`: убран `Requisite=` и `After=graphical-session.target` из `xdg-desktop-portal.service`
+1. Создан полный override unit `systemd/.../xdg-desktop-portal.service`: убран `Requisite=` и `After=graphical-session.target` (drop-in не работает на systemd 260 — не сбрасывает list-директивы)
 2. Создан `environment.d/90-desktop.conf` с `XDG_CURRENT_DESKTOP=qtile`
 3. Установлен `export XDG_CURRENT_DESKTOP=qtile` в autostart-x11
 4. Импортируется env в systemd user session: `systemctl --user import-environment`
@@ -49,5 +49,5 @@ timestamp: 2026-06-30
 **Последствия:**
 - Portal работает без graphical-session.target (на Qtile он не нужен)
 - XDG_CURRENT_DESKTOP=qtile доступен с момента старта user-session
-- One-shot после stow: `systemctl --user daemon-reload` + `systemctl --user start xdg-desktop-portal`
+- Вместо drop-in используется полный override unit (systemd 260 не сбрасывает Requisite= через пустое значение)
 - Порядок сервисов логичный: env → portal (dbus-activation) → dunst → flameshot
