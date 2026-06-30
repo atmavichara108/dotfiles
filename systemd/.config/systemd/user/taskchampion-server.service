@@ -1,0 +1,13 @@
+[Unit]
+Description=TaskChampion Sync Server
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/taskchampion-sync-server \
+  --data-dir %h/.local/share/taskchampion-server \
+  --listen 0.0.0.0:8080
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

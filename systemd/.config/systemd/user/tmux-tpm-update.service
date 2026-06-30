@@ -1,0 +1,7 @@
+[Unit]
+Description=Update tmux plugins via TPM
+
+[Service]
+Type=oneshot
+Environment="TMUX_PLUGIN_MANAGER_PATH=%h/.tmux/plugins"
+ExecStart=/usr/bin/bash -c '%h/.tmux/plugins/tpm/bin/update_plugins all'

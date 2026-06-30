@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly tmux-plugin update
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
