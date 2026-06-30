@@ -271,3 +271,47 @@ git commit -m "chore: phase0 — fix config drift and cleanup"
 # Запустить все пайплайны Phase 0 последовательно
 task(agent="builder", prompt="Выполнить Phase 0 pipelines согласно docs/pipelines-phase0.md. Начать с Pipeline 1, после завершения каждого переходить к следующему. После Pipeline 3 и 8 дождаться параллельных Pipeline 4, 5, 6 (зависит от ответа Макса). По завершению всех — сделать git commit.")
 ```
+
+---
+
+## 🔴 Приоритет-0: VPN (блокирующая задача)
+
+**Статус:** ПЕРВООЧЕРЕДНОЕ
+**Пайплайн:** `/vpn`
+**Спек:** `.opencode/command/vpn.md`
+
+VPN — задача, блокирующая важный проект. Выполняется ДО Phase 0.
+
+### Предварительный аудит VPN-стека
+
+Уже установлено:
+| Пакет | Назначение | Статус |
+|-------|-----------|--------|
+| `hiddify-bin` | Мульти-протокол VPN-клиент | Установлен, не настроен |
+| `tor` | Анонимная сеть | Работает (9050) |
+| `torsocks` | Tor-прокси для приложений | Установлен |
+| `proxychains-ng` | Прокси-цепочки | Установлен |
+| `obfs4proxy` | Обфускация трафика | Установлен |
+| `networkmanager-openvpn` | OpenVPN через NM | Установлен |
+| `networkmanager-vpnc` | VPNC-совместимые | Установлен |
+| `networkmanager-openconnect` | OpenConnect (Cisco AnyConnect) | Установлен |
+
+### Первичные рекомендации
+
+1. **WireGuard** — оптимальный выбор для Manjaro:
+   - Нативный, быстрый, минимальный
+   - `sudo pacman -S wireguard-tools` (если не установлен)
+   - Конфиг: `/etc/wireguard/wg0.conf` (не в репо!)
+   - Шаблон: `dotfiles/vpn/wg0.conf.template`
+   - Kill-switch: `PostUp = iptables ...`
+
+2. **hiddify** — если нужна поддержка многих протоколов:
+   - Использовать как fallback
+   - Настройка через CLI
+
+3. **Скрипты для dotfiles:**
+   - `vpn-up`, `vpn-down`, `vpn-toggle`, `vpn-status`
+   - Qtile-виджет статуса
+   - README с инструкцией
+
+### После VPN → Phase 0
