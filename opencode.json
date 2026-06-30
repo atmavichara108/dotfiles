@@ -1,7 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "planner",
-  "lsp": false,
+  "lsp": true,
   "model": "opencode/deepseek-v4-flash-free",
   "permission": {
     "edit": "ask",

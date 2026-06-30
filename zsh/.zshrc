@@ -112,13 +112,9 @@ source $ZSH/oh-my-zsh.sh
 alias sp="sudo pacman"
 alias sv="sudo vim"
 alias ls="ls -lah"
-alias chrome-tor='google-chrome-stable --proxy-server="socks5://127.0.0.1:9050" --host-resolver-rules="MAP * ~NOTFOUND , EXCLUDE 127.0.0.1" &'
-alias telegram-tor='torsocks Telegram'
 alias n='nvim'
 alias ld='cd ~/dotfiles/ && lazygit'
 alias nqc='n ~/dotfiles/qtile/.config/qtile/config.py'
-alias ai='python3 ~/dotfiles/scripts/ai-syshelp.py'
-alias ии='python3 ~/dotfiles/scripts/ai-syshelp.py'
 alias s='source ~/.zshrc'
 alias nz='nvim ~/.zshrc'
 alias tt='taskwarrior-tui'
@@ -126,6 +122,7 @@ alias sq='cd ~/dotfiles/ && stow -R qtile'
 alias termx="ssh -p 8022 '192.168.0.24'"
 alias termxm="ssh -p 8022 '10.192.172.83'"
 alias ccb="xclip -sel c"
+alias to-dv="ssh -i /home/rudra/.ssh/id_ed25519 -p 28108 'dv@re-search.wiki'"
 
 export PATH="$HOME/bin:$PATH"
 export PATH=$PATH:~/go/bin
@@ -243,3 +240,17 @@ export CUDA_PATH=/usr/local/cuda-11.8
 
 # Navi — interactive cheatsheet (Ctrl+G)
 eval "$(navi widget zsh)"
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+
+# bun completions
+[ -s "/home/rudra/.bun/_bun" ] && source "/home/rudra/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+
+# direnv
+eval "$(direnv hook zsh)"

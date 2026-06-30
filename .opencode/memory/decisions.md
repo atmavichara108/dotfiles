@@ -57,3 +57,18 @@ timestamp: 2026-06-30
 `QScreen::grabWindow()` зависает в XCB/NVIDIA. Решение: даунгрейд 
 до `flameshot-imgur` (v13.3.0) — работает стабильно, тот же бинарник 
 `/usr/bin/flameshot`, все фичи сохранены.
+
+---
+
+## 2026-07-01 — Очистка артефактов + ADR-003
+
+### Удалено
+- `scripts/.local/bin/aider` — старый артефакт, внешний symlink на uv-установленный aider-chat. Удалён из репо.
+
+### Зафиксировано
+- **ADR-003** — tmux: гибридное управление плагинами (tpm как submodule, остальные — full clone). docs/decisions.md.
+- **Вывод секретов из репо** — GITHUB_TOKEN был артефактом в zsh/.zshrc, удалён. Осознанная практика: секреты — в игнорируемые файлы (.zshrc.local / .env).
+- **Chrome → Chromium** — смена браузера по умолчанию в mimeapps.list.
+- **Включён LSP** в opencode.json.
+- **git pull.rebase = true** — rebase по умолчанию.
+- **Добавлены хуки:** nvm, bun, direnv в zsh/.zshrc.

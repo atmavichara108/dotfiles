@@ -73,3 +73,12 @@ timestamp: 2026-06-30
 - **Display:** X11 (не Wayland)
 - **Home:** `/home/rudra/`
 - **Dotfiles:** `/home/rudra/dotfiles/` (GNU Stow)
+
+## Последние изменения (2026-07-01)
+
+- **Браузер:** Chromium вместо Google Chrome
+- **Добавлено в окружение:** nvm, bun, direnv
+- **Git pull:** rebase = true
+- **LSP в OpenCode:** включён
+- **Tmux:** гибридная архитектура плагинов (ADR-003)
+- **Токены/секреты:** вынесены из репо (артефакт удалён)
