@@ -70,3 +70,26 @@ tmux-sensible, vim-tmux-navigator. Критично сохранение/вос�
 - Плагины занимают место в репо (~несколько МБ), но это компромисс ради 
   надёжности восстановления сессий.
 - При добавлении нового плагина: full clone в tmux/plugins/ + register в .tmux.conf.
+
+---
+
+### ADR-004: Прокси — Happ TUN primary, Tor 9050 fallback, режимы через proxyctl
+**Дата:** 2026-07-01
+**Контекст:** Два источника прокси-соединения: Happ (TUN-интерфейс, transparent proxy) и Tor (SOCKS5 127.0.0.1:9050). Нужна автоматизация переключения без sudo/рестартов, с возможностью фиксировать режим вручную.
+
+**Решение:**
+- **ALL_PROXY** — единый env-эндпоинт (socks5://127.0.0.1:9050 для Tor, пусто для Happ/off). Устанавливается через `~/.config/environment.d/proxy.conf` (systemd user environment.d) и `systemctl --user set-environment`.
+- **proxyctl** — CLI для управления режимами: `happ`, `tor`, `off`, `status`, `mode <auto|happ|tor|off>`. Пишет текущий режим в `~/.config/proxyctl/mode`.
+- **proxy-healthcheck** — systemd-таймер (15s после boot, каждые 30s). Читает mode: если `auto` — детектит TUN/TAP/HAPP (через `ip link`); найден → `proxyctl happ`, иначе → `proxyctl tor`. Если mode != auto — exit 0 (не оверрайдит ручной выбор).
+- **proxy-on-login.service** — устанавливает `mode auto` при логине.
+
+**Альтернативы:**
+- Таймер без mode (всегда auto) — отвергнуто: оверрайдит `off` при следующем тике таймера.
+- Ручное управление без таймера — отвергнуто: нет автопереключения при старте/стопе Happ TUN.
+- Все режимы через systemd user units без CLI — отвергнуто: неудобно менять режим вручную.
+
+**Последствия:**
+- `off` сохраняется, пока пользователь явно не сменит mode (таймер не оверрайдит).
+- Минимальный оверхед: `ip link | grep` каждые 30s + oneshot systemd.
+- Зависимость от `~/.config/proxyctl/mode` — loss of state при удалении файла (корректно: default auto).
+- `systemctl --user` не обязателен (graceful fallback).

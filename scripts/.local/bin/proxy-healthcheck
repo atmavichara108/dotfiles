@@ -1,0 +1,36 @@
+#!/bin/bash
+# proxy-healthcheck — авто-переключение прокси на основе TUN-интерфейса
+# Запускается из systemd-таймера. Без циклов, тихий режим.
+#
+# Логика:
+#   - Читает mode из ~/.config/proxyctl/mode (по умолч. auto)
+#   - Если mode != auto → skip (офферрайд не сбиваем)
+#   - Если auto: TUN/TAP/HAPP найден → proxyctl happ, иначе → proxyctl tor
+
+set -euo pipefail
+
+PROXYCTL="${HOME}/.local/bin/proxyctl"
+MODE_FILE="${HOME}/.config/proxyctl/mode"
+
+if [ ! -x "$PROXYCTL" ]; then
+    echo "proxy-healthcheck: proxyctl не найден по пути ${PROXYCTL}" >&2
+    exit 1
+fi
+
+# ── читаем mode ──────────────────────────────────────────
+mode="auto"
+if [ -f "$MODE_FILE" ]; then
+    mode="$(cat "$MODE_FILE")"
+fi
+
+if [ "$mode" != "auto" ]; then
+    echo "proxy-healthcheck: mode=${mode}; skip"
+    exit 0
+fi
+
+# ── auto: детект и переключение ───────────────────────────
+if ip link 2>/dev/null | grep -qiE 'tun|tap|happ'; then
+    "$PROXYCTL" happ >/dev/null
+else
+    "$PROXYCTL" tor >/dev/null
+fi

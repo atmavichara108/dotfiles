@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic proxy health check (every 30s, 15s after boot)
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=30s
+Persistent=yes
+
+[Install]
+WantedBy=timers.target

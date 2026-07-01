@@ -4,6 +4,8 @@ NAME=$1
 URL=$2
 ICON=${3:-applications-internet}
 
+DEFAULT_PROXY="${DEFAULT_PROXY:-socks5://127.0.0.1:9050}"
+
 if [ -z "$NAME" ] || [ -z "$URL" ]; then
     echo "Usage: create-tor-webapp <name> <url> [icon]"
     exit 1
@@ -15,7 +17,7 @@ DESKTOP_FILE="$HOME/.local/share/applications/${NAME,,}-tor.desktop"
 cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
 Name=$NAME (Tor)
-Exec=chromium --user-data-dir=$PROFILE_DIR --app=$URL --proxy-server="socks5://127.0.0.1:9050" --enable-features=WebAppTabStrip
+Exec=chromium --user-data-dir=$PROFILE_DIR --app=$URL --proxy-server="$DEFAULT_PROXY" --enable-features=WebAppTabStrip
 Icon=$ICON
 Type=Application
 Categories=Network;WebApp;

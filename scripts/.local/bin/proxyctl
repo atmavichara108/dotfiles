@@ -1,0 +1,142 @@
+#!/bin/bash
+# proxyctl — переключение прокси: Happ (TUN), Tor (SOCKS5), off
+# Использование: proxyctl {happ|tor|off|status|mode <auto|happ|tor|off>}
+#
+#   happ       — ALL_PROXY пустой (TUN-интерфейс как primary)
+#   tor        — ALL_PROXY=socks5://127.0.0.1:9050 (Tor fallback)
+#   off        — очистить ALL_PROXY
+#   status     — показать mode, ALL_PROXY и TUN-интерфейсы
+#   mode <val> — установить режим и применить
+
+set -euo pipefail
+
+PROXY_CONF="${HOME}/.config/environment.d/proxy.conf"
+MODE_DIR="${HOME}/.config/proxyctl"
+MODE_FILE="${MODE_DIR}/mode"
+TOR_PROXY="socks5://127.0.0.1:9050"
+
+# ── helpers ──────────────────────────────────────────────
+
+die_usage() {
+    echo "Использование: proxyctl {happ|tor|off|status|mode <auto|happ|tor|off>}" >&2
+    exit 1
+}
+
+read_mode() {
+    if [ -f "$MODE_FILE" ]; then
+        cat "$MODE_FILE"
+    else
+        echo "auto"
+    fi
+}
+
+write_mode() {
+    local mode="$1"
+    mkdir -p "$MODE_DIR"
+    echo "$mode" > "$MODE_FILE"
+}
+
+set_env() {
+    local value="$1"
+    mkdir -p "$(dirname "$PROXY_CONF")"
+    cat > "$PROXY_CONF" <<-ENDFILE
+		# Systemd user environment proxy configuration
+		# Managed by proxyctl — do not edit manually
+		ALL_PROXY=${value}
+		ENDFILE
+    # Попытка systemctl --user set-environment (не фатально)
+    if command -v systemctl &>/dev/null; then
+        if [ -n "$value" ]; then
+            systemctl --user set-environment "ALL_PROXY=${value}" 2>/dev/null || \
+                echo "⚠️  systemctl --user set-environment не удался (продолжаю)" >&2
+        else
+            systemctl --user unset-environment ALL_PROXY 2>/dev/null || \
+                echo "⚠️  systemctl --user unset-environment не удался (продолжаю)" >&2
+        fi
+    else
+        echo "⚠️  systemctl не найден — переменная окружения не обновлена" >&2
+    fi
+}
+
+mode_auto() {
+    write_mode "auto"
+    if ip link 2>/dev/null | grep -qiE 'tun|tap|happ'; then
+        set_env ""
+        echo "✅ proxy: auto → Happ (TUN найден) — ALL_PROXY очищен"
+    else
+        set_env "$TOR_PROXY"
+        echo "✅ proxy: auto → Tor (TUN не найден) — ALL_PROXY=${TOR_PROXY}"
+    fi
+}
+
+show_status() {
+    local mode
+    mode="$(read_mode)"
+    echo "── proxyctl status ──"
+    echo "  mode=${mode}"
+    if [ -n "${ALL_PROXY:-}" ]; then
+        echo "  ALL_PROXY=${ALL_PROXY}"
+    else
+        echo "  ALL_PROXY=<unset>"
+    fi
+    echo ""
+    echo "TUN/TAP/HAPP интерфейсы:"
+    if ip link 2>/dev/null | grep -qiE 'tun|tap|happ'; then
+        ip link 2>/dev/null | grep -iE 'tun|tap|happ' | head -5
+    else
+        echo "  (не найдено)"
+    fi
+}
+
+# ── main ─────────────────────────────────────────────────
+
+CMD="${1:-}"
+
+case "$CMD" in
+    mode)
+        SUB="${2:-}"
+        case "$SUB" in
+            auto) mode_auto ;;
+            happ)
+                write_mode "happ"
+                set_env ""
+                echo "✅ proxy: mode=happ (TUN) — ALL_PROXY очищен"
+                ;;
+            tor)
+                write_mode "tor"
+                set_env "$TOR_PROXY"
+                echo "✅ proxy: mode=tor — ALL_PROXY=${TOR_PROXY}"
+                ;;
+            off)
+                write_mode "off"
+                set_env ""
+                echo "✅ proxy: mode=off — ALL_PROXY очищен"
+                ;;
+            *)
+                echo "Ошибка: mode требует аргумент: auto|happ|tor|off" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+    happ)
+        write_mode "happ"
+        set_env ""
+        echo "✅ proxy: Happ (TUN) — ALL_PROXY очищен"
+        ;;
+    tor)
+        write_mode "tor"
+        set_env "$TOR_PROXY"
+        echo "✅ proxy: Tor — ALL_PROXY=${TOR_PROXY}"
+        ;;
+    off)
+        write_mode "off"
+        set_env ""
+        echo "✅ proxy: выключен — ALL_PROXY очищен"
+        ;;
+    status)
+        show_status
+        ;;
+    *)
+        die_usage
+        ;;
+esac

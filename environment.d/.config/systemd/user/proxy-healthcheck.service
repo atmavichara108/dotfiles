@@ -1,0 +1,6 @@
+[Unit]
+Description=Proxy health check — auto-switch between Happ TUN and Tor
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/proxy-healthcheck

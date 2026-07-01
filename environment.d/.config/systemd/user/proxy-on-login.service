@@ -1,0 +1,10 @@
+[Unit]
+Description=Set proxy mode to auto on login
+After=default.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/proxyctl mode auto
+
+[Install]
+WantedBy=default.target

@@ -8,7 +8,7 @@
 set -euo pipefail
 
 # ── Tor SOCKS5 прокси для yt-dlp ──────────────────────
-YT_PROXY="socks5://127.0.0.1:9050"
+YT_PROXY="${ALL_PROXY:-socks5://127.0.0.1:9050}"
 
 URL=$(echo "$1" | sed 's/\\//g')
 TOPIC="${2:?Укажи тему: kripta-capture URL тема [ru|en]}"

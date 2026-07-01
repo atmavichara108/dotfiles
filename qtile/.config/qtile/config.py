@@ -19,7 +19,10 @@ IS_X11 = qtile.core.name == "x11"
 
 mod = "mod4"              # Sets mod key to SUPER/WINDOWS
 myTerm = "alacritty"      # My terminal of choice
-myBrowserTor = "google-chrome-stable --proxy-server=socks5://127.0.0.1:9050"
+_default_proxy = "socks5://127.0.0.1:9050"
+_proxy = os.environ.get("ALL_PROXY") or _default_proxy
+
+myBrowserTor = f"google-chrome-stable --proxy-server={_proxy}"
 myBrowser = "google-chrome-stable"
 myEmacs = "emacsclient -c -a 'emacs' "
 
@@ -73,7 +76,7 @@ keys = [
     #Apps
     Key([mod, "shift"], "w", lazy.spawn(myBrowser),
         desc='Web browser'),
-    Key([mod, "shift"], "n", lazy.spawn("notion-app --proxy-server=socks5://127.0.0.1:9050"),
+    Key([mod, "shift"], "n", lazy.spawn(f"notion-app --proxy-server={_proxy}"),
         desc="Launch Notion"),
     Key([mod, "shift"], "g", lazy.spawn("gtk-launch genspark-tor"),
         desc="Genspark"),
