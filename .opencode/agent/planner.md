@@ -7,7 +7,10 @@ steps: 20
 permission:
   doom_loop: allow
   external_directory: allow
-  edit: deny
+  edit:
+    "*": deny
+    ".opencode/memory/decisions.md": allow
+    "docs/decisions.md": allow
   bash:
     "*": deny
     "ls*": allow

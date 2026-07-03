@@ -16,8 +16,25 @@ timestamp: 2026-06-30
 **Контекст:** Dotfiles — 23 пакета конфигов, управляемых через GNU Stow. Нужна система для управления, аудита и развития конфигов через ИИ-агентов.
 **Решение:**
 - 3 primary агента: sysop (инспектор), planner (архитектор), builder (строитель)
-- 4 subagent: reviewer, qtile-dev, bash-dev, util-dev
-- 8 команд-пайплайнов: /sysaudit, /script, /qtile, /util, /prompt, /notify, /macro, /plugin
+- 5 subagent: reviewer, verifier, qtile-dev, bash-dev, util-dev
+- 10 команд-пайплайнов: /sysaudit, /script, /qtile, /util, /prompt, /notify, /macro, /plugin, /loop, /flush
+
+---
+
+### ADR-010: Verifier + closed-loop + flush протокол
+**Дата:** 2026-07-03
+**Контекст:** Нужна превентивная проверка применимости (а не только стиля) перед apply изменений dotfiles, и автономный цикл build→verify→fix. Отдельно — формализация pre-compaction flush, чтобы контекст сессии не терялся при компакции.
+**Решение:**
+- Новый subagent `verifier` — PASS/FAIL применимости: синтаксис (bash -n / py_compile / zsh -n / shellcheck), `stow -n` dry-run, разрешение зависимостей (which), идемпотентность. edit: deny, bash — read-only whitelist. Отличие от reviewer: reviewer=стиль/безопасность/спека, verifier=готовность к apply.
+- Команда `/loop` (builder, subtask) — closed-loop build→verify→fix, HARD STOP после 5 циклов, verifier единственный источник PASS/FAIL.
+- Команда `/flush` (planner) — ручной pre-compaction flush: дописать ADR/согласованные правки в `decisions.md` (append-only, дедуп).
+**Альтернативы:**
+- Один reviewer на всё — отвергнуто: смешение стиля и применимости, дольше и менее точно.
+- Авто- flush на каждом шаге — отвергнуто: дорого по токенам, только контрольные точки.
+**Последствия:**
+- 5 subagent (было 4), 10 команд (было 8).
+- Verifier = референс для verifier-pattern в других проектах.
+- Flush-протокол формализован в `vault/02-Methods/memory-management.md`, внедрён в dotfiles ✅.
 - Система памяти: user-profile.md + decisions.md
 - Все агенты на DeepSeek v4-flash-free (тестовый период)
 **Альтернативы:**

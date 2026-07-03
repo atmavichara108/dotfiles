@@ -50,6 +50,7 @@ permission:
   task:
     "*": deny
     "reviewer": allow
+    "verifier": allow
   todowrite: allow
 ---
 

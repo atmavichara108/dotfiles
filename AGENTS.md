@@ -29,7 +29,8 @@ timestamp: 2026-06-30
 ### Subagent
 | Агент | Роль | Модель |
 |-------|------|--------|
-| **reviewer** | Ревьюер (PASS/FAIL, безопасность) | deepseek-v4-flash-free |
+| **reviewer** | Ревьюер (PASS/FAIL, безопасность, спека) | deepseek-v4-flash-free |
+| **verifier** | Верификатор применимости (синтаксис, stow dry-run, готовность к apply) | deepseek-v4-flash-free |
 | **qtile-dev** | Qtile-специалист (WM, виджеты, Python) | deepseek-v4-flash-free |
 | **bash-dev** | Bash-специалист (скрипты, автоматизация) | deepseek-v4-flash-free |
 | **util-dev** | Утилиты (макросы, нотификации, rofi) | deepseek-v4-flash-free |
@@ -46,6 +47,8 @@ timestamp: 2026-06-30
 | `/notify` | util-dev → reviewer | Настройка уведомлений (dunst) |
 | `/macro` | util-dev → reviewer | Макросы: sxhkd, rofi-меню, горячие клавиши |
 | `/plugin` | builder → reviewer | Плагины для nvim, rofi, btop и др. |
+| `/loop` | builder → verifier | Автономная итерация build → verify → fix (closed-loop) |
+| `/flush` | planner | Pre-compaction flush контекста в memory/decisions.md |
 
 ## Конвенции
 
