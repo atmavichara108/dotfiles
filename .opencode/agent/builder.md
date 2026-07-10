@@ -51,6 +51,7 @@ permission:
     "*": deny
     "reviewer": allow
     "verifier": allow
+    "stow-ops": allow
   todowrite: allow
 ---
 

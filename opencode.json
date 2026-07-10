@@ -185,6 +185,33 @@
           "notify-send*": "allow"
         }
       }
+    },
+    "stow-ops": {
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 25,
+      "permission": {
+        "edit": "allow",
+        "bash": {
+          "*": "deny",
+          "ls*": "allow",
+          "cat*": "allow",
+          "grep*": "allow",
+          "find*": "allow",
+          "git diff*": "allow",
+          "git status*": "allow",
+          "mkdir*": "allow",
+          "cp*": "allow",
+          "mv*": "allow",
+          "ln*": "allow",
+          "stow*": "allow",
+          "chmod +x*": "allow",
+          "touch*": "allow",
+          "echo*": "allow",
+          "which*": "allow"
+        }
+      }
     }
   }
 }
