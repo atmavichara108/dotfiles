@@ -1,0 +1,14 @@
+[urgency_low]
+    background = "{background}e6"
+    foreground = "{foreground}"
+    frame_color = "{color6}"
+
+[urgency_normal]
+    background = "{background}e6"
+    foreground = "{foreground}"
+    frame_color = "{color6}"
+
+[urgency_critical]
+    background = "{background}e6"
+    foreground = "{color1}"
+    frame_color = "{color1}"

@@ -1,0 +1,22 @@
+[general]
+theme = "dark"  # Тема для твоего Tokyo Night стиля
+# layout = "kanban"  # Канбан-вид по умолчанию
+
+[views]  # Views для "канбан" — фильтры как колонки
+default_view = "main"  # Основной вид
+
+[view.main]  # Вид "ToDo" (pending)
+filter = "status:pending"  # Только pending задачи
+sort = "urgency-"  # Сортировка по urgency
+
+[view.progress]  # Вид "In Progress" (waiting)
+filter = "status:waiting"
+sort = "urgency-"
+
+[view.done]  # Вид "Done" (completed)
+filter = "status:completed"
+sort = "end-"
+
+[shortcuts]  # Клавиши для свитча views (как канбан)
+next_view = "tab"  # Tab для следующего вида
+prev_view = "shift-tab"  # Shift+Tab для предыдущего

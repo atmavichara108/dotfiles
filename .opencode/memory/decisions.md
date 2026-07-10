@@ -117,3 +117,71 @@ timestamp: 2026-06-30
 - Чистое разделение ответственности
 - Безопасность — destructive-операции только с разрешения пользователя
 - Масштабируемость — любая задача декомпозируется на read-only (planner) + mutation (subagent)
+
+---
+
+### ADR-004: Субагент stow-ops + команда /stow
+**Дата:** 2026-07-10
+**Контекст:** При аудите dotfiles обнаружен массовый дрейф симлинков, 9 приложений не под stow, мусор в scripts/.local/bin/. Builder не мог выполнить массовые файловые операции (mkdir, cp, mv, stow) — не было подходящего субагента с нужными правами. Существующие subagent (bash-dev, qtile-dev, util-dev) специализированы на содержимом конфигов, не на файловых операциях.
+**Решение:**
+- Создан subagent `stow-ops` (mode: subagent) — специалист по файловым операциям:
+  - Права: mkdir, cp, mv, ln, stow*, chmod +x, touch, ls, cat, grep, find, git diff/status
+  - Запрещено: rm, sudo, pacman, systemctl, yay, paru
+  - Задача: массовые stow-операции, исправление дрейфа, реструктуризация пакетов, миграция конфигов, обновление stow.sh/.gitignore
+- Создана команда `/stow` (agent: builder, subtask): пайплайн builder (планирование) → stow-ops (выполнение) → verifier (верификация)
+- HARD STOP после 3 verify-циклов
+- Builder обновлён: добавлен `stow-ops: allow` в task permissions
+**Альтернативы:**
+- general-агент для всех файловых операций — отвергнуто: нет специализации, идемпотентности, проверок
+- Расширить права builder — отвергнуто: builder уже имеет много ответственности
+- Использовать bash-dev — отвергнуто: bash-dev не имеет прав на cp, mv, stow (полный)
+**Последствия:**
+- 6 subagent (было 5), 11 команд (было 10)
+- Чёткое разделение: builder = содержимое конфигов, stow-ops = файловые операции
+- Verifier — обязательный шаг после stow-ops (dry-run stow -n, проверка симлинков)
+
+---
+
+### ADR-005: Пакет opencode-global в dotfiles
+**Дата:** 2026-07-10
+**Контекст:** Глобальный конфиг OpenCode (~/.config/opencode/) содержал ценные компоненты: meta-агент (@meta), глобальный verifier (с моделью glm-5.2, отличной от проектного deepseek-v4), команды done/loop, плагин session-flush.ts. Все эти файлы не были под версионированием и могли быть потеряны при переустановке системы.
+**Решение:**
+- Создан stow-пакет `opencode-global/.config/opencode/` в dotfiles
+- Версионируются: agent/meta.md, agent/verifier.md, command/done.md, command/loop.md, plugins/session-flush.ts, opencode.jsonc, package.json, .gitignore, AGENTS.md
+- Исключены (в .gitignore): node_modules/, package-lock.json, bun.lock
+- При stow старый ~/.config/opencode бэкапится, новый становится симлинком
+- Зависимости (opencode-ai/plugin) восстанавливаются через npm install в целевой директории
+**Альтернативы:**
+- Не версионировать — отвергнуто: потеря глобальных агентов при переустановке
+- Версионировать в отдельном репо — отвергнуто: избыточно, все dotfiles в одном месте
+**Последствия:**
+- 36 пакетов в dotfiles (было 35)
+- При клоне dotfiles на новую систему: npm install в ~/.config/opencode для восстановления плагина
+- meta-агент и глобальный verifier переносимы между проектами
+
+---
+
+### ADR-006: Аудит и реструктуризация dotfiles (2026-07-10)
+**Дата:** 2026-07-10
+**Контекст:** Sysop-аудит выявил системные проблемы:
+1. Дрейф симлинков: gtk-4.0/gtk.css (реальный файл, не симлинк), wal/templates/ (3 из 4 файлов реальные), nvim/.neoconf.json (реальный)
+2. 9 приложений в ~/.config/ не под stow: flameshot, wallust, copyq, thefuck, tinted-theming, nitrogen, calcurse, proxyctl, task-tools (объединяет taskwarrior-tui, taskvanguard, timewarrior)
+3. scripts/.local/bin/ замусорен 28 pipx-артефактами (симлинки на venv faster-whisper, syncall) + бинарём pm3 (13MB)
+4. stow.sh устарел — массив packages содержал только 6 пакетов (из них fzf не существовал)
+5. .gitignore не содержал runtime-исключений для новых пакетов
+**Решение:**
+- Исправлен дрейф: gtk-4.0, wal/templates, nvim → все файлы симлинки
+- Созданы 9 новых пакетов: flameshot, wallust, copyq, thefuck, tinted-theming, task-tools, nitrogen, calcurse, proxyctl
+- Создан объединённый пакет task-tools (taskwarrior-tui + taskvanguard + timewarrior)
+- Очищен scripts/.local/bin: 28 pipx-артефактов перемещены в /tmp/opencode/
+- Обновлён stow.sh: 36 пакетов в массиве, убран несуществующий fzf
+- Обновлён .gitignore: +29 строк runtime-исключений для новых пакетов
+- Верификация: 6/6 критериев PASS (строк 14 пакетов без конфликтов)
+**Альтернативы:**
+- Постепенная миграция — отвергнуто: дрейф накапливается, проще сделать одномоментно
+- Не объединять task-пакеты — отвергнуто: 3 пакета с 1 файлом каждый — избыточно
+**Последствия:**
+- 36 пакетов под stow (было 23)
+- Все симлинки централизованы, дрейф устранён
+- scripts/.local/bin содержит только 10 легитимных скриптов
+- Пайплайн для будущих миграций: planner (аудит) → stow-ops (выполнение) → verifier (верификация)

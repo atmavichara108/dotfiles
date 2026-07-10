@@ -1,0 +1,62 @@
+llm:
+    provider: openai
+    api_key: <api key>
+    model: gpt-4.1-mini
+    base_url: https://openrouter.ai/api/v1
+tags:
+    ai:
+        desc: Task can potentially be done by ai mostly/completely
+        urgency_factor: 1
+    cut:
+        desc: Task has the potential to save time or cost in the future
+        urgency_factor: 1.2
+    fast:
+        desc: Task is probably done in very short time (10 mins or less)
+        urgency_factor: 1.2
+    key:
+        desc: Task is impacting goals
+        urgency_factor: 1.2
+    sb:
+        desc: Task is potentially snowballing positively or negatively and offers high roi
+        urgency_factor: 1.3
+settings:
+    debug: false
+    enable_llm: true
+    split_tasks: true
+    auto_import_tags: false
+    auto_import_projects: false
+    enable_lowercase: false
+    enable_tagging: false
+    enable_annotations: false
+    enable_goals: true
+    goal_project_name: goals
+    task_import_limit: 500
+    task_processing_batch_size: 15
+    guiding_question_amount: 6
+    context_ttl_minutes: 60
+annotations:
+    long_reward:
+        label: Long Reward
+        symbol: ●
+        description: Strategic benefit
+    risk:
+        label: Risk
+        symbol: ●
+        description: If not done
+    short_reward:
+        label: Short Reward
+        symbol: ●
+        description: Immediate benefit
+    tip:
+        label: Tip
+        symbol: ●
+        description: Practical, actionable
+filters:
+    tag_filter_mode: blacklist
+    tag_filter_tags:
+        - private
+        - confidential
+    project_filter_mode: blacklist
+    project_filter_projects:
+        - pers.secret
+        - work.secret

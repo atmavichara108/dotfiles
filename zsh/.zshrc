@@ -1,6 +1,8 @@
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
+# Suppress instant prompt warning (direnv console output conflict)
+typeset -g POWERLEVEL9K_INSTANT_PROMPT=quiet
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
 fi
@@ -123,6 +125,8 @@ alias termx="ssh -p 8022 '192.168.0.24'"
 alias termxm="ssh -p 8022 '10.192.172.83'"
 alias ccb="xclip -sel c"
 alias to-dv="ssh -i /home/rudra/.ssh/id_ed25519 -p 28108 'dv@re-search.wiki'"
+alias to-serp="ssh root@167.235.252.4"
+alias opc="opencode"
 
 export PATH="$HOME/bin:$PATH"
 export PATH=$PATH:~/go/bin
