@@ -1,11 +1,11 @@
 #!/bin/bash
-# proxyctl — переключение прокси: Happ (TUN), Tor (SOCKS5), off
+# proxyctl — переключение прокси: Happ proxy (10812), Tor (9050), off
 # Использование: proxyctl {happ|tor|off|status|mode <auto|happ|tor|off>}
 #
-#   happ       — ALL_PROXY пустой (TUN-интерфейс как primary)
+#   happ       — ALL_PROXY=socks5://127.0.0.1:10812 (Happ proxy)
 #   tor        — ALL_PROXY=socks5://127.0.0.1:9050 (Tor fallback)
 #   off        — очистить ALL_PROXY
-#   status     — показать mode, ALL_PROXY и TUN-интерфейсы
+#   status     — показать mode, ALL_PROXY и активный прокси-порт
 #   mode <val> — установить режим и применить
 
 set -euo pipefail
@@ -14,6 +14,7 @@ PROXY_CONF="${HOME}/.config/environment.d/proxy.conf"
 MODE_DIR="${HOME}/.config/proxyctl"
 MODE_FILE="${MODE_DIR}/mode"
 TOR_PROXY="socks5://127.0.0.1:9050"
+HAPP_PROXY="socks5://127.0.0.1:10812"
 
 # ── helpers ──────────────────────────────────────────────
 
@@ -60,12 +61,12 @@ set_env() {
 
 mode_auto() {
     write_mode "auto"
-    if ip link 2>/dev/null | grep -qiE 'tun|tap|happ'; then
-        set_env ""
-        echo "✅ proxy: auto → Happ (TUN найден) — ALL_PROXY очищен"
+    if ss -tlnp 2>/dev/null | grep -q '10812'; then
+        set_env "$HAPP_PROXY"
+        echo "✅ proxy: auto → Happ proxy (порт 10812 активен) — ALL_PROXY=${HAPP_PROXY}"
     else
         set_env "$TOR_PROXY"
-        echo "✅ proxy: auto → Tor (TUN не найден) — ALL_PROXY=${TOR_PROXY}"
+        echo "✅ proxy: auto → Tor (порт 10812 неактивен) — ALL_PROXY=${TOR_PROXY}"
     fi
 }
 
@@ -80,11 +81,16 @@ show_status() {
         echo "  ALL_PROXY=<unset>"
     fi
     echo ""
-    echo "TUN/TAP/HAPP интерфейсы:"
-    if ip link 2>/dev/null | grep -qiE 'tun|tap|happ'; then
-        ip link 2>/dev/null | grep -iE 'tun|tap|happ' | head -5
+    echo "Активные SOCKS5-прокси:"
+    if ss -tlnp 2>/dev/null | grep -q '10812'; then
+        echo "  ✓ Happ proxy (127.0.0.1:10812)"
     else
-        echo "  (не найдено)"
+        echo "  ✗ Happ proxy (127.0.0.1:10812) — неактивен"
+    fi
+    if ss -tlnp 2>/dev/null | grep -q '9050'; then
+        echo "  ✓ Tor (127.0.0.1:9050)"
+    else
+        echo "  ✗ Tor (127.0.0.1:9050) — неактивен"
     fi
 }
 
@@ -99,8 +105,8 @@ case "$CMD" in
             auto) mode_auto ;;
             happ)
                 write_mode "happ"
-                set_env ""
-                echo "✅ proxy: mode=happ (TUN) — ALL_PROXY очищен"
+                set_env "$HAPP_PROXY"
+                echo "✅ proxy: mode=happ — ALL_PROXY=${HAPP_PROXY}"
                 ;;
             tor)
                 write_mode "tor"
@@ -120,8 +126,8 @@ case "$CMD" in
         ;;
     happ)
         write_mode "happ"
-        set_env ""
-        echo "✅ proxy: Happ (TUN) — ALL_PROXY очищен"
+        set_env "$HAPP_PROXY"
+        echo "✅ proxy: Happ proxy — ALL_PROXY=${HAPP_PROXY}"
         ;;
     tor)
         write_mode "tor"
