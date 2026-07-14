@@ -20,12 +20,17 @@ HAPP_PROXY="socks5://127.0.0.1:10812"
 
 port_open() {
     local port="$1"
-    if command -v nc &>/dev/null; then
-        nc -z 127.0.0.1 "$port" 2>/dev/null
-        return $?
+    # Используем curl с SOCKS5 — надёжнее, чем /dev/tcp
+    # Таймаут 2 секунды, проверяем только соединение (не загрузку)
+    if curl --socks5 "127.0.0.1:${port}" --max-time 2 --connect-timeout 2 \
+            -s -o /dev/null -w "%{http_code}" "http://example.com" 2>/dev/null | grep -qE '^[2345]'; then
+        return 0
     fi
-    # fallback: bash /dev/tcp (built-in, без доп. пакетов)
-    timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null
+    # Fallback: проверяем через ss (не требует root для локальных портов)
+    if ss -tln 2>/dev/null | grep -q ":${port} "; then
+        return 0
+    fi
+    return 1
 }
 
 # ── helpers ──────────────────────────────────────────────
