@@ -16,6 +16,18 @@ MODE_FILE="${MODE_DIR}/mode"
 TOR_PROXY="socks5://127.0.0.1:9050"
 HAPP_PROXY="socks5://127.0.0.1:10812"
 
+# ── port check helper ─────────────────────────────────────
+
+port_open() {
+    local port="$1"
+    if command -v nc &>/dev/null; then
+        nc -z 127.0.0.1 "$port" 2>/dev/null
+        return $?
+    fi
+    # fallback: bash /dev/tcp (built-in, без доп. пакетов)
+    timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null
+}
+
 # ── helpers ──────────────────────────────────────────────
 
 die_usage() {
@@ -61,7 +73,7 @@ set_env() {
 
 mode_auto() {
     write_mode "auto"
-    if ss -tlnp 2>/dev/null | grep -q '10812'; then
+    if port_open 10812; then
         set_env "$HAPP_PROXY"
         echo "✅ proxy: auto → Happ proxy (порт 10812 активен) — ALL_PROXY=${HAPP_PROXY}"
     else
@@ -75,19 +87,25 @@ show_status() {
     mode="$(read_mode)"
     echo "── proxyctl status ──"
     echo "  mode=${mode}"
-    if [ -n "${ALL_PROXY:-}" ]; then
-        echo "  ALL_PROXY=${ALL_PROXY}"
+    if [ -f "$PROXY_CONF" ]; then
+        local conf_proxy
+        conf_proxy=$(grep '^ALL_PROXY=' "$PROXY_CONF" | cut -d= -f2-) || true
+        if [ -n "$conf_proxy" ]; then
+            echo "  ALL_PROXY=${conf_proxy}"
+        else
+            echo "  ALL_PROXY=<unset>"
+        fi
     else
         echo "  ALL_PROXY=<unset>"
     fi
     echo ""
     echo "Активные SOCKS5-прокси:"
-    if ss -tlnp 2>/dev/null | grep -q '10812'; then
+    if port_open 10812; then
         echo "  ✓ Happ proxy (127.0.0.1:10812)"
     else
         echo "  ✗ Happ proxy (127.0.0.1:10812) — неактивен"
     fi
-    if ss -tlnp 2>/dev/null | grep -q '9050'; then
+    if port_open 9050; then
         echo "  ✓ Tor (127.0.0.1:9050)"
     else
         echo "  ✗ Tor (127.0.0.1:9050) — неактивен"

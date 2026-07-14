@@ -17,6 +17,18 @@ if [ ! -x "$PROXYCTL" ]; then
     exit 1
 fi
 
+# ── port check helper ─────────────────────────────────────
+
+port_open() {
+    local port="$1"
+    if command -v nc &>/dev/null; then
+        nc -z 127.0.0.1 "$port" 2>/dev/null
+        return $?
+    fi
+    # fallback: bash /dev/tcp (built-in, без доп. пакетов)
+    timeout 1 bash -c "echo > /dev/tcp/127.0.0.1/${port}" 2>/dev/null
+}
+
 # ── читаем mode ──────────────────────────────────────────
 mode="auto"
 if [ -f "$MODE_FILE" ]; then
@@ -29,7 +41,7 @@ if [ "$mode" != "auto" ]; then
 fi
 
 # ── auto: детект и переключение ───────────────────────────
-if ss -tlnp 2>/dev/null | grep -q '10812'; then
+if port_open 10812; then
     "$PROXYCTL" happ >/dev/null
 else
     "$PROXYCTL" tor >/dev/null
