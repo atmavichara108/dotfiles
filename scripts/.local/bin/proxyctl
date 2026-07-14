@@ -1,8 +1,8 @@
 #!/bin/bash
-# proxyctl — переключение прокси: Happ proxy (10812), Tor (9050), off
+# proxyctl — переключение прокси: Happ proxy (10808), Tor (9050), off
 # Использование: proxyctl {happ|tor|off|status|mode <auto|happ|tor|off>}
 #
-#   happ       — ALL_PROXY=socks5://127.0.0.1:10812 (Happ proxy)
+#   happ       — ALL_PROXY=socks5h://127.0.0.1:10808 (Happ proxy)
 #   tor        — ALL_PROXY=socks5://127.0.0.1:9050 (Tor fallback)
 #   off        — очистить ALL_PROXY
 #   status     — показать mode, ALL_PROXY и активный прокси-порт
@@ -14,7 +14,7 @@ PROXY_CONF="${HOME}/.config/environment.d/proxy.conf"
 MODE_DIR="${HOME}/.config/proxyctl"
 MODE_FILE="${MODE_DIR}/mode"
 TOR_PROXY="socks5://127.0.0.1:9050"
-HAPP_PROXY="socks5://127.0.0.1:10812"
+HAPP_PROXY="socks5h://127.0.0.1:10808"
 
 # ── port check helper ─────────────────────────────────────
 
@@ -22,7 +22,7 @@ port_open() {
     local port="$1"
     # Используем curl с SOCKS5 — надёжнее, чем /dev/tcp
     # Таймаут 2 секунды, проверяем только соединение (не загрузку)
-    if curl --socks5 "127.0.0.1:${port}" --max-time 2 --connect-timeout 2 \
+    if curl --socks5-hostname "127.0.0.1:${port}" --max-time 2 --connect-timeout 2 \
             -s -o /dev/null -w "%{http_code}" "http://example.com" 2>/dev/null | grep -qE '^[2345]'; then
         return 0
     fi
@@ -78,12 +78,12 @@ set_env() {
 
 mode_auto() {
     write_mode "auto"
-    if port_open 10812; then
+    if port_open 10808; then
         set_env "$HAPP_PROXY"
-        echo "✅ proxy: auto → Happ proxy (порт 10812 активен) — ALL_PROXY=${HAPP_PROXY}"
+        echo "✅ proxy: auto → Happ proxy (порт 10808 активен) — ALL_PROXY=${HAPP_PROXY}"
     else
         set_env "$TOR_PROXY"
-        echo "✅ proxy: auto → Tor (порт 10812 неактивен) — ALL_PROXY=${TOR_PROXY}"
+        echo "✅ proxy: auto → Tor (порт 10808 неактивен) — ALL_PROXY=${TOR_PROXY}"
     fi
 }
 
@@ -105,10 +105,10 @@ show_status() {
     fi
     echo ""
     echo "Активные SOCKS5-прокси:"
-    if port_open 10812; then
-        echo "  ✓ Happ proxy (127.0.0.1:10812)"
+    if port_open 10808; then
+        echo "  ✓ Happ proxy (127.0.0.1:10808)"
     else
-        echo "  ✗ Happ proxy (127.0.0.1:10812) — неактивен"
+        echo "  ✗ Happ proxy (127.0.0.1:10808) — неактивен"
     fi
     if port_open 9050; then
         echo "  ✓ Tor (127.0.0.1:9050)"

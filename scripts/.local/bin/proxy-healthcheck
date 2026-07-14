@@ -5,7 +5,7 @@
 # Логика:
 #   - Читает mode из ~/.config/proxyctl/mode (по умолч. auto)
 #   - Если mode != auto → skip (оверрайд не сбиваем)
-#   - Если auto: порт 10812 активен → proxyctl happ, иначе → proxyctl tor
+#   - Если auto: порт 10808 активен → proxyctl happ, иначе → proxyctl tor
 
 set -euo pipefail
 
@@ -23,7 +23,7 @@ port_open() {
     local port="$1"
     # Используем curl с SOCKS5 — надёжнее, чем /dev/tcp
     # Таймаут 2 секунды, проверяем только соединение (не загрузку)
-    if curl --socks5 "127.0.0.1:${port}" --max-time 2 --connect-timeout 2 \
+    if curl --socks5-hostname "127.0.0.1:${port}" --max-time 2 --connect-timeout 2 \
             -s -o /dev/null -w "%{http_code}" "http://example.com" 2>/dev/null | grep -qE '^[2345]'; then
         return 0
     fi
@@ -46,7 +46,7 @@ if [ "$mode" != "auto" ]; then
 fi
 
 # ── auto: детект и переключение ───────────────────────────
-if port_open 10812; then
+if port_open 10808; then
     "$PROXYCTL" happ >/dev/null
 else
     "$PROXYCTL" tor >/dev/null

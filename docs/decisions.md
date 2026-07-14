@@ -76,12 +76,12 @@ tmux-sensible, vim-tmux-navigator. Критично сохранение/вос�
 ### ADR-004: Прокси — Happ proxy primary (System Proxy mode), Tor 9050 fallback, режимы через proxyctl
 **Дата:** 2026-07-01 (обновлено 2026-07-14: TUN → System Proxy mode)
 
-**Контекст:** Два источника прокси-соединения: Happ (режим System Proxy, SOCKS5 127.0.0.1:10812) и Tor (SOCKS5 127.0.0.1:9050). Happ больше не использует TUN — работает через системный прокси-порт. Нужна автоматизация переключения без sudo/рестартов, с возможностью фиксировать режим вручную.
+**Контекст:** Два источника прокси-соединения: Happ (режим System Proxy, SOCKS5h 127.0.0.1:10808) и Tor (SOCKS5 127.0.0.1:9050). Happ больше не использует TUN — работает через системный прокси-порт. Нужна автоматизация переключения без sudo/рестартов, с возможностью фиксировать режим вручную.
 
 **Решение:**
-- **ALL_PROXY** — единый env-эндпоинт (socks5://127.0.0.1:10812 для Happ, socks5://127.0.0.1:9050 для Tor, пусто для off). Устанавливается через `~/.config/environment.d/proxy.conf` (systemd user environment.d) и `systemctl --user set-environment`.
-- **proxyctl** — CLI для управления режимами: `happ`, `tor`, `off`, `status`, `mode <auto|happ|tor|off>`. Пишет текущий режим в `~/.config/proxyctl/mode`. `happ` устанавливает ALL_PROXY на 10812, `tor` на 9050.
-- **proxy-healthcheck** — systemd-таймер (15s после boot, каждые 30s). Читает mode: если `auto` — проверяет порт 10812 (через `ss -tlnp | grep 10812`); активен → `proxyctl happ`, иначе → `proxyctl tor`. Если mode != auto — exit 0 (не оверрайдит ручной выбор).
+- **ALL_PROXY** — единый env-эндпоинт (socks5h://127.0.0.1:10808 для Happ, socks5://127.0.0.1:9050 для Tor, пусто для off). Устанавливается через `~/.config/environment.d/proxy.conf` (systemd user environment.d) и `systemctl --user set-environment`.
+- **proxyctl** — CLI для управления режимами: `happ`, `tor`, `off`, `status`, `mode <auto|happ|tor|off>`. Пишет текущий режим в `~/.config/proxyctl/mode`. `happ` устанавливает ALL_PROXY на 10808, `tor` на 9050.
+- **proxy-healthcheck** — systemd-таймер (15s после boot, каждые 30s). Читает mode: если `auto` — проверяет порт 10808 (через `ss -tlnp | grep 10808`); активен → `proxyctl happ`, иначе → `proxyctl tor`. Если mode != auto — exit 0 (не оверрайдит ручной выбор).
 - **proxy-on-login.service** — устанавливает `mode auto` при логине.
 
 **Альтернативы:**
