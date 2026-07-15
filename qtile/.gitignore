@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+*.pyo
+.qtile_errors.log
+A_bold_personal_logo_design*.png
