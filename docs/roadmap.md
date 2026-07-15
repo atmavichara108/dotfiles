@@ -37,7 +37,7 @@ status: draft
 ### 🚧 In Progress (в работе)
 
 - [ ] **Очистка диска** — освободить место на / (83%, было 91%, частично очищено)
-- [ ] **opencode-volt (центральный волт)** — приоритетный вектор развития dotfiles/opencode (детали уточнить у Макса)
+- [ ] **opencode-volt (OpenCode-Vault)** — центральный vault всех opencode-проектов: \`/home/rudra/Projects/OpenCode-Vault/\` (dotfiles, rudra-ai, SERPlux, dv-hub, prod-monitor, rudra-phone и др.) с собственным \`.opencode/\`, методами (02-Methods), референсами (01-Reference) и шаблонами. Приоритетный вектор — вынести управление opencode-проектами в этот vault.
 
 ### 👁️ Review (ожидают проверки)
 
