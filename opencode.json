@@ -205,6 +205,8 @@
           "find*": "allow",
           "git diff*": "allow",
           "git status*": "allow",
+          "git add*": "allow",
+          "git commit*": "allow",
           "mkdir*": "allow",
           "cp*": "allow",
           "mv*": "allow",
