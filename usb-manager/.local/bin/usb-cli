@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""USB Manager CLI — command-line interface for USB drive management.
+
+Usage:
+  usb-cli list              List USB devices (JSON)
+  usb-cli mount <device>    Mount device via udisks2
+  usb-cli unmount <device>  Unmount device
+  usb-cli eject <device>    Eject device
+  usb-cli open <device>     Open device mount point in ranger
+  usb-cli toggle            Show/hide USB Manager GUI
+  usb-cli status            Check daemon status
+"""
+
+import argparse
+import json
+import logging
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import dbus
+
+BUS_NAME = "org.usbmanager.Daemon"
+OBJECT_PATH = "/org/usbmanager/Daemon"
+
+log = logging.getLogger("usb-cli")
+
+
+def get_udisks_object() -> dbus.Interface:
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", "/org/freedesktop/UDisks2")
+    return dbus.Interface(obj, "org.freedesktop.DBus.ObjectManager")
+
+
+def get_daemon_iface() -> dbus.Interface | None:
+    try:
+        bus = dbus.SessionBus()
+        obj = bus.get_object(BUS_NAME, OBJECT_PATH)
+        return dbus.Interface(obj, BUS_NAME)
+    except dbus.DBusException:
+        return None
+
+
+def get_block_devices() -> list[dict]:
+    manager = get_udisks_object()
+    objects = manager.GetManagedObjects()
+
+    devices = []
+    for path, interfaces in objects.items():
+        if "org.freedesktop.UDisks2.Block" not in interfaces:
+            continue
+        block = interfaces["org.freedesktop.UDisks2.Block"]
+        drive_path = block.get("Drive", "")
+
+        if not drive_path:
+            continue
+        if "org.freedesktop.UDisks2.Partition" not in interfaces:
+            continue
+
+        try:
+            bus = dbus.SystemBus()
+            drive_obj = bus.get_object("org.freedesktop.UDisks2", drive_path)
+            drive_iface = dbus.Interface(drive_obj, "org.freedesktop.DBus.Properties")
+            props = drive_iface.GetAll("org.freedesktop.UDisks2.Drive")
+            conn_bus = props.get("ConnectionBus", "")
+            if conn_bus != "usb":
+                continue
+            drive_info = {
+                "model": props.get("Model", ""),
+                "vendor": props.get("Vendor", ""),
+            }
+        except dbus.DBusException:
+            continue
+
+        size = block.get("Size", 0)
+        device = block.get("Device", dbus.ByteArray([]))
+        dev_name = bytes(device).decode("utf-8", errors="replace") if device else ""
+
+        fs_mount_points = []
+        if "org.freedesktop.UDisks2.Filesystem" in interfaces:
+            fs = interfaces["org.freedesktop.UDisks2.Filesystem"]
+            mount_points = fs.get("MountPoints", [])
+            for mp in mount_points:
+                fs_mount_points.append(bytes(mp).decode("utf-8", errors="replace"))
+
+        devices.append({
+            "object_path": path,
+            "device": dev_name,
+            "size": size,
+            "model": drive_info["model"],
+            "vendor": drive_info["vendor"],
+            "mount_points": fs_mount_points,
+        })
+
+    return devices
+
+
+def find_device(device_name: str) -> dict | None:
+    devices = get_block_devices()
+    for dev in devices:
+        if dev["device"] == device_name or device_name in dev["device"]:
+            return dev
+    # Try partial match
+    for dev in devices:
+        if device_name in dev["model"] or device_name in dev["vendor"]:
+            return dev
+    return None
+
+
+def cmd_list(_args: Any) -> None:
+    devices = get_block_devices()
+    output = []
+    for dev in devices:
+        output.append({
+            "device": dev["device"],
+            "model": dev["model"],
+            "vendor": dev["vendor"],
+            "size": dev["size"],
+            "mounted": bool(dev["mount_points"]),
+            "mount_points": dev["mount_points"],
+        })
+    print(json.dumps(output, indent=2, ensure_ascii=False))
+
+
+def cmd_mount(args: Any) -> None:
+    dev = find_device(args.device)
+    if not dev:
+        print(f"Device not found: {args.device}", file=sys.stderr)
+        sys.exit(1)
+
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", dev["object_path"])
+    fs_iface = dbus.Interface(obj, "org.freedesktop.UDisks2.Filesystem")
+
+    try:
+        mount_point = fs_iface.Mount({"auth.no_user_interaction": True})
+        if mount_point:
+            mp = bytes(mount_point).decode("utf-8", errors="replace")
+            print(f"Mounted at: {mp}")
+    except dbus.DBusException as e:
+        print(f"Mount failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_unmount(args: Any) -> None:
+    dev = find_device(args.device)
+    if not dev:
+        print(f"Device not found: {args.device}", file=sys.stderr)
+        sys.exit(1)
+
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", dev["object_path"])
+    fs_iface = dbus.Interface(obj, "org.freedesktop.UDisks2.Filesystem")
+
+    try:
+        fs_iface.Unmount({"auth.no_user_interaction": True})
+        print(f"Unmounted: {dev['device']}")
+    except dbus.DBusException as e:
+        print(f"Unmount failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_eject(args: Any) -> None:
+    dev = find_device(args.device)
+    if not dev:
+        print(f"Device not found: {args.device}", file=sys.stderr)
+        sys.exit(1)
+
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", dev["object_path"])
+    block_iface = dbus.Interface(obj, "org.freedesktop.UDisks2.Block")
+
+    if dev["mount_points"]:
+        fs_iface = dbus.Interface(obj, "org.freedesktop.UDisks2.Filesystem")
+        try:
+            fs_iface.Unmount({"auth.no_user_interaction": True})
+        except dbus.DBusException:
+            pass
+
+    try:
+        drive_path = block_iface.Get("org.freedesktop.UDisks2.Block", "Drive")
+        if drive_path:
+            drive_obj = bus.get_object("org.freedesktop.UDisks2", drive_path)
+            drive_iface = dbus.Interface(
+                drive_obj, "org.freedesktop.UDisks2.Drive",
+            )
+            drive_iface.Eject({"auth.no_user_interaction": True})
+            print(f"Ejected: {dev['device']}")
+    except dbus.DBusException as e:
+        print(f"Eject failed: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def cmd_open(args: Any) -> None:
+    dev = find_device(args.device)
+    if not dev:
+        print(f"Device not found: {args.device}", file=sys.stderr)
+        sys.exit(1)
+
+    if not dev["mount_points"]:
+        # Try auto-mount first
+        bus = dbus.SystemBus()
+        obj = bus.get_object("org.freedesktop.UDisks2", dev["object_path"])
+        fs_iface = dbus.Interface(obj, "org.freedesktop.UDisks2.Filesystem")
+        try:
+            mount_point = fs_iface.Mount({"auth.no_user_interaction": True})
+            if mount_point:
+                dev["mount_points"] = [
+                    bytes(mount_point).decode("utf-8", errors="replace"),
+                ]
+        except dbus.DBusException as e:
+            print(f"Cannot mount: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if dev["mount_points"]:
+        mount_point = dev["mount_points"][0]
+        try:
+            subprocess.run(["ranger", mount_point])
+        except FileNotFoundError:
+            try:
+                subprocess.run(["xdg-open", mount_point])
+            except FileNotFoundError:
+                print("ranger not found", file=sys.stderr)
+                sys.exit(1)
+
+
+def cmd_toggle(_args: Any) -> None:
+    daemon = get_daemon_iface()
+    if daemon:
+        daemon.toggle_gui()
+    else:
+        # Fallback: launch GUI directly
+        gui_path = Path.home() / ".local" / "bin" / "usb-manager"
+        if gui_path.exists():
+            subprocess.Popen([str(gui_path)])
+
+
+def cmd_status(_args: Any) -> None:
+    daemon = get_daemon_iface()
+    if daemon:
+        status_raw = daemon.status()
+        status = json.loads(status_raw)
+        print(json.dumps(status, indent=2, ensure_ascii=False))
+    else:
+        print(json.dumps({"daemon": "not running"}, indent=2))
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="USB Manager — command-line USB drive management",
+    )
+    sub = parser.add_subparsers(dest="command")
+
+    # list
+    sub.add_parser("list", help="List USB devices (JSON)")
+
+    # mount
+    mount_p = sub.add_parser("mount", help="Mount device")
+    mount_p.add_argument("device", help="Device name (e.g. /dev/sdb1)")
+
+    # unmount
+    unmount_p = sub.add_parser("unmount", help="Unmount device")
+    unmount_p.add_argument("device", help="Device name")
+
+    # eject
+    eject_p = sub.add_parser("eject", help="Eject device")
+    eject_p.add_argument("device", help="Device name")
+
+    # open
+    open_p = sub.add_parser("open", help="Open device in ranger")
+    open_p.add_argument("device", help="Device name")
+
+    # toggle
+    sub.add_parser("toggle", help="Show/hide USB Manager GUI")
+
+    # status
+    sub.add_parser("status", help="Daemon status")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    commands = {
+        "list": cmd_list,
+        "mount": cmd_mount,
+        "unmount": cmd_unmount,
+        "eject": cmd_eject,
+        "open": cmd_open,
+        "toggle": cmd_toggle,
+        "status": cmd_status,
+    }
+
+    commands[args.command](args)
+
+
+if __name__ == "__main__":
+    main()

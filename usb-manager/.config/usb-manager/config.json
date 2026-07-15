@@ -1,0 +1,7 @@
+{
+  "$schema": "",
+  "theme": "nord",
+  "font": "JetBrains Mono 10",
+  "notifications": true,
+  "auto_open": true
+}

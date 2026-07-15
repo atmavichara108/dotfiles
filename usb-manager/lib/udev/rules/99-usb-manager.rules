@@ -1,0 +1,1 @@
+ACTION=="add", SUBSYSTEM=="block", SUBSYSTEMS=="usb", TAG+="systemd", ENV{SYSTEMD_USER_SERVICE}="usb-daemon.service"

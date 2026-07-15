@@ -1,0 +1,583 @@
+#!/usr/bin/env python3
+"""USB Manager — GUI application for managing USB drives.
+
+Provides a GTK3 window with device list, file browser, and tray icon.
+Uses udisks2 DBus API for mount/unmount/eject operations.
+"""
+
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+from pathlib import Path
+from typing import Optional
+
+import dbus
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
+gi.require_version("Gio", "2.0")
+gi.require_version("GLib", "2.0")
+gi.require_version("AyatanaAppIndicator3", "0.1")
+from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, AyatanaAppIndicator3 as AppIndicator
+
+CONFIG_DIR = Path.home() / ".config" / "usb-manager"
+CONFIG_FILE = CONFIG_DIR / "config.json"
+CSS_FILE = CONFIG_DIR / "style.css"
+
+NORTH_STAR = "#81A1C1"
+BG_DARK = "#2E3440"
+BG_WIDGET = "#3B4252"
+BG_HOVER = "#434C5E"
+FG_PRIMARY = "#D8DEE9"
+FG_SECONDARY = "#81A1C1"
+
+DEFAULT_CONFIG = {
+    "theme": "nord",
+    "font": "JetBrains Mono 10",
+    "notifications": True,
+    "auto_open": True,
+}
+
+log = logging.getLogger("usb-manager")
+
+
+def clean_mount_point(mp) -> str:
+    """Clean mount point string from null bytes and whitespace."""
+    if isinstance(mp, bytes):
+        mp = mp.decode('utf-8', errors='replace')
+    return str(mp).rstrip('\x00').strip()
+
+
+def load_config() -> dict:
+    config = dict(DEFAULT_CONFIG)
+    if CONFIG_FILE.exists():
+        try:
+            with open(CONFIG_FILE) as f:
+                config.update(json.load(f))
+        except (json.JSONDecodeError, OSError) as e:
+            log.warning("Failed to load config: %s", e)
+    return config
+
+
+def send_notification(title: str, body: str, icon: str = "usb") -> None:
+    try:
+        bus = dbus.SessionBus()
+        notify = bus.get_object(
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+        )
+        notify_interface = dbus.Interface(notify, "org.freedesktop.Notifications")
+        notify_interface.Notify(
+            "usb-manager", 0, icon, title, body, [], {}, -1,
+        )
+    except dbus.DBusException as e:
+        log.warning("Notification failed: %s", e)
+
+
+def get_udisks_object() -> dbus.Interface:
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", "/org/freedesktop/UDisks2")
+    return dbus.Interface(obj, "org.freedesktop.DBus.ObjectManager")
+
+
+def get_block_devices() -> list[dict]:
+    manager = get_udisks_object()
+    objects = manager.GetManagedObjects()
+
+    devices = []
+    for path, interfaces in objects.items():
+        if "org.freedesktop.UDisks2.Block" not in interfaces:
+            continue
+        block = interfaces["org.freedesktop.UDisks2.Block"]
+        drive_path = block.get("Drive", "")
+
+        if not drive_path:
+            continue
+        if "org.freedesktop.UDisks2.Partition" not in interfaces:
+            continue
+        partition = interfaces["org.freedesktop.UDisks2.Partition"]
+
+        try:
+            bus = dbus.SystemBus()
+            drive_obj = bus.get_object("org.freedesktop.UDisks2", drive_path)
+            drive_iface = dbus.Interface(drive_obj, "org.freedesktop.DBus.Properties")
+            props = drive_iface.GetAll("org.freedesktop.UDisks2.Drive")
+            conn_bus = props.get("ConnectionBus", "")
+            if conn_bus != "usb":
+                continue
+            drive_info = {
+                "model": props.get("Model", ""),
+                "vendor": props.get("Vendor", ""),
+            }
+        except dbus.DBusException:
+            continue
+
+        size = block.get("Size", 0)
+        device = block.get("Device", dbus.ByteArray([]))
+        dev_name = bytes(device).decode("utf-8", errors="replace") if device else ""
+
+        label_bytes = partition.get("Name", dbus.ByteArray([]))
+        label = bytes(label_bytes).decode("utf-8", errors="replace") if label_bytes else ""
+
+        fs_mount_points = []
+        fs_type = ""
+        if "org.freedesktop.UDisks2.Filesystem" in interfaces:
+            fs = interfaces["org.freedesktop.UDisks2.Filesystem"]
+            mount_points = fs.get("MountPoints", [])
+            for mp in mount_points:
+                fs_mount_points.append(clean_mount_point(mp))
+            fs_type = block.get("IdType", "")
+
+        devices.append({
+            "object_path": path,
+            "device": dev_name,
+            "label": label or drive_info["model"] or dev_name,
+            "size": size,
+            "model": drive_info["model"],
+            "vendor": drive_info["vendor"],
+            "mount_points": fs_mount_points,
+            "fs_type": fs_type,
+        })
+
+    return devices
+
+
+def mount_device(device_path: str) -> Optional[str]:
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", device_path)
+    fs_iface = dbus.Interface(obj, "org.freedesktop.UDisks2.Filesystem")
+
+    try:
+        mount_point = fs_iface.Mount({"auth.no_user_interaction": True})
+        if mount_point:
+            return clean_mount_point(mount_point)
+    except dbus.DBusException as e:
+        if "AlreadyMounted" in str(e):
+            props = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
+            mount_points = props.Get("org.freedesktop.UDisks2.Filesystem", "MountPoints")
+            if mount_points:
+                return clean_mount_point(mount_points[0])
+        log.error("Mount failed: %s", e)
+        send_notification("USB Manager — Ошибка", f"Не удалось смонтировать: {e}")
+    return None
+
+
+def unmount_device(device_path: str) -> bool:
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", device_path)
+    fs_iface = dbus.Interface(obj, "org.freedesktop.UDisks2.Filesystem")
+
+    try:
+        fs_iface.Unmount({"auth.no_user_interaction": True})
+        return True
+    except dbus.DBusException as e:
+        log.error("Unmount failed: %s", e)
+        send_notification("USB Manager — Ошибка", f"Не удалось размонтировать: {e}")
+    return False
+
+
+def eject_device(device_path: str) -> bool:
+    bus = dbus.SystemBus()
+    obj = bus.get_object("org.freedesktop.UDisks2", device_path)
+    props_iface = dbus.Interface(obj, "org.freedesktop.DBus.Properties")
+
+    try:
+        drive_path = props_iface.Get("org.freedesktop.UDisks2.Block", "Drive")
+        if drive_path:
+            drive_obj = bus.get_object("org.freedesktop.UDisks2", drive_path)
+            drive_iface = dbus.Interface(drive_obj, "org.freedesktop.UDisks2.Drive")
+            drive_iface.Eject({"auth.no_user_interaction": True})
+            return True
+    except dbus.DBusException as e:
+        log.error("Eject failed: %s", e)
+        send_notification("USB Manager — Ошибка", f"Не удалось извлечь: {e}")
+    return False
+
+
+def format_size(size_bytes: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} PB"
+
+
+class USBManagerWindow(Gtk.Window):
+    def __init__(self, config: dict) -> None:
+        super().__init__(title="USB Manager")
+        self.config = config
+        self.set_default_size(800, 500)
+        self.set_position(Gtk.WindowPosition.CENTER)
+
+        self._apply_css()
+        self._build_ui()
+        self._setup_indicator()
+
+        self.connect("delete-event", self._on_delete)
+        self.connect("key-press-event", self._on_key_press)
+
+        self.refresh_devices()
+
+    def _apply_css(self) -> None:
+        css_provider = Gtk.CssProvider()
+        css = f"""
+            window {{
+                background-color: {BG_DARK};
+                color: {FG_PRIMARY};
+                font-family: "JetBrains Mono", monospace;
+                font-size: 10pt;
+            }}
+            list, treeview {{
+                background-color: {BG_WIDGET};
+                color: {FG_PRIMARY};
+                border: none;
+            }}
+            list row:selected,
+            treeview:selected {{
+                background-color: {NORTH_STAR};
+                color: {BG_DARK};
+            }}
+            list row:hover {{
+                background-color: {BG_HOVER};
+            }}
+            button {{
+                background-color: {BG_WIDGET};
+                color: {FG_PRIMARY};
+                border: 1px solid {BG_HOVER};
+                padding: 5px 10px;
+            }}
+            button:hover {{
+                background-color: {NORTH_STAR};
+                color: {BG_DARK};
+            }}
+            label {{
+                color: {FG_PRIMARY};
+            }}
+            scrolledwindow {{
+                border: none;
+            }}
+        """
+        css_provider.load_from_data(css.encode())
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+    def _build_ui(self) -> None:
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+
+        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        vbox.pack_start(paned, expand=True, fill=True, padding=0)
+
+        # Left panel — device list
+        left_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        left_box.set_margin_start(6)
+        left_box.set_margin_end(3)
+        left_box.set_margin_top(6)
+        left_box.set_margin_bottom(6)
+
+        left_label = Gtk.Label(label="USB Devices")
+        left_label.get_style_context().add_class("bold")
+        left_box.pack_start(left_label, expand=False, fill=False, padding=0)
+
+        self.device_list = Gtk.ListBox()
+        self.device_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.device_list.connect("row-selected", self._on_device_selected)
+        scroll_left = Gtk.ScrolledWindow()
+        scroll_left.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll_left.add(self.device_list)
+        left_box.pack_start(scroll_left, expand=True, fill=True, padding=0)
+
+        paned.add1(left_box)
+
+        # Right panel — file browser + actions
+        right_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        right_box.set_margin_start(3)
+        right_box.set_margin_end(6)
+        right_box.set_margin_top(6)
+        right_box.set_margin_bottom(6)
+
+        # File browser
+        self.file_store = Gtk.TreeStore(str, str)
+        self.file_view = Gtk.TreeView(model=self.file_store)
+        renderer = Gtk.CellRendererText()
+        column = Gtk.TreeViewColumn("Name", renderer, text=0)
+        self.file_view.append_column(column)
+        self.file_view.set_headers_visible(False)
+        self.file_view.connect("row-expanded", self._on_dir_expanded)
+
+        scroll_right = Gtk.ScrolledWindow()
+        scroll_right.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll_right.add(self.file_view)
+        right_box.pack_start(scroll_right, expand=True, fill=True, padding=0)
+
+        # Status bar
+        self.status_label = Gtk.Label(label="No device selected")
+        self.status_label.set_xalign(0)
+        self.status_label.set_margin_top(4)
+        right_box.pack_start(self.status_label, expand=False, fill=False, padding=0)
+
+        # Button bar
+        button_box = Gtk.Box(spacing=6)
+        button_box.set_margin_top(6)
+
+        self.btn_mount = Gtk.Button(label="Mount")
+        self.btn_mount.connect("clicked", self._on_mount)
+        button_box.pack_start(self.btn_mount, expand=False, fill=False, padding=0)
+
+        self.btn_unmount = Gtk.Button(label="Unmount")
+        self.btn_unmount.connect("clicked", self._on_unmount)
+        button_box.pack_start(self.btn_unmount, expand=False, fill=False, padding=0)
+
+        self.btn_eject = Gtk.Button(label="Eject")
+        self.btn_eject.connect("clicked", self._on_eject)
+        button_box.pack_start(self.btn_eject, expand=False, fill=False, padding=0)
+
+        self.btn_open = Gtk.Button(label="Open in Ranger")
+        self.btn_open.connect("clicked", self._on_open)
+        button_box.pack_start(self.btn_open, expand=False, fill=False, padding=0)
+
+        right_box.pack_start(button_box, expand=False, fill=False, padding=0)
+
+        paned.add2(right_box)
+        paned.set_position(250)
+
+        self.add(vbox)
+
+    def _setup_indicator(self) -> None:
+        self.indicator = AppIndicator.Indicator.new(
+            "usb-manager",
+            "media-removable",
+            AppIndicator.IndicatorCategory.HARDWARE,
+        )
+        self.indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+
+        menu = Gtk.Menu()
+        show_item = Gtk.MenuItem(label="Show/Hide")
+        show_item.connect("activate", lambda _: self._toggle_visible())
+        menu.append(show_item)
+
+        refresh_item = Gtk.MenuItem(label="Refresh")
+        refresh_item.connect("activate", lambda _: self.refresh_devices())
+        menu.append(refresh_item)
+
+        menu.append(Gtk.SeparatorMenuItem())
+
+        quit_item = Gtk.MenuItem(label="Quit")
+        quit_item.connect("activate", lambda _: self._quit())
+        menu.append(quit_item)
+
+        menu.show_all()
+        self.indicator.set_menu(menu)
+
+    def _toggle_visible(self) -> None:
+        if self.get_visible():
+            self.hide()
+        else:
+            self.show()
+            self.present()
+
+    def _on_delete(self, _widget, _event) -> bool:
+        self.hide()
+        return True
+
+    def _on_key_press(self, _widget, event) -> None:
+        if event.keyval == Gdk.KEY_Escape:
+            self.hide()
+
+    def _quit(self) -> None:
+        Gtk.main_quit()
+
+    def refresh_devices(self) -> None:
+        old_selected = self._get_selected_device()
+        old_path = old_selected["object_path"] if old_selected else None
+
+        for child in self.device_list.get_children():
+            self.device_list.remove(child)
+
+        self.devices = get_block_devices()
+        new_selected_row = None
+
+        for dev in self.devices:
+            label_text = f"{dev['label']} ({format_size(dev['size'])})"
+            row = Gtk.ListBoxRow()
+            hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            hbox.set_margin_start(6)
+            hbox.set_margin_end(6)
+            hbox.set_margin_top(4)
+            hbox.set_margin_bottom(4)
+
+            icon = Gtk.Label(label="💾")
+            hbox.pack_start(icon, expand=False, fill=False, padding=0)
+
+            info = Gtk.Label(label=label_text, xalign=0)
+            hbox.pack_start(info, expand=True, fill=True, padding=0)
+
+            row.add(hbox)
+            row.device_data = dev
+            self.device_list.add(row)
+
+            if old_path and dev["object_path"] == old_path:
+                new_selected_row = row
+
+        self.device_list.show_all()
+
+        if new_selected_row:
+            self.device_list.select_row(new_selected_row)
+
+        self._update_button_state()
+
+    def _update_button_state(self) -> None:
+        selected = self._get_selected_device()
+        if selected:
+            is_mounted = bool(selected["mount_points"])
+            self.btn_mount.set_sensitive(not is_mounted)
+            self.btn_unmount.set_sensitive(is_mounted)
+            self.btn_eject.set_sensitive(True)
+            self.btn_open.set_sensitive(is_mounted)
+        else:
+            for btn in (self.btn_mount, self.btn_unmount, self.btn_eject, self.btn_open):
+                btn.set_sensitive(False)
+
+    def _get_selected_device(self) -> Optional[dict]:
+        row = self.device_list.get_selected_row()
+        if row and hasattr(row, "device_data"):
+            return row.device_data
+        return None
+
+    def _on_device_selected(self, _listbox, row: Optional[Gtk.ListBoxRow]) -> None:
+        self._update_button_state()
+        if not row or not hasattr(row, "device_data"):
+            self.file_store.clear()
+            self.status_label.set_text("No device selected")
+            return
+
+        dev = row.device_data
+        self._populate_files(dev)
+
+        if dev["mount_points"]:
+            mp = clean_mount_point(dev["mount_points"][0])
+            self.status_label.set_text(
+                f"Size: {format_size(dev['size'])}  "
+                f"Mount: {mp}  FS: {dev['fs_type']}"
+            )
+        else:
+            self.status_label.set_text(
+                f"Size: {format_size(dev['size'])}  FS: {dev['fs_type']}  (not mounted)"
+            )
+
+    def _populate_files(self, dev: dict) -> None:
+        self.file_store.clear()
+        if not dev["mount_points"]:
+            self.file_store.append(None, ["(not mounted — click Mount first)", ""])
+            return
+
+        mount_point = clean_mount_point(dev["mount_points"][0])
+        try:
+            self._populate_dir(self.file_store, None, Path(mount_point))
+        except OSError as e:
+            send_notification("USB Manager", f"Ошибка чтения {mount_point}: {e}")
+
+    def _populate_dir(self, store: Gtk.TreeStore, parent: Optional[Gtk.TreeIter], path: Path) -> None:
+        try:
+            items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+        except PermissionError:
+            return
+
+        for item in items:
+            if item.name.startswith("."):
+                continue
+            icon = "📁" if item.is_dir() else "📄"
+            child = store.append(parent, [f"{icon} {item.name}", str(item)])
+            if item.is_dir():
+                # Add a dummy child to show expand arrow
+                store.append(child, ["", ""])
+
+    def _on_dir_expanded(self, treeview: Gtk.TreeView, treeiter: Gtk.TreeIter, treepath: Gtk.TreePath) -> None:
+        store = treeview.get_model()
+        child = store.iter_children(treeiter)
+        if child is not None and store.get_value(child, 0) == "":
+            store.remove(child)
+            item_path = store.get_value(treeiter, 1)
+            if item_path:
+                self._populate_dir(store, treeiter, Path(item_path))
+
+    def _on_mount(self, _button) -> None:
+        dev = self._get_selected_device()
+        if not dev:
+            return
+
+        if dev["mount_points"]:
+            mount_point = clean_mount_point(dev["mount_points"][0])
+            log.info("Already mounted at: %s", mount_point)
+            send_notification("USB Manager", f"Already mounted: {mount_point}")
+            self._populate_files(dev)
+            return
+
+        mount_point = mount_device(dev["object_path"])
+        if mount_point:
+            dev["mount_points"] = [mount_point]
+            self._populate_files(dev)
+            self._update_button_state()
+            send_notification("USB Manager", f"Mounted: {mount_point}")
+
+    def _on_unmount(self, _button) -> None:
+        dev = self._get_selected_device()
+        if not dev:
+            return
+        if unmount_device(dev["object_path"]):
+            send_notification("USB Manager", f"Размонтирован: {dev['device']}")
+            self.refresh_devices()
+
+    def _on_eject(self, _button) -> None:
+        dev = self._get_selected_device()
+        if not dev:
+            return
+
+        if dev["mount_points"]:
+            log.info("Unmounting before eject...")
+            if unmount_device(dev["object_path"]):
+                dev["mount_points"] = []
+
+        if eject_device(dev["object_path"]):
+            dev["mount_points"] = []
+            send_notification("USB Manager", f"Ejected: {dev['device']}")
+            self.refresh_devices()
+
+    def _on_open(self, _button) -> None:
+        dev = self._get_selected_device()
+        if not dev or not dev["mount_points"]:
+            return
+        mount_point = clean_mount_point(dev["mount_points"][0])
+        try:
+            subprocess.Popen(["ranger", mount_point])
+        except FileNotFoundError:
+            try:
+                subprocess.Popen(["xdg-open", mount_point])
+            except FileNotFoundError:
+                send_notification("USB Manager", "ranger не найден, установите ranger")
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+
+    config = load_config()
+
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+    win = USBManagerWindow(config)
+    win.show_all()
+    Gtk.main()
+
+
+if __name__ == "__main__":
+    main()

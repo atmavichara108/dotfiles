@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""USB Manager Daemon — monitors USB hotplug events via pyudev.
+
+Listens for udev 'add'/'remove' events on block partitions,
+sends dunst notifications, and communicates with the GUI over DBus.
+"""
+
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+import dbus
+import dbus.service
+import dbus.mainloop.glib
+from gi.repository import GLib
+
+try:
+    import pyudev
+except ImportError:
+    pyudev = None  # type: ignore[assignment]
+
+BUS_NAME = "org.usbmanager.Daemon"
+OBJECT_PATH = "/org/usbmanager/Daemon"
+
+log = logging.getLogger("usb-daemon")
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+
+
+def send_notification(title: str, body: str, icon: str = "usb") -> None:
+    try:
+        subprocess.run(
+            ["notify-send", "-i", icon, title, body],
+            timeout=5,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+        log.warning("notify-send failed: %s", e)
+
+
+def get_device_info(device: Any) -> dict:
+    info = {
+        "device": device.get("DEVNAME", ""),
+        "model": device.get("ID_MODEL", ""),
+        "vendor": device.get("ID_VENDOR", ""),
+        "serial": device.get("ID_SERIAL_SHORT", ""),
+        "fs_type": device.get("ID_FS_TYPE", ""),
+        "size": device.get("ID_FS_SIZE", ""),
+    }
+    return info
+
+
+def is_usb_device(device: Any) -> bool:
+    if device.get("ID_BUS") == "usb":
+        return True
+    if device.get("ID_USB_DRIVER") is not None:
+        return True
+    parent = device.parent
+    while parent is not None:
+        if parent.get("ID_BUS") == "usb":
+            return True
+        if parent.subsystem == "usb":
+            return True
+        parent = parent.parent
+    return False
+
+
+class USBManagerDaemon(dbus.service.Object):
+    def __init__(self, bus: dbus.Bus, object_path: str) -> None:
+        dbus.service.Object.__init__(self, bus, object_path)
+        self.gui_pid: int | None = None
+        self._setup_udev_monitor()
+
+    def _setup_udev_monitor(self) -> None:
+        if pyudev is None:
+            log.warning("pyudev not installed — hotplug monitoring disabled")
+            return
+
+        context = pyudev.Context()
+        monitor = pyudev.Monitor.from_netlink(context)
+        monitor.filter_by(subsystem="block")
+        monitor.enable_receiving()
+        log.info("udev monitor started (subsystem=block)")
+
+        self.observer = pyudev.MonitorObserver(
+            monitor, self._on_udev_event,
+        )
+        self.observer.start()
+        log.info("udev observer started")
+
+    def _on_udev_event(self, action: str, device: Any) -> None:
+        if not device:
+            return
+
+        devnode = device.device_node or device.get("DEVNAME", "unknown")
+        log.debug("Event: action=%s device=%s", action, devnode)
+
+        if action not in ("add", "remove"):
+            return
+
+        if not is_usb_device(device):
+            log.debug("Skipped non-USB: %s", devnode)
+            return
+
+        info = get_device_info(device)
+        log.info("USB %s: %s (%s)", action, devnode, info.get("model", "unknown"))
+
+        if action == "add":
+            label = info["model"] or info["device"]
+            send_notification(
+                "USB Manager — Подключено",
+                f"{info['vendor']} {label} ({info['fs_type']})",
+            )
+            self._launch_gui()
+        elif action == "remove":
+            label = info["model"] or info["device"]
+            send_notification(
+                "USB Manager — Отключено",
+                label,
+            )
+
+    def _launch_gui(self) -> None:
+        if self.gui_pid:
+            try:
+                os.kill(self.gui_pid, 0)
+                return
+            except OSError:
+                pass
+
+        gui_path = Path.home() / ".local" / "bin" / "usb-manager"
+        if gui_path.exists():
+            proc = subprocess.Popen(
+                [str(gui_path)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            self.gui_pid = proc.pid
+            log.info("GUI launched (pid=%d)", proc.pid)
+
+    @dbus.service.method(BUS_NAME, in_signature="", out_signature="b")
+    def is_running(self) -> bool:
+        return True
+
+    @dbus.service.method(BUS_NAME, in_signature="", out_signature="")
+    def toggle_gui(self) -> None:
+        self._launch_gui()
+
+    @dbus.service.method(BUS_NAME, in_signature="", out_signature="s")
+    def status(self) -> str:
+        udev_status = "active" if pyudev else "disabled (pyudev not installed)"
+        return json.dumps({
+            "daemon": "running",
+            "udev_monitor": udev_status,
+            "gui_pid": self.gui_pid,
+        })
+
+
+def main() -> None:
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus()
+
+    try:
+        bus_name = dbus.service.BusName(BUS_NAME, bus)
+    except dbus.NameExistsException:
+        log.error("Another daemon instance is already running")
+        sys.exit(1)
+
+    daemon = USBManagerDaemon(bus, OBJECT_PATH)  # noqa: F841
+    loop = GLib.MainLoop()
+
+    signal.signal(signal.SIGINT, lambda *_: loop.quit())
+    signal.signal(signal.SIGTERM, lambda *_: loop.quit())
+
+    log.info("USB Manager Daemon started")
+    loop.run()
+    log.info("USB Manager Daemon stopped")
+
+
+if __name__ == "__main__":
+    main()
