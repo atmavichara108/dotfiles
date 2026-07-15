@@ -182,7 +182,11 @@
           "git diff*": "allow",
           "stow -n*": "allow",
           "dunstify*": "allow",
-          "notify-send*": "allow"
+          "notify-send*": "allow",
+          "python3 -m py_compile*": "allow",
+          "python -m py_compile*": "allow",
+          "systemctl --user status*": "allow",
+          "journalctl --user*": "allow"
         }
       }
     },
@@ -210,6 +214,38 @@
           "touch*": "allow",
           "echo*": "allow",
           "which*": "allow"
+        }
+      }
+    },
+    "verifier": {
+      "mode": "subagent",
+      "model": "opencode/deepseek-v4-flash-free",
+      "temperature": 0.1,
+      "steps": 15,
+      "description": "Верификатор: проверяет синтаксис, статус сервисов, логи, stow dry-run",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "ls*": "allow",
+          "cat*": "allow",
+          "grep*": "allow",
+          "find*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "python3 -m py_compile*": "allow",
+          "python -m py_compile*": "allow",
+          "systemctl --user status*": "allow",
+          "systemctl --user restart*": "allow",
+          "systemctl --user start*": "allow",
+          "systemctl --user stop*": "allow",
+          "journalctl --user*": "allow",
+          "stow -n*": "allow",
+          "stow --adopt -n*": "allow",
+          "chmod +x*": "allow",
+          "which*": "allow",
+          "ps*": "allow",
+          "echo*": "allow"
         }
       }
     }
