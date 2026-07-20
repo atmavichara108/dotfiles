@@ -14,6 +14,7 @@
       "git status*": "allow",
       "git diff*": "allow",
       "git log*": "allow",
+      "git push*": "allow",
       "pacman -Q*": "allow",
       "pacman -Qi*": "allow",
       "pacman -Qm*": "allow",
