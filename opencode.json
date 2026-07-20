@@ -51,7 +51,7 @@
   "agent": {
     "sysop": {
       "mode": "primary",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/deepseek-v4-flash",
       "temperature": 0.1,
       "steps": 20,
       "permission": {
@@ -87,7 +87,7 @@
     },
     "planner": {
       "mode": "primary",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode/claude-haiku-4-5",
       "temperature": 0.2,
       "steps": 20,
       "permission": {
@@ -98,7 +98,7 @@
     },
     "builder": {
       "mode": "primary",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/qwen3.7-plus",
       "temperature": 0.1,
       "steps": 30,
       "permission": {
@@ -109,7 +109,7 @@
     },
     "reviewer": {
       "mode": "subagent",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/deepseek-v4-flash",
       "temperature": 0.1,
       "steps": 15,
       "permission": {
@@ -127,7 +127,7 @@
     },
     "qtile-dev": {
       "mode": "subagent",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/qwen3.7-plus",
       "temperature": 0.1,
       "steps": 20,
       "permission": {
@@ -147,7 +147,7 @@
     },
     "bash-dev": {
       "mode": "subagent",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/qwen3.7-plus",
       "temperature": 0.1,
       "steps": 20,
       "permission": {
@@ -168,7 +168,7 @@
     },
     "util-dev": {
       "mode": "subagent",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/qwen3.7-plus",
       "temperature": 0.1,
       "steps": 20,
       "permission": {
@@ -192,7 +192,7 @@
     },
     "stow-ops": {
       "mode": "subagent",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/qwen3.7-plus",
       "temperature": 0.1,
       "steps": 25,
       "permission": {
@@ -221,7 +221,7 @@
     },
     "verifier": {
       "mode": "subagent",
-      "model": "opencode/deepseek-v4-flash-free",
+      "model": "opencode-go/deepseek-v4-flash",
       "temperature": 0.1,
       "steps": 15,
       "description": "Верификатор: проверяет синтаксис, статус сервисов, логи, stow dry-run",

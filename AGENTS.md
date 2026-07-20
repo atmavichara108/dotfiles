@@ -1,106 +1,63 @@
 ---
 type: Agent Instructions
-title: dotfiles — правила и архитектура
-description: Конвенции, пайплайны, агенты, UX-профиль dotfiles.
-timestamp: 2026-06-30
+description: Конвенции, пайплайны и запреты репозитория dotfiles (Manjaro, GNU Stow).
 ---
 
 # dotfiles — Agent Instructions
 
-> Manjaro dotfiles, управляемые через GNU Stow. OpenCode здесь = операционная система для управления конфигами, не разработка кода.
+Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode здесь — инструмент управления конфигами, не разработка приложения.
 
-## UX-профиль
+**Общение:** отвечай и веди рассуждения на русском — весь репозиторий, документация и агентские конфиги ведутся на русском.
 
-Ты работаешь для **Макса** — вайбкодера, системного инженера.
-Полный профиль: `.opencode/memory/user-profile.md`
+## Модель Stow (самое важное)
 
-**Кратко:** минимализм, автоматизация, эстетика, производительность, модульность.
-Русский язык, терминал-нативный стек, тёмная тема, консистентность цветов.
-
-## Архитектура агентов
-
-### Primary агенты
-| Агент | Роль | Модель |
-|-------|------|--------|
-| **sysop** | Инспектор системы (read-only аудит) | deepseek-v4-flash-free |
-| **planner** | Архитектор (ADR, планы, дизайн) | deepseek-v4-flash-free |
-| **builder** | Строитель (конфиги, скрипты, модули) | deepseek-v4-flash-free |
-
-### Subagent
-| Агент | Роль | Модель |
-|-------|------|--------|
-| **reviewer** | Ревьюер (PASS/FAIL, безопасность, спека) | deepseek-v4-flash-free |
-| **verifier** | Верификатор применимости (синтаксис, stow dry-run, готовность к apply) | deepseek-v4-flash-free |
-| **stow-ops** | Специалист по файловым операциям (stow, реструктуризация, миграция, дрейф) | deepseek-v4-flash-free |
-| **qtile-dev** | Qtile-специалист (WM, виджеты, Python) | deepseek-v4-flash-free |
-| **bash-dev** | Bash-специалист (скрипты, автоматизация) | deepseek-v4-flash-free |
-| **util-dev** | Утилиты (макросы, нотификации, rofi) | deepseek-v4-flash-free |
-
-## Пайплайны (команды)
-
-| Команда | Пайплайн | Назначение |
-|---------|----------|-----------|
-| `/sysaudit` | sysop | Аудит системы: пакеты, конфиги, дрейф, сервисы |
-| `/script` | planner → bash-dev → reviewer | Создание/изменение bash-скриптов |
-| `/qtile` | planner → qtile-dev → reviewer | Разработка qtile: конфиги, виджеты, хуки |
-| `/util` | planner → util-dev → reviewer | Создание утилит: btop-темы, wal-схемы |
-| `/prompt` | builder → docs/cheatsheets/ | Создание чит-шитов и подсказок |
-| `/notify` | util-dev → reviewer | Настройка уведомлений (dunst) |
-| `/macro` | util-dev → reviewer | Макросы: sxhkd, rofi-меню, горячие клавиши |
-| `/plugin` | builder → reviewer | Плагины для nvim, rofi, btop и др. |
-| `/stow` | builder → stow-ops → verifier | Массовые stow-операции: создание пакетов, исправление дрейфа, реструктуризация |
-| `/loop` | builder → verifier | Автономная итерация build → verify → fix (closed-loop) |
-| `/flush` | planner | Pre-compaction flush контекста в memory/decisions.md |
-
-## Конвенции
-
-- **Менеджер:** GNU Stow. Каждый конфиг — отдельная директория.
-- **Структура:** `директория/.файл` → `stow директория` → симлинк в `$HOME`.
-- **Коммиты:** `feat(shell): ...`, `fix(nvim): ...`, `chore: ...`, `docs: ...`
-- **Никаких секретов:** ключи, токены, пароли — НЕ в репо.
+- Каждый конфиг — отдельная директория верхнего уровня (`zsh/`, `qtile/`, `nvim/`, …).
+- Внутри лежит путь относительно `$HOME`, напр. `qtile/.config/qtile/config.py`.
+- `stow <dir>` создаёт симлинки в `$HOME` → правка в пакете сразу «живая».
+- Деплой всех пакетов: `./stow.sh` (полный список ≈37 пакетов — внутри скрипта).
+- Переставить один пакет: `stow -R <pkg>`.
+- Добавить новый пакет: `./add-package.sh <name> <config-path>` (копирует, бэкапит оригинал, стоуит).
+- Перед стоуом проверяй конфликты: `stow -n <pkg>` (dry-run).
 
 ## Запрещённые действия
 
-- **НЕ** ставь/удаляй пакеты (`pacman -S`, `yay`, `paru`) — только предлагай команды.
-- **НЕ** правь `/etc` — только предлагай изменения.
-- **НЕ** меняй права (`chmod`, `chown`) — только предлагай.
-- **НЕ** перезапускай сервисы — только предлагай.
-- **НЕ** монтируй/размонтируй файловые системы.
+Вне scope и/или опасны — **только предлагай, не выполняй**:
+- установка/удаление пакетов (`pacman -S/R`, `yay`, `paru`);
+- правка `/etc` и системных сервисов (не перезапускай `systemctl` на уровне системы);
+- смена прав/владельца (`chmod`, `chown`);
+- монтирование ФС.
+- **Никаких секретов** (ключи, токены, пароли) в репо — анти-goal, вынесено из репо.
 
-## Архитектура (кратко)
+## Роли агентов и роутинг
 
-```
-dotfiles/
-├── opencode.json          ← конфиг OpenCode, все агенты
-├── AGENTS.md              ← этот файл
-├── docs/
-│   ├── decisions.md       ← ADR
-│   ├── user-profile.md    ← UX-профиль (краткий)
-│   └── cheatsheets/       ← шпаргалки
-├── .opencode/
-│   ├── agent/             ← primary агенты
-│   ├── subagent/          ← subagent
-│   ├── command/           ← пайплайны
-│   └── memory/            ← память (user-profile, decisions)
-├── zsh/ nvim/ tmux/ git/  ← пакеты Stow (23 штуки)
-├── stow.sh                ← массовый stow
-└── add-package.sh         ← новый пакет
-```
+Роутинг задаётся в `opencode.json` через `agent.<name>.model` — модель каждого агента определяет, на чём он считает. Меняя модель, меняешь назначение агента.
 
-## Память
+| Агент | Роль | Модель (ярус) |
+|-------|------|---------------|
+| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | Haiku · Reasoning |
+| **builder** | реализует конфиги/скрипты; вызывает `reviewer` | Qwen · Coding |
+| **qtile-dev** | Qtile (WM, виджеты, Python) | Qwen · Coding |
+| **bash-dev** | bash-скрипты, автоматизация | Qwen · Coding |
+| **util-dev** | утилиты (макросы, нотификации, rofi) | Qwen · Coding |
+| **stow-ops** | stow-операции, реструктуризация, миграция, дрейф | Qwen · Coding |
+| **sysop** | read-only аудит системы | DeepSeek · Light |
+| **reviewer** | ревьюер (PASS/FAIL, безопасность, спека) | DeepSeek · Light |
+| **verifier** | верификатор применимости (синтаксис, stow dry-run, готовность) | DeepSeek · Light |
 
-- `.opencode/memory/user-profile.md` — кто Макс, как работает, предпочтения
-- `.opencode/memory/decisions.md` — реестр ADR
-- `docs/cheatsheets/` — шпаргалки для пользователя
+Точные `model` ID — в `opencode.json` (`agent.<name>.model`), резолвятся из подписок `opencode-go` / `opencode-zen`. Обоснование — ADR-007.
 
-Все агенты читают user-profile.md перед работой.
+## Пайплайны (slash-команды)
 
-## Окружение
+`/sysaudit` · `/script` · `/qtile` · `/util` · `/notify` · `/macro` · `/plugin` · `/stow` · `/loop` · `/prompt` · `/flush`
 
-- **OS:** Manjaro (Arch-based)
-- **Shell:** zsh + powerlevel10k
-- **WM:** Qtile (X11)
-- **Terminal:** Alacritty
-- **Editor:** Neovim
-- **Launcher:** Rofi
-- **Notifications:** Dunst
+Большинство: `planner → <dev-agent> → reviewer`. Полные определения — в `.opencode/command/`.
+
+## Конвенции
+
+- Коммиты: `feat(<pkg>): ...`, `fix(<pkg>): ...`, `chore: ...`, `docs: ...` (scope = имя пакета).
+- Перед работой читай `.opencode/memory/user-profile.md` (кто такой Макс, стек, предпочтения).
+- ADR-реестр: `docs/decisions.md` и `.opencode/memory/decisions.md`.
+
+## Стек (кратко)
+
+Manjaro (X11) · Qtile · zsh + Oh My Zsh + powerlevel10k · Alacritty · Neovim (LazyVim) · tmux · Rofi · Dunst · Picom. Полностью — в `user-profile.md`.
