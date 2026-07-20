@@ -10,10 +10,10 @@ from layouts import (
 
 mod = "mod4"
 myTerm = "alacritty"
-_default_proxy = "socks5://127.0.0.1:9050"
+_default_proxy = "socks5h://127.0.0.1:10808"
 _proxy = os.environ.get("ALL_PROXY") or _default_proxy
 
-myBrowser = "google-chrome-stable"
+myBrowser = "sh $HOME/.local/bin/google-chrome-proxy"
 
 @lazy.layout.function
 def add_treetab_section(layout):
@@ -55,7 +55,7 @@ keys = [
 
     Key([mod, "shift"], "w", lazy.spawn(myBrowser), desc='Web browser'),
     Key([mod, "shift"], "n", lazy.spawn(f"notion-app --proxy-server={_proxy}"), desc="Launch Notion"),
-    Key([mod, "shift"], "g", lazy.spawn("gtk-launch genspark-tor"), desc="Genspark"),
+    Key([mod, "shift"], "g", lazy.spawn('chromium --app=https://genspark.ai --proxy-server="socks5://127.0.0.1:9050"'), desc="Genspark"),
 
     Key([mod, "shift"], "h",
         lazy.layout.shuffle_left(),
