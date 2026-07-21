@@ -1,7 +1,7 @@
 ---
 description: Qtile-специалист. Пишет/правит конфиги qtile, виджеты, хуки, keybindings, screen layouts. Python + qtile API.
 mode: subagent
-model: opencode/deepseek-v4-flash-free
+model: opencode-go/qwen3.7-plus
 temperature: 0.1
 steps: 20
 permission:

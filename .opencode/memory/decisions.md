@@ -185,3 +185,23 @@ timestamp: 2026-06-30
 - Все симлинки централизованы, дрейф устранён
 - scripts/.local/bin содержит только 10 легитимных скриптов
 - Пайплайн для будущих миграций: planner (аудит) → stow-ops (выполнение) → verifier (верификация)
+
+---
+
+### ADR-007: Researcher — read-only subagent для исследовательских задач
+**Дата:** 2026-07-21
+**Контекст:** Planner (read-only) нуждается в возможности запускать исследовательские задачи (grep, find, git log, webfetch, websearch) не нарушая свою роль. Раньше researcher.md лежал в `.opencode/agents/`, а должен быть в `.opencode/subagent/` — из-за этого `task(agent="researcher"...)` возвращал "Unknown agent type".
+**Решение:**
+- `researcher` — subagent с mode: subagent, edit: deny, read-only bash + webfetch + websearch
+- Определение: `opencode.json` → `agent.researcher`, инструкции: `.opencode/subagent/researcher.md`
+- Файл перемещён из `.opencode/agents/researcher.md` в `.opencode/subagent/researcher.md`
+- Planner: `"task": { "*": "allow" }` — может вызывать researcher (и любых других subagent)
+- Builder: добавлен `"researcher": "allow"` в task permissions для использования в пайплайнах
+- Frontmatter researcher.md приведён к единому стандарту (permission-блок как у других subagent)
+**Альтернативы:**
+- Дать planner прямые read-only bash права — отвергнуто: смешение ролей, planner проектирует а не исследует
+- Создать отдельного агента explore — отвергнуто: researcher покрывает все read-only сценарии
+**Последствия:**
+- Planner теперь может делегировать исследование researcher через `task(agent="researcher", prompt="...")`
+- Builder также может вызывать researcher в пайплайнах (например, `/research` команда)
+- Явная таблица кто может вызывать researcher в AGENTS.md

@@ -1,7 +1,7 @@
 ---
 description: Строитель dotfiles. Пишет конфиги, скрипты, qtile-модули, плагины. Работает по спекам от planner.
 mode: primary
-model: opencode/deepseek-v4-flash-free
+model: opencode-go/qwen3.7-plus
 temperature: 0.1
 steps: 30
 permission:
@@ -52,6 +52,7 @@ permission:
     "reviewer": allow
     "verifier": allow
     "stow-ops": allow
+    "researcher": allow
   todowrite: allow
 ---
 

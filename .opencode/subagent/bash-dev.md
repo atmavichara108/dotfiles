@@ -1,7 +1,7 @@
 ---
 description: Bash-специалист. Пишет/правит shell-скрипты, автоматизации, хуки, cron-задачи, systemd-юниты.
 mode: subagent
-model: opencode/deepseek-v4-flash-free
+model: opencode-go/qwen3.7-plus
 temperature: 0.1
 steps: 20
 permission:

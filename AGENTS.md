@@ -34,17 +34,61 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 
 | Агент | Роль | Модель (ярус) |
 |-------|------|---------------|
-| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | Haiku · Reasoning |
-| **builder** | реализует конфиги/скрипты; вызывает `reviewer` | Qwen · Coding |
-| **qtile-dev** | Qtile (WM, виджеты, Python) | Qwen · Coding |
-| **bash-dev** | bash-скрипты, автоматизация | Qwen · Coding |
-| **util-dev** | утилиты (макросы, нотификации, rofi) | Qwen · Coding |
-| **stow-ops** | stow-операции, реструктуризация, миграция, дрейф | Qwen · Coding |
-| **sysop** | read-only аудит системы | DeepSeek · Light |
-| **reviewer** | ревьюер (PASS/FAIL, безопасность, спека) | DeepSeek · Light |
-| **verifier** | верификатор применимости (синтаксис, stow dry-run, готовность) | DeepSeek · Light |
+| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | `opencode-go/grok-4.5` · Strategic |
+| **think** | сверх-сложные рассуждения; делегируется planner через `task` | `opencode/grok-build-0.1` · Agentic |
+| **builder** | реализует конфиги/скрипты; вызывает `reviewer` | `opencode-go/qwen3.7-plus` · Coding |
+| **qtile-dev** | Qtile (WM, виджеты, Python) | `opencode-go/qwen3.7-plus` · Coding |
+| **bash-dev** | bash-скрипты, автоматизация | `opencode-go/qwen3.7-plus` · Coding |
+| **util-dev** | утилиты (макросы, нотификации, rofi) | `opencode-go/qwen3.7-plus` · Coding |
+| **stow-ops** | stow-операции, реструктуризация, миграция, дрейф | `opencode-go/qwen3.7-plus` · Coding |
+| **sysop** | read-only аудит системы | `opencode/deepseek-v4-flash-free` · Free |
+| **reviewer** | ревьюер (PASS/FAIL, безопасность, спека) | `opencode/deepseek-v4-flash-free` · Free |
+| **verifier** | верификатор применимости (синтаксис, stow dry-run, готовность) | `opencode/deepseek-v4-flash-free` · Free |
+| **researcher** | исследование кода, файлов, git-истории, документации; read-only, запускается planner через `task` | `opencode-go/deepseek-v4-flash` · Go |
 
 Точные `model` ID — в `opencode.json` (`agent.<name>.model`), резолвятся из подписок `opencode-go` / `opencode-zen`. Обоснование — ADR-007.
+
+### Вызов researcher из planner
+
+Planner (роль: проектирует, НЕ пишет код) может запускать **researcher** на лету для исследования без нарушения своей роли.
+
+**Важно:** researcher — subagent, его определение лежит в `.opencode/subagent/researcher.md`. Для вызова через `task()` необходимо:
+1. Агент `researcher` определён в `opencode.json` (`agent.researcher`)
+2. Файл `.opencode/subagent/researcher.md` существует с корректным frontmatter (mode: subagent, permission-блок)
+3. Вызывающий агент (planner) имеет `"task": { "*": "allow" }` или `"task": { "researcher": "allow" }`
+
+```text
+task(
+  agent="researcher",
+  prompt="Исследуй файлы в qtile/.config/qtile/ и найди все виджеты, 
+          которые используют Bar. Верни список файлов и строк."
+)
+```
+
+Researcher имеет:
+- **bash**: read-only (ls, cat, grep, find, git log/diff/show/blame, file, stat, head, tail и т.д.)
+- **webfetch**, **websearch** — для поиска документации, API, примеров
+- **edit**: deny — никогда не редактирует файлы
+- **steps: 30** — достаточно для глубокого исследования
+
+Использовать для:
+- Анализа существующих конфигов перед рефакторингом
+- Поиска по коду (grep/find)
+- Просмотра git-истории и blame
+- Поиска документации в интернете
+- Быстрой проверки, что уже существует в проекте
+
+### Кто может вызывать researcher
+
+| Агент | Может вызывать? | Причина |
+|-------|----------------|---------|
+| **planner** | ✅ `"*": "allow"` | Полный доступ ко всем subagent |
+| **builder** | ✅ `"researcher": "allow"` | Добавлено для пайплайнов dev → researcher |
+| **qtile-dev** | ❌ | Нет task-permissions |
+| **bash-dev** | ❌ | Нет task-permissions |
+| **stow-ops** | ❌ | Нет task-permissions |
+| **reviewer** | ❌ | Нет task-permissions |
+| **verifier** | ❌ | Нет task-permissions |
 
 ## Пайплайны (slash-команды)
 

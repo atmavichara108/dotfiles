@@ -258,3 +258,13 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 
 # direnv
 eval "$(direnv hook zsh)"
+
+# === Proxy: Happ primary (SOCKS5h 10808 / HTTP 10809), Tor 9050 fallback ===
+export ALL_PROXY="socks5h://127.0.0.1:10808"
+export all_proxy="$ALL_PROXY"
+export http_proxy="http://127.0.0.1:10809"
+export https_proxy="http://127.0.0.1:10809"
+export HTTP_PROXY="$http_proxy"
+export HTTPS_PROXY="$https_proxy"
+export NO_PROXY="localhost,127.0.0.1,::1,.local"
+export TOR_PROXY="socks5://127.0.0.1:9050"

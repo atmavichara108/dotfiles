@@ -52,7 +52,7 @@
   "agent": {
     "sysop": {
       "mode": "primary",
-      "model": "opencode-go/deepseek-v4-flash",
+      "model": "opencode/deepseek-v4-flash-free",
       "temperature": 0.1,
       "steps": 20,
       "permission": {
@@ -88,7 +88,7 @@
     },
     "planner": {
       "mode": "primary",
-      "model": "opencode/claude-haiku-4-5",
+      "model": "opencode-go/grok-4.5",
       "temperature": 0.2,
       "steps": 20,
       "permission": {
@@ -97,20 +97,25 @@
         "task": { "*": "allow" }
       }
     },
-    "builder": {
-      "mode": "primary",
-      "model": "opencode-go/qwen3.7-plus",
-      "temperature": 0.1,
-      "steps": 30,
-      "permission": {
-        "edit": "allow",
-        "bash": "ask",
-        "task": { "reviewer": "allow" }
-      }
-    },
+        "builder": {
+          "mode": "primary",
+          "model": "opencode-go/qwen3.7-plus",
+          "temperature": 0.1,
+          "steps": 30,
+          "permission": {
+            "edit": "allow",
+            "bash": "ask",
+            "task": {
+              "reviewer": "allow",
+              "verifier": "allow",
+              "stow-ops": "allow",
+              "researcher": "allow"
+            }
+          }
+        },
     "reviewer": {
       "mode": "subagent",
-      "model": "opencode-go/deepseek-v4-flash",
+      "model": "opencode/deepseek-v4-flash-free",
       "temperature": 0.1,
       "steps": 15,
       "permission": {
@@ -222,7 +227,7 @@
     },
     "verifier": {
       "mode": "subagent",
-      "model": "opencode-go/deepseek-v4-flash",
+      "model": "opencode/deepseek-v4-flash-free",
       "temperature": 0.1,
       "steps": 15,
       "description": "Верификатор: проверяет синтаксис, статус сервисов, логи, stow dry-run",
@@ -250,6 +255,64 @@
           "ps*": "allow",
           "echo*": "allow"
         }
+      }
+    },
+    "think": {
+      "mode": "subagent",
+      "model": "opencode/grok-build-0.1",
+      "temperature": 0.2,
+      "steps": 25,
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "researcher": {
+      "mode": "subagent",
+      "model": "opencode-go/deepseek-v4-flash",
+      "temperature": 0.1,
+      "steps": 30,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "ls*": "allow",
+          "cat*": "allow",
+          "grep*": "allow",
+          "find*": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git blame*": "allow",
+          "which*": "allow",
+          "type*": "allow",
+          "head*": "allow",
+          "tail*": "allow",
+          "wc*": "allow",
+          "file*": "allow",
+          "stat*": "allow",
+          "readlink*": "allow",
+          "realpath*": "allow",
+          "basename*": "allow",
+          "dirname*": "allow",
+          "echo*": "allow",
+          "ps*": "allow",
+          "df*": "allow",
+          "free*": "allow",
+          "uname*": "allow",
+          "hostnamectl*": "allow",
+          "du -sh*": "allow",
+          "lsblk*": "allow",
+          "ip addr*": "allow",
+          "ss -tlnp*": "allow",
+          "systemctl status*": "allow",
+          "journalctl --user*": "allow",
+          "stow -n*": "allow",
+          "stow --adopt -n*": "allow"
+        },
+        "webfetch": "allow",
+        "websearch": "allow"
       }
     }
   }
