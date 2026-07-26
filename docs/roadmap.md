@@ -11,6 +11,8 @@ status: draft
 > Kanban-доска и дорожная карта первого приближения.
 > Основание: `sysaudit` от 2026-06-30.
 
+> **OpenCode-Vault** — самостоятельный проект (`~/Projects/OpenCode-Vault/`), объединяет opencode-проекты. Dotfiles — один из управляемых проектов, не место разработки vault.
+
 ---
 
 ## 🔄 Kanban-доска
@@ -29,7 +31,6 @@ status: draft
 
 ### 🔜 Ready (назначены, ждут старта)
 
-- [ ] **Добавить пакет `gtk-4.0`** — захватить дрейф GTK4-темы
 - [ ] **Добавить пакет `copyq`** — менеджер буфера обмена (конфиг)
 - [ ] **Добавить пакет `viewnior`** — просмотрщик изображений
 - [ ] **Добавить пакет `volumeicon`** — иконка громкости
@@ -37,7 +38,6 @@ status: draft
 ### 🚧 In Progress (в работе)
 
 - [ ] **Очистка диска** — освободить место на / (83%, было 91%, частично очищено)
-- [ ] **opencode-volt (OpenCode-Vault)** — центральный vault всех opencode-проектов: \`/home/rudra/Projects/OpenCode-Vault/\` (dotfiles, rudra-ai, SERPlux, dv-hub, prod-monitor, rudra-phone и др.) с собственным \`.opencode/\`, методами (02-Methods), референсами (01-Reference) и шаблонами. Приоритетный вектор — вынести управление opencode-проектами в этот vault.
 
 ### 👁️ Review (ожидают проверки)
 
@@ -53,6 +53,12 @@ _(пусто)_
 - [x] **Deferred Registry** — реестр «на потом» + команда /someday (2026-06-30)
 - [x] **Pipelines Phase 0** — спецификации пайплайнов (2026-06-30)
 - [x] **Захват дрейфа** — systemd + wal + gtk adopt (2026-06-30)
+- [x] **Qtile modular + stow adopt** — config modularized, ~/.config/qtile symlink (2026-07)
+- [x] **Genspark binding fix** — Mod+Shift+G → chromium+Tor direct (2026-07)
+- [x] **usb-manager package** — added under stow
+- [x] **stow-ops git perms + verifier/fix/test** — agent infra
+- [x] **nvim under stow** — files managed via stow (file-level symlinks; Phase 0.6 closed)
+- [x] **OpenCode-Vault linked** — external project at ~/Projects/OpenCode-Vault; not developed inside dotfiles
 
 ---
 
@@ -69,6 +75,13 @@ _(пусто)_
 | 0.4 | Захватить дрейф `gtk-4.0` | gtk-4.0 под stow | `stow --adopt gtk` или новый пакет |
 | 0.5 | Почистить `picom` | единая структура (убрать дубль) | `/util` |
 | 0.6 | Привести `nvim` к stow-стандарту | `~/.config/nvim` — симлинк | `rm -rf ~/.config/nvim && stow nvim` |
+
+**Статус Phase 0 (2026-07):**
+- ✅ 0.2 systemd, 0.3 wal, 0.4 gtk (css) — adopt done
+- ✅ 0.6 nvim — under stow (file-level)
+- 🔄 0.1 диск — 83% / 9.3G free on / (цель >10G)
+- 🔄 0.5 picom — structure cleanup in progress
+- ➕ gtk-4.0 settings.ini — completing gtk coverage
 
 ### Фаза 1: «Автоматизация» (1-2 недели)
 > Добавить новые пакеты конфигов, автоматизировать рутину.
