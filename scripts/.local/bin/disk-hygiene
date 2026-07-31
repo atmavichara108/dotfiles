@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 readonly GREEN='\033[0;32m'
 readonly YELLOW='\033[1;33m'
@@ -12,10 +12,27 @@ ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 err()   { echo -e "${RED}[ERROR]${NC} $*"; }
 
+trap 'err "Сбой на строке $LINENO (exit $?)"; exit 1' ERR
+
+AGGRESSIVE=0
+for arg in "$@"; do
+    case "$arg" in
+        --aggressive) AGGRESSIVE=1 ;;
+        --help|-h)
+            echo "Usage: disk-hygiene [--aggressive]"
+            echo "  --aggressive  также чистить кэши браузеров (chromium, chrome, mozilla, electron)"
+            exit 0
+            ;;
+    esac
+done
+
 show_df() {
     echo ""
-    info "Свободное место на /:"
+    info "Свободное место:"
     df -h / | grep -v '^Filesystem' || df -h /
+    if mountpoint -q "$HOME" 2>/dev/null; then
+        df -h "$HOME" | grep -v '^Filesystem' || true
+    fi
     echo ""
 }
 
@@ -27,18 +44,34 @@ size_of() {
     fi
 }
 
-clean_dir() {
+size_bytes() {
+    if [[ -d "$1" ]]; then
+        du -sb "$1" 2>/dev/null | cut -f1
+    else
+        echo "0"
+    fi
+}
+
+wipe_cache_dir() {
     local dir="$1"
     local label="$2"
-    if [[ -d "$dir" ]]; then
-        local before
-        before=$(size_of "$dir")
-        info "Чищу $label ($dir) — было: $before"
+    if [[ ! -d "$dir" ]]; then
+        return 0
+    fi
+    local before
+    before=$(size_of "$dir")
+    info "Чищу $label ($dir) — было: $before"
+    if rm -rf "$dir" 2>/dev/null && mkdir -p "$dir" 2>/dev/null; then
+        local after
+        after=$(size_of "$dir")
+        ok "  → стало: $after"
+    else
+        warn "  → не удалось полностью очистить, пробую find…"
         find "$dir" -type f -delete 2>/dev/null || true
         find "$dir" -mindepth 1 -type d -empty -delete 2>/dev/null || true
         local after
         after=$(size_of "$dir")
-        ok "  → стало: $after"
+        ok "  → стало: $after (после find)"
     fi
 }
 
@@ -57,8 +90,13 @@ main() {
     echo "============================================"
 
     show_df
-    local df_before
-    df_before=$(df / | awk 'NR==2{print $4}')
+
+    info "Кэши в \$HOME — если /home на другом разделе, df / почти не изменится."
+    info "Для корня / нужны: sudo paccache … и journalctl …"
+    echo ""
+
+    local bytes_before
+    bytes_before=$(size_bytes "$HOME/.cache" 2>/dev/null || echo 0)
 
     info "Размеры кэшей ДО чистки:"
     echo "--------------------------------------------"
@@ -89,27 +127,26 @@ main() {
     echo ""
 
     info "=== Чистка кэшей AUR-хелперов ==="
-    clean_dir "$HOME/.cache/yay" "yay build cache"
-    clean_dir "$HOME/.cache/paru" "paru build cache"
+    wipe_cache_dir "$HOME/.cache/yay" "yay build cache"
+    info "Чищу paru build cache — может занять минуту…"
+    wipe_cache_dir "$HOME/.cache/paru" "paru build cache"
 
     info "=== Чистка go build cache ==="
     if command -v go &>/dev/null; then
         go clean -cache 2>/dev/null && ok "go clean -cache" || warn "go clean -cache failed"
     else
-        clean_dir "$HOME/.cache/go-build" "go-build cache (no go binary)"
+        wipe_cache_dir "$HOME/.cache/go-build" "go-build cache (no go binary)"
     fi
 
     info "=== Чистка pip cache ==="
     clean_cmd "pip cache purge" "pip cache"
-    if [[ -d "$HOME/.cache/pip" ]]; then
-        clean_dir "$HOME/.cache/pip" "pip cache dir"
-    fi
+    wipe_cache_dir "$HOME/.cache/pip" "pip cache dir"
 
     info "=== Чистка uv cache ==="
     if command -v uv &>/dev/null; then
         uv cache clean 2>/dev/null && ok "uv cache clean" || warn "uv cache clean failed"
     fi
-    clean_dir "$HOME/.cache/uv" "uv cache dir"
+    wipe_cache_dir "$HOME/.cache/uv" "uv cache dir"
 
     info "=== Чистка pnpm store ==="
     if command -v pnpm &>/dev/null; then
@@ -117,22 +154,43 @@ main() {
     fi
 
     info "=== Чистка node-gyp cache ==="
-    clean_dir "$HOME/.cache/node-gyp" "node-gyp cache"
+    wipe_cache_dir "$HOME/.cache/node-gyp" "node-gyp cache"
 
     info "=== Чистка thumbnails ==="
-    clean_dir "$HOME/.cache/thumbnails" "thumbnails"
+    wipe_cache_dir "$HOME/.cache/thumbnails" "thumbnails"
 
     info "=== Чистка npm cache ==="
     if command -v npm &>/dev/null; then
         npm cache clean --force 2>/dev/null && ok "npm cache clean" || warn "npm cache clean failed"
     fi
 
+    if [[ "$AGGRESSIVE" -eq 1 ]]; then
+        echo ""
+        info "=== [--aggressive] Чистка кэшей браузеров ==="
+        wipe_cache_dir "$HOME/.cache/chromium" "chromium cache"
+        wipe_cache_dir "$HOME/.cache/google-chrome" "google-chrome cache"
+        wipe_cache_dir "$HOME/.cache/mozilla" "mozilla cache"
+        wipe_cache_dir "$HOME/.cache/electron" "electron cache"
+    else
+        echo ""
+        info "Кэши браузеров (chromium, chrome, mozilla, electron) — только отчёт."
+        info "Для чистки добавь флаг: disk-hygiene --aggressive"
+    fi
+
     echo ""
     show_df
-    local df_after
-    df_after=$(df / | awk 'NR==2{print $4}')
-    local freed=$(( df_after - df_before ))
-    ok "Освобождено в $HOME: ${freed}K (~$(( freed / 1024 ))M)"
+
+    local bytes_after
+    bytes_after=$(size_bytes "$HOME/.cache" 2>/dev/null || echo 0)
+    local freed_bytes=0
+    if [[ "$bytes_before" =~ ^[0-9]+$ ]] && [[ "$bytes_after" =~ ^[0-9]+$ ]]; then
+        freed_bytes=$(( bytes_before - bytes_after ))
+        if [[ "$freed_bytes" -lt 0 ]]; then
+            freed_bytes=0
+        fi
+    fi
+    local freed_mb=$(( freed_bytes / 1024 / 1024 ))
+    ok "Освобождено в \$HOME/.cache: ~${freed_mb}M"
 
     echo ""
     echo "============================================"
@@ -151,6 +209,8 @@ main() {
     echo "  # (опционально) Docker, если есть:"
     echo "  docker system prune -af --volumes"
     echo ""
+
+    ok "disk-hygiene завершена."
 }
 
 main "$@"
