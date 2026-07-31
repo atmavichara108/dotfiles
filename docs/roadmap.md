@@ -48,7 +48,7 @@ Stow + пакеты (S0)
 - [x] nvim under stow (file-level)
 - [x] usb-manager, agent infra (stow-ops, verifier, /fix /test)
 - [x] скрипт `scripts/.local/bin/disk-hygiene` в репо
-- [ ] **`stow scripts`** — сейчас файл в репо, но НЕ в `~/.local/bin/` (дыра)
+- [x] **`stow scripts`** — `disk-hygiene` в `~/.local/bin/`, symlink в stow-пакет
 - [ ] **Диск:** прогон disk-hygiene + `paccache`/`journalctl` (root) → >10G free
 
 ### S1 · Desktop shell
@@ -114,7 +114,7 @@ S6 = вне критического пути
 
 ## Milestone Done (не список коммитов)
 
-- [x] S0 foundation (кроме диска + stow scripts)
+- [x] S0 foundation (кроме диска: >10G free на `/`)
 - [x] Qtile modular + stow adopt
 - [x] Agent infra + drift capture
 - [x] OpenCode-Vault = external (не работа dotfiles)
