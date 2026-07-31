@@ -1,148 +1,120 @@
 ---
 type: Roadmap
-title: Kanban-доска + Roadmap dotfiles
-description: Дорожная карта развития dotfiles. Канбан, фазы, вопросы для Макса.
-timestamp: 2026-06-30
-status: draft
+title: Roadmap dotfiles — карта системы
+description: Потоки способностей, зависимости, Now/Next/Later. Не inventory пакетов.
+timestamp: 2026-07-31
+status: active
 ---
 
-# Roadmap dotfiles — 2026
+# Roadmap dotfiles
 
-> Kanban-доска и дорожная карта первого приближения.
-> Основание: `sysaudit` от 2026-06-30.
+> Карта **системы**, не список пакетов. Карточка = способность + DoD + зависимости.
+> OpenCode-Vault (`~/Projects/OpenCode-Vault/`) — внешний оркестратор проектов; здесь не разрабатывается.
 
-> **OpenCode-Vault** — самостоятельный проект (`~/Projects/OpenCode-Vault/`), объединяет opencode-проекты. Dotfiles — один из управляемых проектов, не место разработки vault.
+## Карта
 
----
+```
+Stow + пакеты (S0)
+    ├─→ Desktop: Qtile · rofi · dunst · picom (S1)
+    ├─→ Terminal: zsh · tmux · nvim · Alacritty (S4)
+    └─→ Theming hub (S2) ──блокирует──→ эстетика S1/S3/S4
+              ↓
+         Daily tools (S3): clipboard · media · images · volume
+              ↓
+         Machine ops (S5): hygiene · bootstrap · secrets
+              ↓
+         Parked (S6) → docs/deferred.md
+```
 
-## 🔄 Kanban-доска
+## Now / Next / Later
 
-### 📋 Backlog (идеи, не назначены)
+| Слот | Поток | Что сделать |
+|------|--------|-------------|
+| **Now** | S0 | Добить фундамент: диск >10G free на `/`; `stow scripts` (disk-hygiene) |
+| **Next** | S2 | Один источник цвета (wallust \| pywal \| tinty) → проводка в стек |
+| **Later** | S3→S1→S4→S5 | Daily tools под stow+тему; polish desktop; cheats; bootstrap |
+| **Parked** | S6 | Taskwarrior, calcurse, aether, Docker… → deferred.md |
 
-- [ ] **Добавить пакет `wallust`** — конфиг генератора тем (аналог pywal)
-- [ ] **Добавить пакет `mpv`** — настройки медиа-плеера
-- [ ] **Добавить пакет `nitrogen`** — управление обоями
-- [ ] **Добавить пакет `thefuck`** — настройки исправления команд
-- [ ] **Добавить пакет `xfce4-power-manager`** — настройки питания
-- [ ] **Унифицировать theming: pywal vs wallust** — выбрать один генератор
-- [ ] **Чит-шиты** — написать cheatsheets для ключевых утилит
-- [ ] **Автоустановка** — скрипт bootstrap для новой машины
-- [ ] **Бэкап секретов** — схема управления ключами вне репо
+## Потоки
 
-### 🔜 Ready (назначены, ждут старта)
+### S0 · Фундамент
+**Зачем:** всё остальное живёт на stow без дрейфа и без забитого `/`.
+**DoD:** stow-пакеты консистентны; на `/` >10G свободно; `disk-hygiene` доступен как `~/.local/bin/disk-hygiene`.
+**Статус:** ~95%
+- [x] sysaudit, ADR, deferred, pipelines
+- [x] дрейф systemd / wal / gtk (css + gtk-4 settings.ini)
+- [x] Qtile modular + `~/.config/qtile` symlink
+- [x] picom → `~/.config/picom/picom.conf`
+- [x] nvim under stow (file-level)
+- [x] usb-manager, agent infra (stow-ops, verifier, /fix /test)
+- [x] скрипт `scripts/.local/bin/disk-hygiene` в репо
+- [ ] **`stow scripts`** — сейчас файл в репо, но НЕ в `~/.local/bin/` (дыра)
+- [ ] **Диск:** прогон disk-hygiene + `paccache`/`journalctl` (root) → >10G free
 
-- [ ] **Добавить пакет `copyq`** — менеджер буфера обмена (конфиг)
-- [ ] **Добавить пакет `viewnior`** — просмотрщик изображений
-- [ ] **Добавить пакет `volumeicon`** — иконка громкости
+### S1 · Desktop shell
+**Зачем:** Qtile + rofi + dunst + picom ощущаются одним UI.
+**Зависит от:** S0; полноценная эстетика — от S2.
+**DoD:** единые хоткеи/поведение; уведомления и лаунчер не «чужие» по теме.
+**Статус:** база есть (Qtile/picom ok), polish после S2
+- Qtile ✅ · picom ✅ · rofi/dunst — донастройка темы после S2
 
-### 🚧 In Progress (в работе)
+### S2 · Theming hub  ← Next после S0
+**Зачем:** один генератор цвета → Alacritty, rofi, dunst, GTK, Qtile, terminal.
+**Зависит от:** S0.
+**Блокирует:** визуальный polish S1/S3/S4.
+**DoD:** смена обоев/палитры перекрашивает стек без ручной правки N утилит.
+**Статус:** не начат (pywal + wallust + tinty стоят параллельно)
+- [ ] Выбрать **один** основной генератор
+- [ ] Шаблоны + хук (wal-set / аналог)
+- [ ] aether — НЕ здесь (NVIDIA) → deferred.md
 
-- [ ] **Очистка диска** — освободить место на / (83%, было 91%, частично очищено)
+### S3 · Daily utilities
+**Зачем:** повседневные GUI/утилиты в stow и согласованы с темой — не «голые пакеты из pacman».
+**Зависит от:** S0; тема — от S2 (можно сначала просто захват конфигов).
+**DoD:** clipboard, media, image viewer, volume — конфиги в репо, stow clean.
+**Было ошибочно в Ready как «пакет copyq/viewnior/volumeicon»** — это не цели, а *элементы* потока:
+| Элемент | Смысл |
+|---------|--------|
+| copyq | история буфера, хоткей, поведение |
+| mpv | минимальный воспроизводимый UX |
+| viewnior (или выбранный viewer) | быстрый просмотр из ranger/rofi |
+| volumeicon / pactl UX | индикация/контроль громкости, если ещё дыра после Qtile |
+| nitrogen | только если нужен отдельно от wal-set обоев |
 
-### 👁️ Review (ожидают проверки)
+### S4 · Terminal craft
+**Зачем:** zsh/tmux/nvim/Alacritty — быстрый ежедневный контур + подсказки.
+**Зависит от:** S0; цвета — от S2.
+**DoD:** стабильный dev-loop; cheatsheets для nvim/tmux/zsh/git по запросу.
+**Статус:** база есть; cheats — later
 
-_(пусто)_
+### S5 · Machine ops
+**Зачем:** гигиена диска, bootstrap новой машины, секреты вне git.
+**Зависит от:** S0.
+**DoD:** `disk-hygiene` в PATH; документированный bootstrap; схема secrets out-of-repo.
+**Статус:** disk-hygiene в репо; bootstrap/secrets — later
 
-### ✅ Done (завершено)
+### S6 · Parked
+Всё «на потом» и артефакты — только в `docs/deferred.md` (Taskwarrior, calcurse, Thunar, Hyprland, kitty, aether, Docker, плагины…).
+Сюда не тащить в Now/Next.
 
-- [x] **sysaudit** — полный аудит системы (2026-06-30)
-- [x] **ADR-001** — инициализация OpenCode в dotfiles
-- [x] **Roadmap и Kanban** — этот документ
-- [x] **Систематизация дрейфа** — захват systemd-сервисов, wal-шаблонов (2026-06-30)
-- [x] **ADR-002 + ADR-003** — Единая система цвета + Пайплайны и агенты (2026-06-30)
-- [x] **Deferred Registry** — реестр «на потом» + команда /someday (2026-06-30)
-- [x] **Pipelines Phase 0** — спецификации пайплайнов (2026-06-30)
-- [x] **Захват дрейфа** — systemd + wal + gtk adopt (2026-06-30)
-- [x] **Qtile modular + stow adopt** — config modularized, ~/.config/qtile symlink (2026-07)
-- [x] **Genspark binding fix** — Mod+Shift+G → chromium+Tor direct (2026-07)
-- [x] **usb-manager package** — added under stow
-- [x] **stow-ops git perms + verifier/fix/test** — agent infra
-- [x] **nvim under stow** — files managed via stow (file-level symlinks; Phase 0.6 closed)
-- [x] **OpenCode-Vault linked** — external project at ~/Projects/OpenCode-Vault; not developed inside dotfiles
+## Зависимости (кратко)
 
----
+```
+S0 ──→ S2 ──→ S1 polish
+ │      └──→ S3 themed
+ │      └──→ S4 colors
+ └──→ S5
+S6 = вне критического пути
+```
 
-## 🗺️ Roadmap — фазы развития
+## Открытые решения (разблокируют Next)
 
-### Фаза 0: «Гигиена» (сейчас — 1 неделя)
-> Привести существующее в порядок, убрать дрейф, освободить диск.
+1. **S2:** что реально основной генератор сейчас — pywal / wallust / tinty?
+2. После S0 сразу **S2** (по умолчанию) или временно S3 capture-only?
 
-| # | Задача | Ожидаемый результат | Пайплайн |
-|---|--------|---------------------|----------|
-| 0.1 | Освободить диск | >10G свободно на / | `du -sh ~/.cache/*`, `journalctl`, `paccache` |
-| 0.2 | Захватить дрейф `systemd` | systemd-сервисы под stow | `stow --adopt systemd` |
-| 0.3 | Захватить дрейф `wal` | шаблоны wal под stow | `stow --adopt wal` |
-| 0.4 | Захватить дрейф `gtk-4.0` | gtk-4.0 под stow | `stow --adopt gtk` или новый пакет |
-| 0.5 | Почистить `picom` | единая структура (убрать дубль) | `/util` |
-| 0.6 | Привести `nvim` к stow-стандарту | `~/.config/nvim` — симлинк | `rm -rf ~/.config/nvim && stow nvim` |
+## Milestone Done (не список коммитов)
 
-**Статус Phase 0 (2026-07):**
-- ✅ 0.2 systemd, 0.3 wal, 0.4 gtk (css) — adopt done
-- ✅ 0.6 nvim — under stow (file-level)
-- 🔄 0.1 диск — 83% / 9.3G free on / (цель >10G)
-- 🔄 0.5 picom — structure cleanup in progress
-- ➕ gtk-4.0 settings.ini — completing gtk coverage
-
-### Фаза 1: «Автоматизация» (1-2 недели)
-> Добавить новые пакеты конфигов, автоматизировать рутину.
-
-| # | Задача | Ожидаемый результат | Пайплайн |
-|---|--------|---------------------|----------|
-| 1.1 | Пакет `wallust` | конфиг wallust под stow | `/util` |
-| 1.2 | Пакет `mpv` | минимальные настройки mpv | `/util` |
-| 1.3 | Пакет `copyq` | конфиг буфера обмена | `/util` |
-| 1.6 | Унификация themed | pywal ИЛИ wallust — один источник | `/script` |
-| 1.7 | Чит-шиты | cheatsheets для nvim, tmux, zsh, git | `/prompt` |
-
-### Фаза 2: «Эстетика» (2-4 недели)
-> Визуальная консистентность, новые темы, тёмная тема везде.
-
-| # | Задача | Ожидаемый результат | Пайплайн |
-|---|--------|---------------------|----------|
-| 2.1 | Цветовая схема во все конфиги | wal/wallust применяется ко всем утилитам | `/script`, `/notify` |
-| 2.2 | Dunst-нотификации | красивые, консистентные уведомления | `/notify` |
-| 2.3 | Rofi-тема | тёмная тема лаунчера под wal | `/macro` |
-| 2.4 | btop-тема | кастомная тема под wal | `/util` |
-| 2.5 | Заставка/логин | SDDM-тема / i3lock-color | `/util` |
-
-### Фаза 3: «Экспансия» (1-2 месяца)
-> Новый софт, интеграции, wayland-задел.
-
-| # | Задача | Ожидаемый результат | Пайплайн |
-|---|--------|---------------------|----------|
-| 3.1 | Docker-интеграция | контейнеры для dev-окружений | `/script` |
-| 3.3 | Taskwarrior-экосистема | синхронизация, хуки, виджеты | `/script` |
-| 3.4 | Скрипты автоматизации | bw, установка, обновление | `/script` |
-| 3.5 | Плагины nvim/rofi | новые плагины, конфиги | `/plugin` |
-
----
-
-## ❓ Вопросы Максу
-
-Чтобы лучше понять твой стиль работы и приоритеты, ответь:
-
-### Окружение
-1. **Основной WM** — ✅ Qtile (X11). Hyprland — артефакт, не развивать (ADR-002).
-2. **Терминал** — ✅ Alacritty. kitty — артефакт (ADR-002).
-3. **pywal vs wallust vs tinty** — установлены все три. Что используешь сейчас? Что должно быть основным?
-
-### Рабочий процесс
-4. **Какие приложения** ты открываешь каждый день (кроме терминала, браузера)?
-5. **File manager** — ✅ ranger. Thunar — артефакт (ADR-002).
-6. **Taskwarrior** — активно используешь? Нужны ли хуки, автоматизация, синхронизация?
-7. **Календарь** — calcurse используется? Или календарь в браузере/Notion/Obsidian?
-
-### Болезни
-8. **Что бесит** в текущей системе больше всего? Медленный запуск? Цвета? WM-жесты?
-9. **Что ломалось** при обновлениях? Какие конфиги требуют ручного вмешательства?
-10. **Есть ли скрипты/действия**, которые ты регулярно делаешь руками и хотел бы автоматизировать?
-
-### Новый софт
-11. **Какие программы/утилиты** ты хочешь добавить в первую очередь?
-12. **Чего не хватает** для идеального терминального опыта?
-13. **Плагины** — для nvim, rofi, tmux — что нужно докупить/настроить?
-
-### Рост
-14. **Какой уровень автоматизации** хочешь? Полный bootstrap новой машины одной командой?
-15. **Сколько времени** готов уделять настройке в неделю?
-16. **Приоритет** — функциональность, эстетика или надёжность? Что важнее?
+- [x] S0 foundation (кроме диска + stow scripts)
+- [x] Qtile modular + stow adopt
+- [x] Agent infra + drift capture
+- [x] OpenCode-Vault = external (не работа dotfiles)
