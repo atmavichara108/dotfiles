@@ -114,7 +114,8 @@ keys = [
     Key(["mod1"], "Right", lazy.screen.next_group(), desc="Next workspace"),
     Key([mod], "Left", lazy.screen.prev_group(), desc="Previous workspace"),
 
-    Key([mod], "F5", lazy.spawn("wal-set"), desc="Random wallpaper + new palette"),
+    Key([mod], "F5", lazy.spawn("theme-hub"), desc="Theme hub (rofi): wallpaper + palette"),
+    Key([mod, "shift"], "F5", lazy.spawn("theme-apply --random"), desc="Random wallpaper + palette"),
 
     Key([mod, "shift"], "period", lazy.window.toscreen(1), desc="Move window to next monitor"),
     Key([mod, "shift"], "comma", lazy.window.toscreen(0), desc="Move window to prev monitor"),
