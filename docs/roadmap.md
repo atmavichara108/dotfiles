@@ -31,7 +31,7 @@ Stow + пакеты (S0)
 | Слот | Поток | Что сделать |
 |------|--------|-------------|
 | **Now** | S0 | Добить фундамент: диск >10G free на `/`; `stow scripts` (disk-hygiene) |
-| **Next** | S2 | Один источник цвета (wallust \| pywal \| tinty) → проводка в стек |
+| **Next** | S2 polish | Шаблоны (GTK, dunst, rofi) + интеграция с S1 polish |
 | **Later** | S3→S1→S4→S5 | Daily tools под stow+тему; polish desktop; cheats; bootstrap |
 | **Parked** | S6 | Taskwarrior, calcurse, aether, Docker… → deferred.md |
 
@@ -63,9 +63,12 @@ Stow + пакеты (S0)
 **Зависит от:** S0.
 **Блокирует:** визуальный polish S1/S3/S4.
 **DoD:** смена обоев/палитры перекрашивает стек без ручной правки N утилит.
-**Статус:** не начат (pywal + wallust + tinty стоят параллельно)
-- [ ] Выбрать **один** основной генератор
-- [ ] Шаблоны + хук (wal-set / аналог)
+**Статус:** MVP done (pywal + theme-apply + theme-hub)
+- [x] Выбран **один** основной генератор: **pywal** (ADR-008)
+- [x] Оркестратор `theme-apply` + rofi-меню `theme-hub`
+- [x] Хоткеи: `Mod+F5` hub, `Mod+Shift+F5` random
+- [x] `wal-set` → thin wrapper на `theme-apply`
+- [ ] Больше шаблонов (GTK, dunst, rofi — polish)
 - [ ] aether — НЕ здесь (NVIDIA) → deferred.md
 
 ### S3 · Daily utilities
@@ -109,8 +112,8 @@ S6 = вне критического пути
 
 ## Открытые решения (разблокируют Next)
 
-1. **S2:** что реально основной генератор сейчас — pywal / wallust / tinty?
-2. После S0 сразу **S2** (по умолчанию) или временно S3 capture-only?
+1. ~~**S2:** что реально основной генератор сейчас — pywal / wallust / tinty?~~ → **pywal** (ADR-008) ✅
+2. После S0 сразу **S2 polish** (шаблоны GTK/dunst/rofi) или временно S3 capture-only?
 
 ## Milestone Done (не список коммитов)
 

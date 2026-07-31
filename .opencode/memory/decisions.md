@@ -205,3 +205,24 @@ timestamp: 2026-06-30
 - Planner теперь может делегировать исследование researcher через `task(agent="researcher", prompt="...")`
 - Builder также может вызывать researcher в пайплайнах (например, `/research` команда)
 - Явная таблица кто может вызывать researcher в AGENTS.md
+
+---
+
+### ADR-008: S2 Theme hub (Aether-lite) — pywal + rofi
+**Дата:** 2026-07-31
+**Контекст:** Aether нравится по UX, но NVIDIA/WebKit баги делают его нестабильным на текущем железе. Нужен упрощённый theming hub «из приложения» без сторонней возни — смена обоев/палитры должна перекрашивать весь стек (Alacritty, rofi, dunst, GTK, Qtile) без ручной правки N утилит.
+**Решение:**
+- **Engine:** **pywal** — совместим с существующими wal templates, генерирует `~/.cache/wal/colors.json`, который читает `qtile/colors.py` и остальные конфиги
+- **UI:** **theme-hub** (rofi-меню) — выбор обоев/тем из приложения; оркестратор **theme-apply** применяет палитру ко всему стеку
+- **wal-set** → thin wrapper на `theme-apply` (обратная совместимость)
+- **Хоткеи:** `Mod+F5` = theme-hub (rofi), `Mod+Shift+F5` = `theme-apply --random`
+- **Ветка:** `feat/s2-theme-hub-rofi`
+**Альтернативы:**
+- **wallust** — потребует адаптер для `colors.json` (несовместимый формат), лишняя обвязка
+- **GTK/Wails app** — дорого в разработке, NVIDIA-риск с WebKit
+- **Полный aether** — отклонён: NVIDIA/WebKit баги, нестабилен
+**Последствия:**
+- S2 MVP/lite реализован: pywal + theme-apply + theme-hub
+- wallust остаётся в пакетах (не как hub engine)
+- aether перенесён в deferred (S6)
+- Темы/шаблоны — polish в следующих итерациях

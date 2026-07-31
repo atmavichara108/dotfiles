@@ -256,3 +256,16 @@ tmux-sensible, vim-tmux-navigator. Критично сохранение/вос�
 - Обновление таблицы роутинга в `AGENTS.md`.
 - Ожидаема разница в латентности/качестве между ярусами.
 - `hy3` остаётся fallback.
+
+---
+
+### ADR-008: S2 Theme hub (Aether-lite) — pywal + rofi
+**Дата:** 2026-07-31
+**Контекст:** Aether нравится по UX, но NVIDIA/WebKit баги. Нужен упрощённый theming hub «из приложения» без сторонней возни.
+**Решение:**
+- **Engine:** pywal (совместим с Qtile colors.py → `~/.cache/wal/colors.json`)
+- **UI:** theme-hub (rofi) + оркестратор theme-apply
+- wal-set → thin wrapper на theme-apply
+- Хоткеи: `Mod+F5` = hub, `Mod+Shift+F5` = random
+**Альтернативы:** wallust (адаптер colors.json); GTK/Wails app (дорого, NVIDIA-риск); полный aether (отклонён)
+**Последствия:** S2 MVP/lite; wallust в пакетах но не hub; aether → deferred
