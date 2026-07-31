@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+WALLDIR="${THEME_WALLDIR:-$HOME/wallpapers}"
+
+main_menu() {
+    printf '%s\n' \
+        "🖼  Выбрать обои" \
+        "🎲  Случайные обои" \
+        "↻  Повторить последние" \
+        "📁  Открыть папку обоев"
+}
+
+choose_wallpaper() {
+    local files=()
+    local names=()
+    while IFS= read -r -d '' f; do
+        files+=("$f")
+        names+=("$(basename "$f")")
+    done < <(find "$WALLDIR" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print0 | sort -z)
+
+    if [[ ${#files[@]} -eq 0 ]]; then
+        notify-send "theme-hub" "Нет обоев в $WALLDIR" -u critical
+        return 1
+    fi
+
+    local chosen
+    chosen="$(printf '%s\n' "${names[@]}" | rofi -dmenu -i -p "Обои" -no-custom)" || return 0
+
+    for i in "${!names[@]}"; do
+        if [[ "${names[$i]}" == "$chosen" ]]; then
+            theme-apply "${files[$i]}"
+            return
+        fi
+    done
+}
+
+choice="$(main_menu | rofi -dmenu -i -p "Theme hub" -no-custom)" || exit 0
+
+case "$choice" in
+    *"Выбрать"*)    choose_wallpaper ;;
+    *"Случайные"*)  theme-apply --random ;;
+    *"Повторить"*)  theme-apply --last ;;
+    *"Открыть"*)    xdg-open "$WALLDIR" 2>/dev/null & ;;
+esac

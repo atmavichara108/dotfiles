@@ -1,31 +1,7 @@
-#!/bin/bash
-WALLDIR="$HOME/wallpapers"
-SATURATION="0.5"
-ALPHA="85"
-
-if [ -n "$1" ]; then
-  IMAGE="$1"
+#!/usr/bin/env bash
+# deprecated: use theme-apply / theme-hub
+if [[ -n "${1:-}" ]]; then
+    exec theme-apply "$1"
 else
-  IMAGE=$(find "$WALLDIR" -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.webp' \) | shuf -n 1)
+    exec theme-apply --random
 fi
-
-if [ -z "$IMAGE" ]; then
-  notify-send "wal-set" "Нет обоев в $WALLDIR" -u critical
-  exit 1
-fi
-
-# Генерируем палитру, ставим обои, прозрачность для tmux
-wal -i "$IMAGE" --cols16 --saturate "$SATURATION" -a "$ALPHA" -q
-
-# Обои через feh
-feh --bg-fill "$(cat ~/.cache/wal/wal)"
-
-# Перезапускаем dunst с новыми цветами
-pkill dunst
-dunst &
-
-# НЕ перезагружаем Qtile — бар подхватит палитру при следующем логине
-notify-send "Wallpaper" "$(basename "$IMAGE")" -i "$IMAGE" -t 3000
-
-# локскрин с текущими обоями
-betterlockscreen -u "$IMAGE" --display 1 &

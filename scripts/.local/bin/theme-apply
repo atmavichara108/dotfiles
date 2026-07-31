@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+WALLDIR="${THEME_WALLDIR:-$HOME/wallpapers}"
+SAT="${THEME_SATURATION:-0.5}"
+ALPHA="${THEME_ALPHA:-85}"
+
+pick_random() {
+    find "$WALLDIR" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | shuf -n 1
+}
+
+resolve_image() {
+    local arg="${1:-}"
+    if [[ -z "$arg" ]]; then
+        pick_random
+    elif [[ "$arg" == "--random" ]]; then
+        pick_random
+    elif [[ "$arg" == "--last" ]]; then
+        if [[ -f "$HOME/.cache/wal/wal" ]]; then
+            cat "$HOME/.cache/wal/wal"
+        else
+            pick_random
+        fi
+    else
+        printf '%s\n' "$arg"
+    fi
+}
+
+IMAGE="$(resolve_image "${1:-}")"
+
+if [[ -z "$IMAGE" ]]; then
+    notify-send "theme-apply" "Нет обоев в $WALLDIR" -u critical
+    exit 1
+fi
+
+if [[ ! -f "$IMAGE" ]]; then
+    notify-send "theme-apply" "Файл не найден: $IMAGE" -u critical
+    exit 1
+fi
+
+wal -i "$IMAGE" --cols16 --saturate "$SAT" -a "$ALPHA" -q
+
+feh --bg-fill "$(cat "$HOME/.cache/wal/wal")"
+
+killall -q dunst
+dunst &
+
+qtile cmd-obj -o cmd -f reload_config 2>/dev/null || true
+
+betterlockscreen -u "$IMAGE" --display 1 &
+
+notify-send "Тема" "$(basename "$IMAGE")" -i "$IMAGE" -t 3000
