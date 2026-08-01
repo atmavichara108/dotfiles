@@ -11,15 +11,27 @@ WALLUST_CACHE_DIR="$HOME/.cache/wallust"
 
 mkdir -p "$STATE_DIR" "$WAL_CACHE_DIR"
 
+seed_bar_json() {
+    [[ -f "$STATE_DIR/bar.json" ]] && return
+    printf '%s\n' '{
+  "source": "cyber-solar-base",
+  "palette": [
+    "#0d1a1e", "#e8dcc0", "#0a1418", "#d97253", "#7fa063",
+    "#d4a24c", "#3a8e8e", "#56b5b5", "#a86fa3", "#b8c4b8"
+  ]
+}' > "$STATE_DIR/bar.json"
+}
+seed_bar_json
+
 pick_random() {
     find "$WALLDIR" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | shuf -n 1
 }
 
 resolve_image() {
     local arg="${1:-}"
-    if [[ -z "$arg" || "$arg" == "wall" ]]; then
+    if [[ -z "$arg" ]]; then
         pick_random
-    elif [[ "$arg" == "--random" ]]; then
+    elif [[ "$arg" == "--random" || "$arg" == "wall" ]]; then
         pick_random
     elif [[ "$arg" == "--last" ]]; then
         if [[ -f "$STATE_DIR/last-wall" ]]; then
@@ -29,9 +41,6 @@ resolve_image() {
         else
             pick_random
         fi
-    elif [[ "$arg" == "wall" ]]; then
-        shift
-        resolve_image "${1:-}"
     else
         printf '%s\n' "$arg"
     fi
@@ -83,18 +92,30 @@ palette = []
 bg = fg = cursor = ""
 
 if engine == "wallust":
-    colors_file = os.path.join(wallust_cache, "colors")
-    if os.path.isfile(colors_file):
-        with open(colors_file) as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("#"):
-                    palette.append(line)
-        if len(palette) >= 16:
-            bg = palette[0]
-            fg = palette[1] if len(palette) > 1 else palette[0]
-            cursor = fg
-    else:
+    wal_json = os.path.join(wal_cache, "colors.json")
+    if os.path.isfile(wal_json):
+        with open(wal_json) as f:
+            data = json.load(f)
+        bg = data.get("special", {}).get("background", "")
+        fg = data.get("special", {}).get("foreground", "")
+        cursor = data.get("special", {}).get("cursor", fg)
+        for i in range(16):
+            c = data.get("colors", {}).get(f"color{i}", "")
+            if c:
+                palette.append(c)
+    if not palette:
+        colors_file = os.path.join(wallust_cache, "colors")
+        if os.path.isfile(colors_file):
+            with open(colors_file) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("#"):
+                        palette.append(line)
+            if len(palette) >= 16:
+                bg = palette[0]
+                fg = palette[1] if len(palette) > 1 else palette[0]
+                cursor = fg
+    if not palette:
         json_file = os.path.join(wallust_cache, "colors.json")
         if os.path.isfile(json_file):
             with open(json_file) as f:
@@ -181,6 +202,7 @@ with open(os.path.join(state_dir, "last-engine"), "w") as f:
 PYEOF
 }
 
+if [[ "${1:-}" == "wall" ]]; then shift; fi
 IMAGE="$(resolve_image "${1:-}")"
 
 if [[ -z "$IMAGE" ]]; then
