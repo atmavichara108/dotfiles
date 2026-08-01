@@ -276,3 +276,74 @@ timestamp: 2026-07-31
 - `magick resize` — non-streaming, 5-10s на 22K, высокий пик памяти.
 - Ручная предобработка пользователем — плохой UX, prone to user error.
 **Статус:** Part 1 S2 (wall layer) COMPLETE; Part 2 S2 (bar layer, live refresh без reload_config) — in progress.
+
+---
+
+### TD-002: Todo система зависает (planner coordination)
+**Дата:** 2026-08-02
+**Контекст:** `todowrite()` создаёт список задач, но не обновляется динамически. Если задача делегирована агенту, todo висит в `in_progress` пока не создана новая задача. Нет обратной связи агентов → todo-система.
+**Проблема:**
+- Пайплайны асинхронны (bash-dev, builder, reviewer, etc) — работают независимо
+- Todo не отражает реальное состояние параллельной работы
+- Агент может закончить, todo висит в старом состоянии
+- Вводит в заблуждение при планировании next steps
+**Решение:**
+- Todo используется только для **высокоуровневого планирования** (sketch phase, не пайплайны)
+- Реальное отслеживание work-in-progress через git, commit messages, branch history
+- **Не использовать todo внутри пайплайна** — leads to stale state
+- Upon агент completion: обновить memory (decisions.md, tech-debt.md, roadmap.md) сразу, не ждать нового todo
+**Следствие:** planner = оркестратор (координирует agents через git commits + memory updates), не менеджер статусов todo
+**Действие:** удалить todo с активного использования в пайплайнах; применять only для user-facing запросов на планирование
+
+**Обновление (2026-08-02): Event-driven Auto-Sync**
+
+Вместо удаления todo из пайплайна — **автоматизирована синхронизация** через opencode-плагин:
+
+**Плагин `.opencode/plugin/todo-sync.ts`:**
+- Hook `tool.execute.after`: при завершении task() автоматически находит соответствующий todo и обновляет статус
+- Hook `event`: слушает встроенный `todo.updated` (от `todowrite()`) и синхронизирует в snapshot
+- Snapshot сохраняется в `.opencode/memory/todo.json` (persistent across sessions)
+
+**Результат:**
+- planner создаёт todo в sketch-фазе (одноразово)
+- Делегирует task() агенту
+- Agent завершает → плагин автоматически обновляет статус (no manual intervention)
+- Todo отражает реальное состояние пайплайна in real-time
+- Memory (decisions.md) остаётся source-of-truth; todo.json = snapshot для UI
+
+**Механизм:**
+```
+todowrite() → tool.execute.after(task) → match agent name → update status → save todo.json
+```
+
+**Преимущества:**
+- ✅ Нет зависания todo (автоматическое обновление)
+- ✅ Полная интеграция с task() API
+- ✅ Масштабируемо (работает для любых агентов)
+- ✅ Transparent (planner не пишет sync-код вручную)
+
+**Обновление (2026-08-02): event-driven sync через плагин**
+- Реализован плагин `.opencode/plugin/todo-sync.ts` (auto-discovered)
+- Хук `tool.execute.after` на `task()` completion: автоматически обновляет `in_progress` → `completed`/`failed` в `.opencode/memory/todo.json`
+- Хук `event`: слушает `todo.updated` (sync встроенного todowrite → snapshot) и `file.edited` на `decisions.md` (reload snapshot)
+- Memory (decisions.md) остаётся source-of-truth per TD-002; `todo.json` — автоматический snapshot для быстрого доступа
+- Плагин использует Node fs (readFile/writeFile) для I/O, не зависит от ручных обновлений в planner-коде
+
+---
+
+### BUG-001: zimg filter unavailable in Manjaro ffmpeg (resolved 2026-08-02)
+**Дата:** 2026-08-02
+**Проблема:** `theme-apply` downscale использовал `ffmpeg -vf "zimg=..."`. ffmpeg в Manjaro не скомпилирован с `--enable-libzimg`, поэтому фильтр недоступен → 15/18 обоев падали с "Даунскейл не удался".
+**Root cause:**
+- Guard в `prepare_image()` правильно триггерит на 22K (10 файлов)
+- Но `ffmpeg -vf zimg=...` падал (exit != 0) → уведомление об ошибке
+- Из 18 обоев: 8 проходили guard (≤8192px), 10 нуждались downscale
+- Вероятность успеха: 8/18 ≈ 44%, наблюдалось 5/20 ≈ 25% (в пределах variance)
+**Решение (коммит 193f644):**
+- Заменить `zimg` на встроенный `scale` фильтр
+- `scale=3840:2160:flags=lanczos` = то же качество (оба lanczos)
+- Память: оба фильтра streaming (построчный), OOM не будет
+**Таблица обоев:**
+  - 10 файлов 22K×12K (270MP) → нужен downscale
+  - 8 файлов ≤8192px → проходят guard, downscale не нужен
+**Итог:** issue resolved; все 18 обоев теперь работают
