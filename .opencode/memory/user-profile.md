@@ -87,3 +87,20 @@ timestamp: 2026-07-31
 - **LSP в OpenCode:** включён
 - **Tmux:** гибридная архитектура плагинов (ADR-003)
 - **Токены/секреты:** вынесены из репо (артефакт удалён)
+
+## S2 Theming hub — прогресс (2026-08-02)
+
+### Part 1 · wall layer — COMPLETE
+- **22K support:** streaming downscale через `ffmpeg zimg` (ADR-011). Guard >8192px / >100MP, кэш в `~/.cache/theme-hub/prepared/`. OOM на 22K решён.
+- **`--last` history:** повтор последних обоев с синхронизацией state (`prev-wall` → `last-wall` → `wall.json`).
+- **Async apply:** wallust запускается в фоне, UI не блокируется.
+- **State-sync fix:** оба пути (`--last` и основной) вызывают `update_state` → `wall.json` всегда консистентен (state-drift устранён).
+- **Memory-efficient:** ffmpeg streaming = константная память независимо от размера исходника.
+- **Ключевые решения:** ffmpeg zimg для downscale (не magick — non-streaming и медленнее); pywal fallback убран, wallust обязателен.
+- **Тестирование:** подтверждено — 22K OOM решён async downscale; кэш переиспользуется мгновенно при повторе.
+- **Code efficiency:** theme-apply 207 → 169 строк, извлечены helpers, DRY (см. TD-001).
+
+### Next · Part 2 · bar layer — IN PROGRESS
+- Live refresh палитры бара без `qtile reload_config` (`refresh_bar_colors` + регистрация theme-targets).
+- Palette menu в theme-hub (отдельный слой `bar`).
+- Blockers: нет. Timeline: на этой неделе.

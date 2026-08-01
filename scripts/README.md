@@ -16,19 +16,24 @@
   - `theme-apply --random` — случайные из `$WALLDIR`
   - `theme-apply --last` — повторить последние
   - `theme-apply wall ...` — алиас (part1: то же, что default)
-  - Движок: wallust (если есть), иначе pywal.
+  - Движок: **wallust** (обязателен). 22K-изображения авто-downscale через ffmpeg zimg (ADR-011).
   - **Не делает `qtile reload_config`** — bar/session не меняются.
 - **theme-hub** — rofi-хаб выбора обоев (слой wall). Бинди на `Mod+Shift+t`.
 - **wal-set** — legacy-обёртка над `theme-apply`.
 
 ### State (runtime)
 
-- `~/.local/state/theme-hub/wall.json` — палитра + обои + timestamp + engine
+- `~/.local/state/theme-hub/wall.json` — палитра + обои + timestamp + engine (wallust)
 - `~/.local/state/theme-hub/last-wall` — путь к последним обоям
-- `~/.local/state/theme-hub/last-engine` — wallust|pywal
+- `~/.local/state/theme-hub/prev-wall` — путь к предыдущим обоям (для `--last` fallback)
 - `~/.local/state/theme-hub/bar.json` — палитра бара (seed из CYBER_SOLAR_BASE при первом запуске)
+- `~/.local/state/theme-hub/wallust.log` — лог wallust (debug)
+- `~/.local/state/theme-hub/prepare.log` — лог ffmpeg downscale (debug)
 - `~/.cache/wal/colors.json` — pywal-совместимый JSON (для consumers)
 - `~/.cache/wal/wal` — путь к последним обоям
+- `~/.cache/theme-hub/prepared/` — кэш даунскейленных JPG (для 22K, по sha256)
+
+> **Удалено (мёртвые артефакты предыдущей версии):** `extract-src.jpg`, `last-engine` — больше не пишутся скриптом; удалить вручную при апгрейде.
 
 ### Переменные
 

@@ -30,8 +30,8 @@ Stow + пакеты (S0)
 
 | Слот | Поток | Что сделать |
 |------|--------|-------------|
-| **Now** | S0 | Добить фундамент: диск >10G free на `/`; `stow scripts` (disk-hygiene) |
-| **Next** | S2 deeper | Layers wall|bar|apps + wallust engine + bar live refresh + motion (ADR-009/010) |
+| **Now** | S2 Part 2 | Bar layer: live refresh без reload_config + palette menu (ADR-010/011) |
+| **Next** | S2 polish | Шаблоны GTK/dunst/rofi; motion feedback |
 | **Later** | S3→S1→S4→S5 | Daily tools под stow+тему; polish desktop; cheats; bootstrap |
 | **Parked** | S6 | Taskwarrior, calcurse, aether, Docker… → deferred.md |
 
@@ -58,20 +58,29 @@ Stow + пакеты (S0)
 **Статус:** база есть (Qtile/picom ok), polish после S2
 - Qtile ✅ · picom ✅ · rofi/dunst — донастройка темы после S2
 
-### S2 · Theming hub  ← Next после S0
+### S2 · Theming hub  ← Now (Part 2)
 **Зачем:** один генератор цвета → Alacritty, rofi, dunst, GTK, Qtile, terminal.
 **Зависит от:** S0.
 **Блокирует:** визуальный polish S1/S3/S4.
 **DoD:** смена обоев/палитры перекрашивает стек без ручной правки N утилит.
-**Доктрина:** ADR-009 (cyberpunk ∩ solarpunk) + ADR-010 (layers + engine + no-reload bar)
-**Статус:** MVP done (pywal + theme-apply + theme-hub); layers+speed+bar-live = in progress
-- [x] Выбран **один** основной генератор: **pywal** (ADR-008)
+**Доктрина:** ADR-009 (cyberpunk ∩ solarpunk) + ADR-010 (layers + engine + no-reload bar) + ADR-011 (22K streaming downscale)
+**Статус:** Part 1 (wall layer) DONE; Part 2 (bar layer) IN PROGRESS
+
+#### Part 1 · wall layer — DONE (2026-08-02)
+- [x] Выбран основной генератор: **wallust** (pywal fallback убран, wallust обязателен — ADR-010/011)
 - [x] Оркестратор `theme-apply` + rofi-меню `theme-hub`
 - [x] Хоткеи: `Mod+F5` hub, `Mod+Shift+F5` random
 - [x] `wal-set` → thin wrapper на `theme-apply`
-- [ ] **Engine:** переход на **wallust** (быстрее extract), pywal — optional fallback; no DoomOne (ADR-010)
-- [ ] **Слои:** wall | bar | apps — раздельные палитры, смена обоев НЕ трогает бар (ADR-010)
+- [x] **22K support:** streaming downscale через `ffmpeg zimg`, guard >8192px/>100MP, кэш в `~/.cache/theme-hub/prepared/` (ADR-011)
+- [x] **`--last` history:** повтор последних обоев + state-sync (`update_state` в обоих путях)
+- [x] **Async apply:** wallust в фоне, UI не блокируется
+- [x] **Memory-efficient:** ffmpeg streaming = константная память, OOM на 22K устранён
+- [x] **Code efficiency:** theme-apply 207 → 169 строк, helpers извлечены, DRY (TD-001 резолюция)
+
+#### Part 2 · bar layer — IN PROGRESS (блокеров нет, timeline: эта неделя)
 - [ ] **Bar live refresh:** `refresh_bar_colors` без `reload_config` (ADR-010)
+- [ ] **Palette menu:** отдельный слой `bar` в theme-hub
+- [ ] **Слои:** wall | bar | apps — раздельные палитры, смена обоев НЕ трогает бар (ADR-010)
 - [ ] **Motion feedback:** короткие анимации при apply (dunst + picom/rofi)
 - [ ] Больше шаблонов (GTK, dunst, rofi — polish)
 - [ ] aether — НЕ здесь (NVIDIA) → deferred.md
