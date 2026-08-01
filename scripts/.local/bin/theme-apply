@@ -46,7 +46,7 @@ resolve_image() {
 }
 
 validate_tools() {
-    for tool in identify ffmpeg wallust; do
+    for tool in identify magick wallust; do
         command -v "$tool" &>/dev/null || {
             notify-send "theme-apply" "$tool не найден" -u critical
             exit 1
@@ -75,11 +75,10 @@ prepare_image() {
     if (( max_dim <= 8192 && area <= 104857600 )); then echo "$image"; return; fi
     local hash cache_file
     hash="$(sha256sum "$image" | cut -c1-12)"
-    cache_file="$prepared_dir/$hash.jpg"
+    cache_file="$prepared_dir/$hash.png"
     if [[ -f "$cache_file" ]]; then echo "$cache_file"; return; fi
-    if ffmpeg -hide_banner -loglevel error -i "$image" \
-        -vf "scale=3840:2160:flags=lanczos" \
-        -q:v 2 "$cache_file" 2>>"$STATE_DIR/prepare.log"; then
+    if magick "$image" -resize "3840x2160>" "$cache_file" \
+        2>>"$STATE_DIR/prepare.log"; then
         echo "$cache_file"
     else
         notify-send "theme-apply" "Даунскейл не удался: изображение слишком большое для wallust" -u critical
