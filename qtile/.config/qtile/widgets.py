@@ -6,7 +6,7 @@ from qtile_extras.widget.decorations import PowerLineDecoration, RectDecoration,
 import colors
 from keys import myTerm
 
-colors_list = colors.WalColors
+colors_list = colors.BarColors
 
 widget_defaults = dict(
     font="Ubuntu Bold",

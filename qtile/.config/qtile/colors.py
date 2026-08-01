@@ -1,52 +1,86 @@
 import json
 import os
 
-def load_wal_colors():
-    """Читает палитру pywal из кэша. Fallback на DoomOne если кэша нет."""
-    wal_cache = os.path.expanduser("~/.cache/wal/colors.json")
+CYBER_SOLAR_BASE = [
+    ["#0d1a1e", "#0d1a1e"],
+    ["#e8dcc0", "#e8dcc0"],
+    ["#0a1418", "#0a1418"],
+    ["#d97253", "#d97253"],
+    ["#7fa063", "#7fa063"],
+    ["#d4a24c", "#d4a24c"],
+    ["#3a8e8e", "#3a8e8e"],
+    ["#56b5b5", "#56b5b5"],
+    ["#a86fa3", "#a86fa3"],
+    ["#b8c4b8", "#b8c4b8"],
+]
 
-    # Fallback палитра
-    fallback = [
-        ["#282c34", "#282c34"],  # bg
-        ["#bbc2cf", "#bbc2cf"],  # fg
-        ["#1c1f24", "#1c1f24"],  # color01
-        ["#ff6c6b", "#ff6c6b"],  # color02
-        ["#98be65", "#98be65"],  # color03
-        ["#da8548", "#da8548"],  # color04
-        ["#51afef", "#51afef"],  # color05
-        ["#c678dd", "#c678dd"],  # color06
-        ["#46d9ff", "#46d9ff"],  # color07
-        ["#7d7d7d", "#7d7d7d"],  # color08
-    ]
+BAR_STATE_PATH = os.path.expanduser("~/.local/state/theme-hub/bar.json")
+WALL_STATE_PATH = os.path.expanduser("~/.local/state/theme-hub/wall.json")
+WAL_CACHE_PATH = os.path.expanduser("~/.cache/wal/colors.json")
 
-    if not os.path.isfile(wal_cache):
-        return fallback
 
+def _ensure_dir(path):
+    d = os.path.dirname(path)
+    if d and not os.path.isdir(d):
+        os.makedirs(d, exist_ok=True)
+
+
+def _read_json(path):
+    if not os.path.isfile(path):
+        return None
     try:
-        with open(wal_cache, "r") as f:
-            data = json.load(f)
+        with open(path, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return None
 
-        colors = data.get("colors", {})
+
+def _write_json(path, data):
+    _ensure_dir(path)
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def _palette_to_slots(palette):
+    if isinstance(palette, list) and len(palette) >= 10:
+        return [[c, c] for c in palette[:10]]
+    return None
+
+
+def load_bar_colors():
+    data = _read_json(BAR_STATE_PATH)
+    if data and "palette" in data:
+        slots = _palette_to_slots(data["palette"])
+        if slots:
+            return slots
+    return [list(c) for c in CYBER_SOLAR_BASE]
+
+
+def load_wall_colors():
+    data = _read_json(WALL_STATE_PATH)
+    if data and "palette" in data:
+        return data["palette"]
+    data = _read_json(WAL_CACHE_PATH)
+    if data:
         special = data.get("special", {})
-
-        bg = special.get("background", "#282c34")
-        fg = special.get("foreground", "#bbc2cf")
-
-        return [
-            [bg, bg],                                          # [0] bg
-            [fg, fg],                                          # [1] fg
-            [colors.get("color0", "#1c1f24"), colors.get("color0", "#1c1f24")],  # [2] dark
-            [colors.get("color1", "#ff6c6b"), colors.get("color1", "#ff6c6b")],  # [3] red
-            [colors.get("color2", "#98be65"), colors.get("color2", "#98be65")],  # [4] green
-            [colors.get("color3", "#da8548"), colors.get("color3", "#da8548")],  # [5] yellow/orange
-            [colors.get("color4", "#51afef"), colors.get("color4", "#51afef")],  # [6] blue
-            [colors.get("color5", "#c678dd"), colors.get("color5", "#c678dd")],  # [7] magenta
-            [colors.get("color6", "#46d9ff"), colors.get("color6", "#46d9ff")],  # [8] cyan (accent)
-            [colors.get("color7", "#7d7d7d"), colors.get("color7", "#7d7d7d")],  # [9] light gray
-        ]
-    except (json.JSONDecodeError, KeyError, IOError):
-        return fallback
+        colors = data.get("colors", {})
+        return {
+            "background": special.get("background", CYBER_SOLAR_BASE[0][0]),
+            "foreground": special.get("foreground", CYBER_SOLAR_BASE[1][0]),
+            **{k: v for k, v in colors.items()},
+        }
+    return {}
 
 
-# Глобальная переменная — используется в config.py как colors[0], colors[1] и т.д.
-WalColors = load_wal_colors()
+def seed_bar_state():
+    if os.path.isfile(BAR_STATE_PATH):
+        return
+    palette = [c[0] for c in CYBER_SOLAR_BASE]
+    _write_json(BAR_STATE_PATH, {
+        "source": "cyber-solar-base",
+        "palette": palette,
+    })
+
+
+BarColors = load_bar_colors()
+seed_bar_state()

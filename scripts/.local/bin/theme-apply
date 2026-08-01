@@ -5,25 +5,180 @@ WALLDIR="${THEME_WALLDIR:-$HOME/wallpapers}"
 SAT="${THEME_SATURATION:-0.5}"
 ALPHA="${THEME_ALPHA:-85}"
 
+STATE_DIR="$HOME/.local/state/theme-hub"
+WAL_CACHE_DIR="$HOME/.cache/wal"
+WALLUST_CACHE_DIR="$HOME/.cache/wallust"
+
+mkdir -p "$STATE_DIR" "$WAL_CACHE_DIR"
+
 pick_random() {
     find "$WALLDIR" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | shuf -n 1
 }
 
 resolve_image() {
     local arg="${1:-}"
-    if [[ -z "$arg" ]]; then
+    if [[ -z "$arg" || "$arg" == "wall" ]]; then
         pick_random
     elif [[ "$arg" == "--random" ]]; then
         pick_random
     elif [[ "$arg" == "--last" ]]; then
-        if [[ -f "$HOME/.cache/wal/wal" ]]; then
-            cat "$HOME/.cache/wal/wal"
+        if [[ -f "$STATE_DIR/last-wall" ]]; then
+            cat "$STATE_DIR/last-wall"
+        elif [[ -f "$WAL_CACHE_DIR/wal" ]]; then
+            cat "$WAL_CACHE_DIR/wal"
         else
             pick_random
         fi
+    elif [[ "$arg" == "wall" ]]; then
+        shift
+        resolve_image "${1:-}"
     else
         printf '%s\n' "$arg"
     fi
+}
+
+detect_engine() {
+    if command -v wallust &>/dev/null; then
+        echo "wallust"
+    elif command -v wal &>/dev/null; then
+        echo "pywal"
+    else
+        echo ""
+    fi
+}
+
+run_wallust() {
+    local image="$1"
+    local rc=1
+    
+    if wallust run "$image" -s 2>/dev/null; then
+        rc=0
+    elif wallust run "$image" 2>/dev/null; then
+        rc=0
+    elif wallust "$image" 2>/dev/null; then
+        rc=0
+    fi
+    
+    return $rc
+}
+
+run_pywal() {
+    local image="$1"
+    wal -i "$image" --cols16 --saturate "$SAT" -a "$ALPHA" -q
+}
+
+write_wal_json() {
+    local image="$1"
+    local engine="$2"
+    
+    python3 - "$image" "$engine" "$WALLUST_CACHE_DIR" "$WAL_CACHE_DIR" <<'PYEOF'
+import sys, json, os, glob
+
+image = sys.argv[1]
+engine = sys.argv[2]
+wallust_cache = sys.argv[3]
+wal_cache = sys.argv[4]
+
+palette = []
+bg = fg = cursor = ""
+
+if engine == "wallust":
+    colors_file = os.path.join(wallust_cache, "colors")
+    if os.path.isfile(colors_file):
+        with open(colors_file) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("#"):
+                    palette.append(line)
+        if len(palette) >= 16:
+            bg = palette[0]
+            fg = palette[1] if len(palette) > 1 else palette[0]
+            cursor = fg
+    else:
+        json_file = os.path.join(wallust_cache, "colors.json")
+        if os.path.isfile(json_file):
+            with open(json_file) as f:
+                data = json.load(f)
+            bg = data.get("special", {}).get("background", "")
+            fg = data.get("special", {}).get("foreground", "")
+            cursor = data.get("special", {}).get("cursor", fg)
+            for i in range(16):
+                c = data.get("colors", {}).get(f"color{i}", "")
+                if c:
+                    palette.append(c)
+
+if not palette or not bg:
+    wal_json = os.path.join(wal_cache, "colors.json")
+    if os.path.isfile(wal_json):
+        with open(wal_json) as f:
+            data = json.load(f)
+        bg = data.get("special", {}).get("background", "#0d1a1e")
+        fg = data.get("special", {}).get("foreground", "#e8dcc0")
+        cursor = data.get("special", {}).get("cursor", fg)
+        for i in range(16):
+            c = data.get("colors", {}).get(f"color{i}", "")
+            if c:
+                palette.append(c)
+
+if not palette:
+    sys.exit(1)
+
+while len(palette) < 16:
+    palette.append(palette[-1])
+
+output = {
+    "wallpaper": image,
+    "alpha": "85",
+    "special": {
+        "background": bg,
+        "foreground": fg,
+        "cursor": cursor
+    },
+    "colors": {f"color{i}": palette[i] for i in range(16)}
+}
+
+out_path = os.path.join(wal_cache, "colors.json")
+with open(out_path, "w") as f:
+    json.dump(output, f, indent=2)
+
+print(json.dumps({"bg": bg, "fg": fg, "palette": palette[:16]}))
+PYEOF
+}
+
+write_state() {
+    local image="$1"
+    local engine="$2"
+    local palette_json="$3"
+    
+    python3 - "$image" "$engine" "$palette_json" "$STATE_DIR" <<'PYEOF'
+import sys, json, os, time
+from datetime import datetime
+
+image = sys.argv[1]
+engine = sys.argv[2]
+palette_json = sys.argv[3]
+state_dir = sys.argv[4]
+
+data = json.loads(palette_json)
+
+wall_state = {
+    "wallpaper": image,
+    "engine": engine,
+    "timestamp": datetime.now().isoformat(),
+    "palette": data["palette"],
+    "background": data["bg"],
+    "foreground": data["fg"]
+}
+
+with open(os.path.join(state_dir, "wall.json"), "w") as f:
+    json.dump(wall_state, f, indent=2)
+
+with open(os.path.join(state_dir, "last-wall"), "w") as f:
+    f.write(image)
+
+with open(os.path.join(state_dir, "last-engine"), "w") as f:
+    f.write(engine)
+PYEOF
 }
 
 IMAGE="$(resolve_image "${1:-}")"
@@ -38,15 +193,35 @@ if [[ ! -f "$IMAGE" ]]; then
     exit 1
 fi
 
-wal -i "$IMAGE" --cols16 --saturate "$SAT" -a "$ALPHA" -q
+ENGINE="$(detect_engine)"
+if [[ -z "$ENGINE" ]]; then
+    notify-send "theme-apply" "Не найден wallust или pywal" -u critical
+    exit 1
+fi
 
-feh --bg-fill "$(cat "$HOME/.cache/wal/wal")"
+if [[ "$ENGINE" == "wallust" ]]; then
+    run_wallust "$IMAGE" || ENGINE="pywal"
+fi
+
+if [[ "$ENGINE" == "pywal" ]]; then
+    run_pywal "$IMAGE"
+fi
+
+printf '%s\n' "$IMAGE" > "$WAL_CACHE_DIR/wal"
+
+PALETTE_JSON="$(write_wal_json "$IMAGE" "$ENGINE")"
+if [[ -z "$PALETTE_JSON" ]]; then
+    notify-send "theme-apply" "Ошибка генерации палитры" -u critical
+    exit 1
+fi
+
+write_state "$IMAGE" "$ENGINE" "$PALETTE_JSON"
+
+feh --bg-fill "$IMAGE"
 
 killall -q dunst
 dunst &
 
-qtile cmd-obj -o cmd -f reload_config 2>/dev/null || true
-
 betterlockscreen -u "$IMAGE" --display 1 &
 
-notify-send "Тема" "$(basename "$IMAGE")" -i "$IMAGE" -t 3000
+notify-send "Тема [wall]" "$(basename "$IMAGE") · $ENGINE" -i "$IMAGE" -t 3000

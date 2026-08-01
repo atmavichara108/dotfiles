@@ -5,9 +5,9 @@ WALLDIR="${THEME_WALLDIR:-$HOME/wallpapers}"
 
 main_menu() {
     printf '%s\n' \
-        "🖼  Выбрать обои" \
-        "🎲  Случайные обои" \
-        "↻  Повторить последние" \
+        "🖼  Обои (слой wall)" \
+        "🎲  Случайные обои (слой wall)" \
+        "↻  Повторить последние (слой wall)" \
         "📁  Открыть папку обоев"
 }
 
@@ -38,8 +38,8 @@ choose_wallpaper() {
 choice="$(main_menu | rofi -dmenu -i -p "Theme hub" -no-custom)" || exit 0
 
 case "$choice" in
-    *"Выбрать"*)    choose_wallpaper ;;
-    *"Случайные"*)  theme-apply --random ;;
-    *"Повторить"*)  theme-apply --last ;;
-    *"Открыть"*)    xdg-open "$WALLDIR" 2>/dev/null & ;;
+    *"Обои (слой"*)  choose_wallpaper ;;
+    *"Случайные"*)   theme-apply --random ;;
+    *"Повторить"*)   theme-apply --last ;;
+    *"Открыть"*)     xdg-open "$WALLDIR" 2>/dev/null & ;;
 esac

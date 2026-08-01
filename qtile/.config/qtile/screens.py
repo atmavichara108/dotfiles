@@ -16,7 +16,7 @@ def init_screens():
             widgets=widgets.init_widgets_screen1(is_wayland),
             size=70,
             margin=[12, 16, 0, 16],
-            background="#282c34e6",
+            background="#0d1a1ee6",
             border_width=[0, 0, 0, 0],
             opacity=0.8,
         )),
