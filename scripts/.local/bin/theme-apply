@@ -60,6 +60,43 @@ print(json.dumps({'bg':d['special']['background'],'fg':d['special']['foreground'
 " "$colors_file" 2>/dev/null
 }
 
+prepare_image() {
+    local image="$1" prepared_dir="$HOME/.cache/theme-hub/prepared"
+    mkdir -p "$prepared_dir"
+
+    local dims
+    dims="$(identify -format "%wx%h" "$image" 2>/dev/null)" || {
+        echo "$image"
+        return
+    }
+
+    local w h area max_dim
+    w="${dims%x*}"
+    h="${dims#*x}"
+    area=$((w * h))
+    max_dim=$((w > h ? w : h))
+
+    if (( max_dim <= 8192 && area <= 104857600 )); then
+        echo "$image"
+        return
+    fi
+
+    local hash cache_file
+    hash="$(sha256sum "$image" | cut -c1-12)"
+    cache_file="$prepared_dir/$hash.png"
+
+    if [[ -f "$cache_file" ]]; then
+        echo "$cache_file"
+        return
+    fi
+
+    if magick "$image" -resize '3840x2160>' "$cache_file" 2>>"$STATE_DIR/wallust.log"; then
+        echo "$cache_file"
+    else
+        echo "$image"
+    fi
+}
+
 run_wallust() {
     local image="$1" log="$STATE_DIR/wallust.log"
     timeout 30 wallust run "$image" >"$log" 2>&1
@@ -112,6 +149,8 @@ main() {
 
     killall -q notify-send 2>/dev/null || true
     notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
+
+    IMAGE="$(prepare_image "$IMAGE")"
 
     local OPT_LOCK_CAPTURED=$OPT_LOCK
     local IMAGE_CAPTURED="$IMAGE"
