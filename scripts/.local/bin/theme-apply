@@ -7,9 +7,7 @@ WAL_CACHE_DIR="$HOME/.cache/wal"
 
 mkdir -p "$STATE_DIR" "$WAL_CACHE_DIR"
 
-OPT_RANDOM=0
-OPT_LAST=0
-IMAGE_ARG=""
+OPT_RANDOM=0; OPT_LAST=0; IMAGE_ARG=""
 [[ "${THEME_UPDATE_LOCK:-0}" == "1" ]] && OPT_LOCK=1 || OPT_LOCK=0
 
 seed_bar_json() {
@@ -37,9 +35,7 @@ read_prev_wallpaper() {
     local wp=""
     [[ -f "$STATE_DIR/prev-wall" ]] && wp="$(tr -d '\r\n' < "$STATE_DIR/prev-wall")"
     [[ -z "$wp" && -f "$STATE_DIR/last-wall" ]] && wp="$(tr -d '\r\n' < "$STATE_DIR/last-wall")"
-    if [[ -z "$wp" ]] && [[ -f "$STATE_DIR/wall.json" ]]; then
-        wp="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['wallpaper'])" "$STATE_DIR/wall.json" 2>/dev/null)"
-    fi
+    [[ -z "$wp" && -f "$STATE_DIR/wall.json" ]] && wp="$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['wallpaper'])" "$STATE_DIR/wall.json" 2>/dev/null)"
     printf '%s' "$wp"
 }
 
@@ -49,7 +45,16 @@ resolve_image() {
     pick_random
 }
 
-extract_palette_json() {
+validate_tools() {
+    for tool in identify ffmpeg wallust; do
+        command -v "$tool" &>/dev/null || {
+            notify-send "theme-apply" "$tool не найден" -u critical
+            exit 1
+        }
+    done
+}
+
+extract_palette() {
     local colors_file="${1:-$WAL_CACHE_DIR/colors.json}"
     [[ ! -f "$colors_file" ]] && return 1
     python3 -c "
@@ -63,33 +68,15 @@ print(json.dumps({'bg':d['special']['background'],'fg':d['special']['foreground'
 prepare_image() {
     local image="$1" prepared_dir="$HOME/.cache/theme-hub/prepared"
     mkdir -p "$prepared_dir"
-
     local dims
-    dims="$(identify -format "%wx%h" "$image" 2>/dev/null)" || {
-        echo "$image"
-        return
-    }
-
+    dims="$(identify -format "%wx%h" "$image" 2>/dev/null)" || { echo "$image"; return; }
     local w h area max_dim
-    w="${dims%x*}"
-    h="${dims#*x}"
-    area=$((w * h))
-    max_dim=$((w > h ? w : h))
-
-    if (( max_dim <= 8192 && area <= 104857600 )); then
-        echo "$image"
-        return
-    fi
-
+    w="${dims%x*}"; h="${dims#*x}"; area=$((w * h)); max_dim=$((w > h ? w : h))
+    if (( max_dim <= 8192 && area <= 104857600 )); then echo "$image"; return; fi
     local hash cache_file
     hash="$(sha256sum "$image" | cut -c1-12)"
     cache_file="$prepared_dir/$hash.jpg"
-
-    if [[ -f "$cache_file" ]]; then
-        echo "$cache_file"
-        return
-    fi
-
+    if [[ -f "$cache_file" ]]; then echo "$cache_file"; return; fi
     if ffmpeg -hide_banner -loglevel error -i "$image" \
         -vf "zimg=w=3840:h=2160:filter=lanczos" \
         -q:v 2 "$cache_file" 2>>"$STATE_DIR/prepare.log"; then
@@ -100,12 +87,7 @@ prepare_image() {
     fi
 }
 
-run_wallust() {
-    local image="$1" log="$STATE_DIR/wallust.log"
-    timeout 30 wallust run "$image" >>"$log" 2>&1
-}
-
-write_state() {
+update_state() {
     local image="$1" palette_json="$2"
     [[ -f "$STATE_DIR/last-wall" ]] && mv "$STATE_DIR/last-wall" "$STATE_DIR/prev-wall"
     printf '%s' "$image" > "$STATE_DIR/last-wall"
@@ -117,88 +99,68 @@ json.dump(d,open(os.path.join(s,"wall.json"),"w"),indent=2)
 PYEOF
 }
 
-fast_last() {
-    local wp
-    wp="$(read_prev_wallpaper)"
-    [[ -z "$wp" ]] || [[ ! -f "$wp" ]] && return 1
-    [[ -f "$STATE_DIR/last-wall" ]] && cp "$STATE_DIR/last-wall" "$STATE_DIR/prev-wall"
-    printf '%s' "$wp" > "$STATE_DIR/last-wall"
-    feh --bg-fill "$wp"
+read_palette_from_state() {
+    [[ -f "$STATE_DIR/wall.json" ]] && python3 -c "
+import json,sys
+d=json.load(open(sys.argv[1]))
+print(json.dumps({'bg':d.get('background',''),'fg':d.get('foreground',''),'palette':d.get('palette',[])}))
+" "$STATE_DIR/wall.json" 2>/dev/null && return
+    [[ -f "$STATE_DIR/bar.json" ]] && cat "$STATE_DIR/bar.json"
+}
+
+apply_wallpaper() {
+    local image="$1" notify_msg="$2"
+    feh --bg-fill "$image"
     killall -q dunst
+    sleep 0.1
     dunst &
-    notify-send "Тема [wall]" "$(basename "$wp")" -t 3000
-    return 0
+    notify-send "Тема [wall]" "$notify_msg" -t 3000
+    [[ "${OPT_LOCK:-0}" == "1" ]] && betterlockscreen -u "$image" --display 1 &
 }
 
 main() {
     parse_args "$@"
+    validate_tools
 
     if (( OPT_LAST )); then
-        if fast_last; then exit 0; fi
-        notify-send "theme-apply" "--last: нет валидных обоев" -u critical
-        exit 1
+        wp="$(read_prev_wallpaper)"
+        if [[ -z "$wp" ]] || [[ ! -f "$wp" ]]; then
+            notify-send "theme-apply" "--last: нет валидных обоев" -u critical
+            exit 1
+        fi
+        PALETTE_JSON="$(read_palette_from_state)"
+        [[ -n "$PALETTE_JSON" ]] && update_state "$wp" "$PALETTE_JSON"
+        apply_wallpaper "$wp" "$(basename "$wp")"
+        exit 0
     fi
 
     IMAGE="$(resolve_image)"
-    if [[ -z "$IMAGE" ]]; then
-        notify-send "theme-apply" "Нет обоев в $WALLDIR" -u critical; exit 1
-    fi
-    if [[ ! -f "$IMAGE" ]]; then
-        notify-send "theme-apply" "Файл не найден: $IMAGE" -u critical; exit 1
-    fi
-    if ! command -v ffmpeg &>/dev/null; then
-        notify-send "theme-apply" "ffmpeg не найден (требуется для даунскейла)" -u critical; exit 1
-    fi
-    if ! command -v identify &>/dev/null; then
-        notify-send "theme-apply" "identify (ImageMagick) не найден" -u critical; exit 1
-    fi
-    if ! command -v wallust &>/dev/null; then
-        notify-send "theme-apply" "wallust не найден" -u critical; exit 1
+    if [[ -z "$IMAGE" ]] || [[ ! -f "$IMAGE" ]]; then
+        notify-send "theme-apply" "${IMAGE:+Файл не найден: }${IMAGE:-Нет обоев в $WALLDIR}" -u critical
+        exit 1
     fi
 
     killall -q notify-send 2>/dev/null || true
-    > "$STATE_DIR/wallust.log"
-    > "$STATE_DIR/prepare.log"
+    > "$STATE_DIR/wallust.log"; > "$STATE_DIR/prepare.log"
     notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
-
     ORIG_IMAGE="$IMAGE"
     IMAGE="$(prepare_image "$IMAGE")" || exit 1
 
-    local OPT_LOCK_CAPTURED=$OPT_LOCK
-    local IMAGE_CAPTURED="$IMAGE"
-    local ORIG_IMAGE_CAPTURED="$ORIG_IMAGE"
-    local STATE_DIR_CAPTURED="$STATE_DIR"
-    local WAL_CACHE_DIR_CAPTURED="$WAL_CACHE_DIR"
-
     (
-        if ! run_wallust "$IMAGE_CAPTURED"; then
-            PALETTE_JSON=""
-            if PALETTE_JSON="$(extract_palette_json)"; then
-                write_state "$ORIG_IMAGE_CAPTURED" "$PALETTE_JSON"
-            else
-                err=""
-                [[ -f "$STATE_DIR_CAPTURED/wallust.log" ]] && err="$(head -1 "$STATE_DIR_CAPTURED/wallust.log" | cut -c1-100)"
-                notify-send "theme-apply" "wallust: OOM (${err:-unknown})" -u critical
-                exit 1
-            fi
-        else
-            PALETTE_JSON=""
-            if ! PALETTE_JSON="$(extract_palette_json)"; then
+        if timeout 30 wallust run "$IMAGE" >>"$STATE_DIR/wallust.log" 2>&1; then
+            PALETTE_JSON="$(extract_palette)" || {
                 notify-send "theme-apply" "colors.json пуст" -u critical
                 exit 1
-            fi
-            write_state "$ORIG_IMAGE_CAPTURED" "$PALETTE_JSON"
+            }
+        else
+            PALETTE_JSON="$(extract_palette)" || {
+                err="$(head -1 "$STATE_DIR/wallust.log" 2>/dev/null | cut -c1-100)"
+                notify-send "theme-apply" "wallust: OOM (${err:-unknown})" -u critical
+                exit 1
+            }
         fi
-
-        feh --bg-fill "$IMAGE_CAPTURED"
-        killall -q dunst
-        dunst &
-
-        if (( OPT_LOCK_CAPTURED )); then
-            betterlockscreen -u "$IMAGE_CAPTURED" --display 1 &
-        fi
-
-        notify-send "Тема [wall]" "$(basename "$ORIG_IMAGE_CAPTURED")" -t 3000
+        update_state "$ORIG_IMAGE" "$PALETTE_JSON"
+        apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
     ) &
 
     exit 0
