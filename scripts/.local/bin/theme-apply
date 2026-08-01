@@ -149,6 +149,9 @@ main() {
     if ! command -v ffmpeg &>/dev/null; then
         notify-send "theme-apply" "ffmpeg не найден (требуется для даунскейла)" -u critical; exit 1
     fi
+    if ! command -v identify &>/dev/null; then
+        notify-send "theme-apply" "identify (ImageMagick) не найден" -u critical; exit 1
+    fi
     if ! command -v wallust &>/dev/null; then
         notify-send "theme-apply" "wallust не найден" -u critical; exit 1
     fi
