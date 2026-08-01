@@ -51,9 +51,7 @@ resolve_image() {
 
 run_wallust() {
     local image="$1" log="$STATE_DIR/wallust.log"
-    timeout 30 wallust run -s "$image" >"$log" 2>&1 && return 0
-    timeout 30 wallust run "$image" >"$log" 2>&1 && return 0
-    return 1
+    timeout 30 wallust run "$image" >"$log" 2>&1
 }
 
 write_state() {
