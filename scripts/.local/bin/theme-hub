@@ -7,8 +7,7 @@ main_menu() {
     printf '%s\n' \
         "🖼  Обои (слой wall)" \
         "🎲  Случайные обои (слой wall)" \
-        "↻  Повторить последние (слой wall)" \
-        "📁  Открыть папку обоев"
+        "↻  Повторить последние (слой wall)"
 }
 
 choose_wallpaper() {
@@ -24,5 +23,4 @@ case "$choice" in
     *"Обои (слой"*)  choose_wallpaper ;;
     *"Случайные"*)   theme-apply --random ;;
     *"Повторить"*)   theme-apply --last ;;
-    *"Открыть"*)     xdg-open "$WALLDIR" 2>/dev/null & ;;
 esac
