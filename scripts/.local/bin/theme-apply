@@ -49,6 +49,17 @@ resolve_image() {
     pick_random
 }
 
+extract_palette_json() {
+    local colors_file="${1:-$WAL_CACHE_DIR/colors.json}"
+    [[ ! -f "$colors_file" ]] && return 1
+    python3 -c "
+import json,sys
+d=json.load(open(sys.argv[1]))
+p=[d['colors'][f'color{i}'] for i in range(16)]
+print(json.dumps({'bg':d['special']['background'],'fg':d['special']['foreground'],'palette':p}))
+" "$colors_file" 2>/dev/null
+}
+
 run_wallust() {
     local image="$1" log="$STATE_DIR/wallust.log"
     timeout 30 wallust run "$image" >"$log" 2>&1
@@ -99,34 +110,46 @@ main() {
         notify-send "theme-apply" "wallust не найден" -u critical; exit 1
     fi
 
-    if ! run_wallust "$IMAGE"; then
-        local err=""
-        [[ -f "$STATE_DIR/wallust.log" ]] && err="$(head -1 "$STATE_DIR/wallust.log" | cut -c1-100)"
-        notify-send "theme-apply" "wallust failed: ${err:-unknown}" -u critical
-        exit 1
-    fi
+    killall -q notify-send 2>/dev/null || true
+    notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
 
-    PALETTE_JSON="$(python3 -c "
-import json,sys
-d=json.load(open(sys.argv[1]))
-p=[d['colors'][f'color{i}'] for i in range(16)]
-print(json.dumps({'bg':d['special']['background'],'fg':d['special']['foreground'],'palette':p}))
-" "$WAL_CACHE_DIR/colors.json" 2>/dev/null)"
-    if [[ -z "$PALETTE_JSON" ]] || ! grep -q '"bg"' <<<"$PALETTE_JSON"; then
-        notify-send "theme-apply" "colors.json пуст" -u critical; exit 1
-    fi
+    local OPT_LOCK_CAPTURED=$OPT_LOCK
+    local IMAGE_CAPTURED="$IMAGE"
+    local STATE_DIR_CAPTURED="$STATE_DIR"
+    local WAL_CACHE_DIR_CAPTURED="$WAL_CACHE_DIR"
 
-    write_state "$IMAGE" "$PALETTE_JSON"
+    (
+        if ! run_wallust "$IMAGE_CAPTURED"; then
+            PALETTE_JSON=""
+            if PALETTE_JSON="$(extract_palette_json)"; then
+                write_state "$IMAGE_CAPTURED" "$PALETTE_JSON"
+            else
+                err=""
+                [[ -f "$STATE_DIR_CAPTURED/wallust.log" ]] && err="$(head -1 "$STATE_DIR_CAPTURED/wallust.log" | cut -c1-100)"
+                notify-send "theme-apply" "wallust: OOM (${err:-unknown})" -u critical
+                exit 1
+            fi
+        else
+            PALETTE_JSON=""
+            if ! PALETTE_JSON="$(extract_palette_json)"; then
+                notify-send "theme-apply" "colors.json пуст" -u critical
+                exit 1
+            fi
+            write_state "$IMAGE_CAPTURED" "$PALETTE_JSON"
+        fi
 
-    feh --bg-fill "$IMAGE"
-    killall -q dunst
-    dunst &
+        feh --bg-fill "$IMAGE_CAPTURED"
+        killall -q dunst
+        dunst &
 
-    if (( OPT_LOCK )); then
-        betterlockscreen -u "$IMAGE" --display 1 &
-    fi
+        if (( OPT_LOCK_CAPTURED )); then
+            betterlockscreen -u "$IMAGE_CAPTURED" --display 1 &
+        fi
 
-    notify-send "Тема [wall]" "$(basename "$IMAGE")" -t 3000
+        notify-send "Тема [wall]" "$(basename "$IMAGE_CAPTURED")" -t 3000
+    ) &
+
+    exit 0
 }
 
 main "$@"
