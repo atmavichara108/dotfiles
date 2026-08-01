@@ -222,6 +222,8 @@ main() {
         if fast_last; then
             exit 0
         fi
+        notify-send "theme-apply" "--last: нет валидных обоев" -u critical
+        exit 1
     fi
 
     IMAGE="$(resolve_image)"
