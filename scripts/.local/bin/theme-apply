@@ -90,7 +90,7 @@ prepare_image() {
         return
     fi
 
-    if magick "$image" -resize '3840x2160>' "$cache_file" 2>>"$STATE_DIR/wallust.log"; then
+    if magick "$image" -resize '3840x2160>' "$cache_file" 2>>"$STATE_DIR/prepare.log"; then
         echo "$cache_file"
     else
         echo "$image"
@@ -99,7 +99,7 @@ prepare_image() {
 
 run_wallust() {
     local image="$1" log="$STATE_DIR/wallust.log"
-    timeout 30 wallust run "$image" >"$log" 2>&1
+    timeout 30 wallust run "$image" >>"$log" 2>&1
 }
 
 write_state() {
@@ -148,12 +148,16 @@ main() {
     fi
 
     killall -q notify-send 2>/dev/null || true
+    > "$STATE_DIR/wallust.log"
+    > "$STATE_DIR/prepare.log"
     notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
 
+    ORIG_IMAGE="$IMAGE"
     IMAGE="$(prepare_image "$IMAGE")"
 
     local OPT_LOCK_CAPTURED=$OPT_LOCK
     local IMAGE_CAPTURED="$IMAGE"
+    local ORIG_IMAGE_CAPTURED="$ORIG_IMAGE"
     local STATE_DIR_CAPTURED="$STATE_DIR"
     local WAL_CACHE_DIR_CAPTURED="$WAL_CACHE_DIR"
 
@@ -161,7 +165,7 @@ main() {
         if ! run_wallust "$IMAGE_CAPTURED"; then
             PALETTE_JSON=""
             if PALETTE_JSON="$(extract_palette_json)"; then
-                write_state "$IMAGE_CAPTURED" "$PALETTE_JSON"
+                write_state "$ORIG_IMAGE_CAPTURED" "$PALETTE_JSON"
             else
                 err=""
                 [[ -f "$STATE_DIR_CAPTURED/wallust.log" ]] && err="$(head -1 "$STATE_DIR_CAPTURED/wallust.log" | cut -c1-100)"
@@ -174,7 +178,7 @@ main() {
                 notify-send "theme-apply" "colors.json пуст" -u critical
                 exit 1
             fi
-            write_state "$IMAGE_CAPTURED" "$PALETTE_JSON"
+            write_state "$ORIG_IMAGE_CAPTURED" "$PALETTE_JSON"
         fi
 
         feh --bg-fill "$IMAGE_CAPTURED"
@@ -185,7 +189,7 @@ main() {
             betterlockscreen -u "$IMAGE_CAPTURED" --display 1 &
         fi
 
-        notify-send "Тема [wall]" "$(basename "$IMAGE_CAPTURED")" -t 3000
+        notify-send "Тема [wall]" "$(basename "$ORIG_IMAGE_CAPTURED")" -t 3000
     ) &
 
     exit 0
