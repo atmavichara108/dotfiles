@@ -82,7 +82,7 @@ Planner:
 
 | Агент | Роль | Модель (ярус) |
 |-------|------|---------------|
-| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | `opencode-go/grok-4.5` · Strategic |
+| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | `opencode/claude-sonnet-4-6` · Strategic |
 | **think** | сверх-сложные рассуждения; делегируется planner через `task` | `opencode/grok-build-0.1` · Agentic |
 | **builder** | реализует конфиги/скрипты; вызывает `reviewer` | `opencode-go/qwen3.7-plus` · Coding |
 | **qtile-dev** | Qtile (WM, виджеты, Python) | `opencode-go/qwen3.7-plus` · Coding |

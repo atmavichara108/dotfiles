@@ -88,7 +88,7 @@
     },
     "planner": {
       "mode": "primary",
-      "model": "opencode-go/grok-4.5",
+      "model": "opencode/claude-sonnet-4-6",
       "temperature": 0.2,
       "steps": 20,
       "permission": {
@@ -168,7 +168,23 @@
           "bash -n*": "allow",
           "shellcheck*": "allow",
           "stow -n*": "allow",
-          "chmod +x*": "allow"
+          "chmod +x*": "allow",
+          "identify*": "allow",
+          "magick*": "allow",
+          "time*": "allow",
+          "time *": "allow",
+          "theme-apply*": "allow",
+          "ffmpeg*": "allow",
+          "stow*": "allow",
+          "find ~/.cache*": "allow",
+          "git status*": "allow",
+          "git add*": "allow",
+          "git commit*": "allow",
+          "git log*": "allow",
+          "echo*": "allow",
+          "head*": "allow",
+          "tail*": "allow",
+          "jq*": "allow"
         }
       }
     },
