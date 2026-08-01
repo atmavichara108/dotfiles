@@ -83,7 +83,7 @@ prepare_image() {
 
     local hash cache_file
     hash="$(sha256sum "$image" | cut -c1-12)"
-    cache_file="$prepared_dir/$hash.png"
+    cache_file="$prepared_dir/$hash.jpg"
 
     if [[ -f "$cache_file" ]]; then
         echo "$cache_file"
@@ -95,7 +95,8 @@ prepare_image() {
         -q:v 2 "$cache_file" 2>>"$STATE_DIR/prepare.log"; then
         echo "$cache_file"
     else
-        echo "$image"
+        notify-send "theme-apply" "Даунскейл не удался: изображение слишком большое для wallust" -u critical
+        return 1
     fi
 }
 
@@ -145,6 +146,9 @@ main() {
     if [[ ! -f "$IMAGE" ]]; then
         notify-send "theme-apply" "Файл не найден: $IMAGE" -u critical; exit 1
     fi
+    if ! command -v ffmpeg &>/dev/null; then
+        notify-send "theme-apply" "ffmpeg не найден (требуется для даунскейла)" -u critical; exit 1
+    fi
     if ! command -v wallust &>/dev/null; then
         notify-send "theme-apply" "wallust не найден" -u critical; exit 1
     fi
@@ -155,7 +159,7 @@ main() {
     notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
 
     ORIG_IMAGE="$IMAGE"
-    IMAGE="$(prepare_image "$IMAGE")"
+    IMAGE="$(prepare_image "$IMAGE")" || exit 1
 
     local OPT_LOCK_CAPTURED=$OPT_LOCK
     local IMAGE_CAPTURED="$IMAGE"
