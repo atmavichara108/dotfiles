@@ -2,7 +2,7 @@
 type: ADR Registry
 title: Реестр архитектурных решений — dotfiles
 description: ADR для dotfiles. Каждое решение фиксируется здесь.
-timestamp: 2026-06-30
+timestamp: 2026-07-31
 ---
 
 # Реестр архитектурных решений (ADR) — dotfiles
@@ -226,3 +226,33 @@ timestamp: 2026-06-30
 - wallust остаётся в пакетах (не как hub engine)
 - aether перенесён в deferred (S6)
 - Темы/шаблоны — polish в следующих итерациях
+
+---
+
+### ADR-009: Эстетическая доктрина — cyberpunk ∩ solarpunk
+**Дата:** 2026-07-31
+**Контекст:** Устойчивое развитие dotfiles = не только утилитарность. Стиль и UX equally first-class. Нужен единый ориентир для всех агентов и будущих кастомизаций (лаунчеры, меню, бар, уведомления, theming).
+**Решение:**
+- **Стык cyberpunk ∩ solarpunk:** высокотехнологично, плавно, современно; при этом открыто, «живое», без мрачного гротеска и без корпоративного глянца.
+- **Минимализм + hi-tech:** лёгкие UI (rofi/dunst/qtile), без тяжёлых GUI-конфигураторов; всплывающие меню, иконки, лаунчеры — уместны, если быстрые и осмысленные.
+- **Скорость = часть эстетики:** задержка смены темы/обоев — дефект UX, не «норма».
+- **Слои theming (связь с S2):** wallpaper layer ≠ bar layer; targets opt-in; не один random на всё.
+- **Анимации:** уместные, короткие, функциональные (fade/flash палитры, notify), не декоративный шум.
+- **Anti:** тяжёлый gloss, skeuomorphism, webkit-тяжёлые theme apps (aether-класс) как runtime-зависимость; DoomOne и прочие чужие fallback-палитры «на всякий случай».
+**Альтернативы:** чистый cyberpunk / чистый solarpunk / «только минимализм без стиля» — отвергнуты как однобокие.
+**Последствия:** user-profile, roadmap S2, theme-hub, qtile bar, rofi/dunst — выравниваются под доктрину. Все агенты читают этот ADR.
+
+---
+
+### ADR-010: S2 theming layers + engine + no-reload bar (уточнение ADR-008)
+**Дата:** 2026-07-31
+**Контекст:** MVP theme-hub работает, но reload_config роняет окна; pywal ощущается медленным; нужен контроль палитр per-layer; fallback DoomOne убрать.
+**Решение:**
+1. **Слои:** `wall` (обои+opt-in apps) | `bar` (отдельный palette-bar.json) | `apps` (targets.toml: wall|bar|preset|fixed).
+2. **Смена обоев НЕ трогает бар** по умолчанию; бар — отдельное действие hub.
+3. **Бар без reload_config:** live `refresh_bar_colors` + явная регистрация theme-targets в widgets (qtile-extras decorations).
+4. **Engine:** уход с pywal как default runtime → **wallust** (быстрее extract) + адаптер/запись совместимого `~/.cache/wal/colors.json` ИЛИ прямой bar/wall json; pywal optional fallback only if wallust missing — NOT DoomOne palette.
+5. **No DoomOne / no foreign preset fallback:** если палитры нет — последняя known-good из `~/.local/state/theme-hub/` или нейтральный минимальный dark из *нашей* base palette (cyber-solar), задокументированной в theme-hub, не DoomOne.
+6. **Motion:** короткие feedback-анимации при apply (dunst + optional picom/rofi), без тяжёлого compositor show.
+**Альтернативы:** оставить pywal+reload — отвергнуто (медленно + ломает сессию).
+**Последствия:** план реализации частями 1–4; ADR-008 дополняется, не отменяется (rofi hub + scripts остаются).

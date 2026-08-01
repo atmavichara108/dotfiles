@@ -31,7 +31,7 @@ Stow + пакеты (S0)
 | Слот | Поток | Что сделать |
 |------|--------|-------------|
 | **Now** | S0 | Добить фундамент: диск >10G free на `/`; `stow scripts` (disk-hygiene) |
-| **Next** | S2 polish | Шаблоны (GTK, dunst, rofi) + интеграция с S1 polish |
+| **Next** | S2 deeper | Layers wall|bar|apps + wallust engine + bar live refresh + motion (ADR-009/010) |
 | **Later** | S3→S1→S4→S5 | Daily tools под stow+тему; polish desktop; cheats; bootstrap |
 | **Parked** | S6 | Taskwarrior, calcurse, aether, Docker… → deferred.md |
 
@@ -63,11 +63,16 @@ Stow + пакеты (S0)
 **Зависит от:** S0.
 **Блокирует:** визуальный polish S1/S3/S4.
 **DoD:** смена обоев/палитры перекрашивает стек без ручной правки N утилит.
-**Статус:** MVP done (pywal + theme-apply + theme-hub)
+**Доктрина:** ADR-009 (cyberpunk ∩ solarpunk) + ADR-010 (layers + engine + no-reload bar)
+**Статус:** MVP done (pywal + theme-apply + theme-hub); layers+speed+bar-live = in progress
 - [x] Выбран **один** основной генератор: **pywal** (ADR-008)
 - [x] Оркестратор `theme-apply` + rofi-меню `theme-hub`
 - [x] Хоткеи: `Mod+F5` hub, `Mod+Shift+F5` random
 - [x] `wal-set` → thin wrapper на `theme-apply`
+- [ ] **Engine:** переход на **wallust** (быстрее extract), pywal — optional fallback; no DoomOne (ADR-010)
+- [ ] **Слои:** wall | bar | apps — раздельные палитры, смена обоев НЕ трогает бар (ADR-010)
+- [ ] **Bar live refresh:** `refresh_bar_colors` без `reload_config` (ADR-010)
+- [ ] **Motion feedback:** короткие анимации при apply (dunst + picom/rofi)
 - [ ] Больше шаблонов (GTK, dunst, rofi — polish)
 - [ ] aether — НЕ здесь (NVIDIA) → deferred.md
 
