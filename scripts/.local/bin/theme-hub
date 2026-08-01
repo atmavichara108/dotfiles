@@ -12,27 +12,10 @@ main_menu() {
 }
 
 choose_wallpaper() {
-    local files=()
-    local names=()
-    while IFS= read -r -d '' f; do
-        files+=("$f")
-        names+=("$(basename "$f")")
-    done < <(find "$WALLDIR" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -print0 | sort -z)
-
-    if [[ ${#files[@]} -eq 0 ]]; then
-        notify-send "theme-hub" "Нет обоев в $WALLDIR" -u critical
-        return 1
-    fi
-
     local chosen
-    chosen="$(printf '%s\n' "${names[@]}" | rofi -dmenu -i -p "Обои" -no-custom)" || return 0
-
-    for i in "${!names[@]}"; do
-        if [[ "${names[$i]}" == "$chosen" ]]; then
-            theme-apply "${files[$i]}"
-            return
-        fi
-    done
+    chosen="$(cd "$WALLDIR" && find . -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) -printf '%P\n' 2>/dev/null | sort | rofi -dmenu -i -p "Обои" -no-custom)" || return 0
+    [[ -z "$chosen" ]] && return 0
+    theme-apply "$WALLDIR/$chosen"
 }
 
 choice="$(main_menu | rofi -dmenu -i -p "Theme hub" -no-custom)" || exit 0

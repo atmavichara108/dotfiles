@@ -2,29 +2,17 @@
 set -uo pipefail
 
 WALLDIR="${THEME_WALLDIR:-$HOME/wallpapers}"
-SAT="${THEME_SATURATION:-0.5}"
-ALPHA="${THEME_ALPHA:-85}"
-
 STATE_DIR="$HOME/.local/state/theme-hub"
 WAL_CACHE_DIR="$HOME/.cache/wal"
 WALLUST_CACHE_DIR="$HOME/.cache/wallust"
 
 mkdir -p "$STATE_DIR" "$WAL_CACHE_DIR"
 
-OPT_LOCK=0
-OPT_REEXTRACT=0
 OPT_RANDOM=0
 OPT_LAST=0
 IMAGE_ARG=""
 
-[[ "${THEME_UPDATE_LOCK:-0}" == "1" ]] && OPT_LOCK=1
-[[ "${THEME_DEBUG:-0}" == "1" ]] && DEBUG=1 || DEBUG=0
-
-debug_time() {
-    (( DEBUG )) || return
-    local label="$1"
-    printf '[theme-apply] %s: %ss\n' "$label" "$SECONDS" >&2
-}
+[[ "${THEME_UPDATE_LOCK:-0}" == "1" ]] && OPT_LOCK=1 || OPT_LOCK=0
 
 seed_bar_json() {
     [[ -f "$STATE_DIR/bar.json" ]] && return
@@ -42,11 +30,9 @@ parse_args() {
     [[ "${1:-}" == "wall" ]] && shift
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --lock)       OPT_LOCK=1; shift ;;
-            --reextract)  OPT_REEXTRACT=1; shift ;;
-            --random)     OPT_RANDOM=1; shift ;;
-            --last)       OPT_LAST=1; shift ;;
-            *)            IMAGE_ARG="$1"; shift ;;
+            --random)  OPT_RANDOM=1; shift ;;
+            --last)    OPT_LAST=1; shift ;;
+            *)         IMAGE_ARG="$1"; shift ;;
         esac
     done
 }
@@ -57,11 +43,11 @@ pick_random() {
 
 read_last_wallpaper() {
     local wp=""
-    if [[ -f "$STATE_DIR/wall.json" ]]; then
-        wp="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['wallpaper'])" "$STATE_DIR/wall.json" 2>/dev/null)"
-    fi
-    if [[ -z "$wp" ]] && [[ -f "$STATE_DIR/last-wall" ]]; then
+    if [[ -f "$STATE_DIR/last-wall" ]]; then
         wp="$(tr -d '\r\n' < "$STATE_DIR/last-wall")"
+    fi
+    if [[ -z "$wp" ]] && [[ -f "$STATE_DIR/wall.json" ]]; then
+        wp="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['wallpaper'])" "$STATE_DIR/wall.json" 2>/dev/null)"
     fi
     if [[ -z "$wp" ]] && [[ -f "$WAL_CACHE_DIR/wal" ]]; then
         wp="$(tr -d '\r\n' < "$WAL_CACHE_DIR/wal")"
@@ -95,43 +81,6 @@ resolve_image() {
     pick_random
 }
 
-detect_engine() {
-    if command -v wallust &>/dev/null; then
-        echo "wallust"
-    elif command -v wal &>/dev/null; then
-        echo "pywal"
-    else
-        echo ""
-    fi
-}
-
-make_extract_source() {
-    local image="$1"
-    local extract_src="$image"
-
-    if command -v magick &>/dev/null; then
-        local dims
-        dims="$(magick identify -format '%w %h' "$image" 2>/dev/null)" || { printf '%s' "$image"; return; }
-        local w h
-        read -r w h <<< "$dims"
-        if (( w > 1920 || h > 1920 )); then
-            magick "$image" -resize '1920x1920>' "$STATE_DIR/extract-src.jpg" 2>/dev/null && \
-                extract_src="$STATE_DIR/extract-src.jpg"
-        fi
-    elif command -v convert &>/dev/null; then
-        local dims
-        dims="$(identify -format '%w %h' "$image" 2>/dev/null)" || { printf '%s' "$image"; return; }
-        local w h
-        read -r w h <<< "$dims"
-        if (( w > 1920 || h > 1920 )); then
-            convert "$image" -resize '1920x1920>' "$STATE_DIR/extract-src.jpg" 2>/dev/null && \
-                extract_src="$STATE_DIR/extract-src.jpg"
-        fi
-    fi
-
-    printf '%s' "$extract_src"
-}
-
 run_wallust() {
     local image="$1"
     if wallust run -s "$image" 2>/dev/null; then
@@ -143,55 +92,47 @@ run_wallust() {
     return 1
 }
 
-run_pywal() {
-    local image="$1"
-    wal -i "$image" --cols16 --saturate "$SAT" -a "$ALPHA" -q
-}
-
 write_wal_json() {
     local image="$1"
-    local engine="$2"
 
-    python3 - "$image" "$engine" "$WALLUST_CACHE_DIR" "$WAL_CACHE_DIR" <<'PYEOF'
+    python3 - "$image" "$WALLUST_CACHE_DIR" "$WAL_CACHE_DIR" <<'PYEOF'
 import sys, json, os
 
 image = sys.argv[1]
-engine = sys.argv[2]
-wallust_cache = sys.argv[3]
-wal_cache = sys.argv[4]
+wallust_cache = sys.argv[2]
+wal_cache = sys.argv[3]
 
 palette = []
 bg = fg = cursor = ""
 
-if engine == "wallust":
-    for candidate in [
-        os.path.join(wallust_cache, "colors.json"),
-        os.path.join(wallust_cache, "colors.json"),
-    ]:
-        if os.path.isfile(candidate):
-            with open(candidate) as f:
-                data = json.load(f)
-            bg = data.get("special", {}).get("background", "")
-            fg = data.get("special", {}).get("foreground", "")
-            cursor = data.get("special", {}).get("cursor", fg)
-            for i in range(16):
-                c = data.get("colors", {}).get(f"color{i}", "")
-                if c:
-                    palette.append(c)
-            if palette:
-                break
-    if not palette:
-        colors_file = os.path.join(wallust_cache, "colors")
-        if os.path.isfile(colors_file):
-            with open(colors_file) as f:
-                for line in f:
-                    line = line.strip()
-                    if line.startswith("#"):
-                        palette.append(line)
-            if len(palette) >= 16:
-                bg = palette[0]
-                fg = palette[1] if len(palette) > 1 else palette[0]
-                cursor = fg
+for candidate in [
+    os.path.join(wallust_cache, "colors.json"),
+]:
+    if os.path.isfile(candidate):
+        with open(candidate) as f:
+            data = json.load(f)
+        bg = data.get("special", {}).get("background", "")
+        fg = data.get("special", {}).get("foreground", "")
+        cursor = data.get("special", {}).get("cursor", fg)
+        for i in range(16):
+            c = data.get("colors", {}).get(f"color{i}", "")
+            if c:
+                palette.append(c)
+        if palette:
+            break
+
+if not palette:
+    colors_file = os.path.join(wallust_cache, "colors")
+    if os.path.isfile(colors_file):
+        with open(colors_file) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("#"):
+                    palette.append(line)
+        if len(palette) >= 16:
+            bg = palette[0]
+            fg = palette[1] if len(palette) > 1 else palette[0]
+            cursor = fg
 
 if not palette or not bg:
     wal_json = os.path.join(wal_cache, "colors.json")
@@ -233,23 +174,21 @@ PYEOF
 
 write_state() {
     local image="$1"
-    local engine="$2"
-    local palette_json="$3"
+    local palette_json="$2"
 
-    python3 - "$image" "$engine" "$palette_json" "$STATE_DIR" <<'PYEOF'
+    python3 - "$image" "$palette_json" "$STATE_DIR" <<'PYEOF'
 import sys, json, os
 from datetime import datetime
 
 image = sys.argv[1]
-engine = sys.argv[2]
-palette_json = sys.argv[3]
-state_dir = sys.argv[4]
+palette_json = sys.argv[2]
+state_dir = sys.argv[3]
 
 data = json.loads(palette_json)
 
 wall_state = {
     "wallpaper": image,
-    "engine": engine,
+    "engine": "wallust",
     "timestamp": datetime.now().isoformat(),
     "palette": data["palette"],
     "background": data["bg"],
@@ -261,72 +200,26 @@ with open(os.path.join(state_dir, "wall.json"), "w") as f:
 
 with open(os.path.join(state_dir, "last-wall"), "w") as f:
     f.write(image)
-
-with open(os.path.join(state_dir, "last-engine"), "w") as f:
-    f.write(engine)
 PYEOF
-}
-
-apply_wallpaper() {
-    local image="$1"
-    feh --bg-fill "$image"
-}
-
-restart_dunst() {
-    killall -q dunst
-    dunst &
-}
-
-make_notify_icon() {
-    local image="$1"
-    local thumb="/tmp/theme-hub-thumb.png"
-    if command -v magick &>/dev/null; then
-        magick "$image" -resize 128x128 "$thumb" 2>/dev/null && { printf '%s' "$thumb"; return; }
-    elif command -v convert &>/dev/null; then
-        convert "$image" -resize 128x128 "$thumb" 2>/dev/null && { printf '%s' "$thumb"; return; }
-    fi
-    printf ''
-}
-
-send_notify() {
-    local image="$1"
-    local engine="$2"
-    local icon
-    icon="$(make_notify_icon "$image")"
-    if [[ -n "$icon" ]]; then
-        notify-send "Тема [wall]" "$(basename "$image") · $engine" -i "$icon" -t 3000
-    else
-        notify-send "Тема [wall]" "$(basename "$image") · $engine" -t 3000
-    fi
 }
 
 fast_last() {
     local wp
     wp="$(read_last_wallpaper)"
-    if [[ -z "$wp" ]] || [[ ! -f "$wp" ]]; then
-        return 1
-    fi
+    [[ -z "$wp" ]] || [[ ! -f "$wp" ]] && return 1
 
-    if [[ -f "$STATE_DIR/wall.json" ]] && [[ -f "$WAL_CACHE_DIR/colors.json" ]]; then
-        apply_wallpaper "$wp"
-        (( DEBUG )) && debug_time "fast-last:feh"
-        restart_dunst
-        (( DEBUG )) && debug_time "fast-last:dunst"
-        send_notify "$wp" "$(python3 -c "import json; print(json.load(open('$STATE_DIR/wall.json'))['engine'])" 2>/dev/null || echo '?')"
-        (( DEBUG )) && debug_time "fast-last:notify"
-        return 0
-    fi
-    return 1
+    feh --bg-fill "$wp"
+    killall -q dunst
+    dunst &
+    notify-send "Тема [wall]" "$(basename "$wp")" -t 3000
+    return 0
 }
 
 main() {
     parse_args "$@"
 
-    SECONDS=0
-
-    if (( OPT_LAST && ! OPT_REEXTRACT )); then
+    if (( OPT_LAST )); then
         if fast_last; then
-            (( DEBUG )) && debug_time "TOTAL (fast-last)"
             exit 0
         fi
     fi
@@ -343,51 +236,36 @@ main() {
         exit 1
     fi
 
-    ENGINE="$(detect_engine)"
-    if [[ -z "$ENGINE" ]]; then
-        notify-send "theme-apply" "Не найден wallust или pywal" -u critical
+    if ! command -v wallust &>/dev/null; then
+        notify-send "theme-apply" "wallust не найден" -u critical
         exit 1
     fi
 
-    EXTRACT_SRC="$(make_extract_source "$IMAGE")"
-    (( DEBUG )) && debug_time "extract-src-prep"
-
-    if [[ "$ENGINE" == "wallust" ]]; then
-        if ! run_wallust "$EXTRACT_SRC"; then
-            notify-send "theme-apply" "wallust failed, trying pywal" -t 3000
-            ENGINE="pywal"
-            run_pywal "$EXTRACT_SRC"
-        fi
+    if ! run_wallust "$IMAGE"; then
+        notify-send "theme-apply" "wallust failed" -u critical
+        exit 1
     fi
-
-    if [[ "$ENGINE" == "pywal" ]]; then
-        run_pywal "$EXTRACT_SRC"
-    fi
-    (( DEBUG )) && debug_time "engine-run"
 
     printf '%s\n' "$IMAGE" > "$WAL_CACHE_DIR/wal"
 
-    PALETTE_JSON="$(write_wal_json "$IMAGE" "$ENGINE")"
+    PALETTE_JSON="$(write_wal_json "$IMAGE")"
     if [[ -z "$PALETTE_JSON" ]]; then
         notify-send "theme-apply" "Ошибка генерации палитры" -u critical
         exit 1
     fi
-    (( DEBUG )) && debug_time "write-wal-json"
 
-    write_state "$IMAGE" "$ENGINE" "$PALETTE_JSON"
+    write_state "$IMAGE" "$PALETTE_JSON"
 
-    apply_wallpaper "$IMAGE"
-    (( DEBUG )) && debug_time "feh"
+    feh --bg-fill "$IMAGE"
 
-    restart_dunst
-    (( DEBUG )) && debug_time "dunst"
+    killall -q dunst
+    dunst &
 
     if (( OPT_LOCK )); then
         betterlockscreen -u "$IMAGE" --display 1 &
     fi
 
-    send_notify "$IMAGE" "$ENGINE"
-    (( DEBUG )) && debug_time "TOTAL"
+    notify-send "Тема [wall]" "$(basename "$IMAGE")" -t 3000
 }
 
 main "$@"
