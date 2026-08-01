@@ -90,7 +90,9 @@ prepare_image() {
         return
     fi
 
-    if magick "$image" -resize '3840x2160>' "$cache_file" 2>>"$STATE_DIR/prepare.log"; then
+    if ffmpeg -hide_banner -loglevel error -i "$image" \
+        -vf "zimg=w=3840:h=2160:filter=lanczos" \
+        -q:v 2 "$cache_file" 2>>"$STATE_DIR/prepare.log"; then
         echo "$cache_file"
     else
         echo "$image"
