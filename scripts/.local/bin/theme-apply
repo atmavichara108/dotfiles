@@ -78,7 +78,7 @@ prepare_image() {
     cache_file="$prepared_dir/$hash.jpg"
     if [[ -f "$cache_file" ]]; then echo "$cache_file"; return; fi
     if ffmpeg -hide_banner -loglevel error -i "$image" \
-        -vf "zimg=w=3840:h=2160:filter=lanczos" \
+        -vf "scale=3840:2160:flags=lanczos" \
         -q:v 2 "$cache_file" 2>>"$STATE_DIR/prepare.log"; then
         echo "$cache_file"
     else
