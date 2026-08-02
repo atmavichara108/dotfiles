@@ -74,7 +74,7 @@ prepare_image() {
     w="${dims%x*}"; h="${dims#*x}"; area=$((w * h)); max_dim=$((w > h ? w : h))
     if (( max_dim <= 8192 && area <= 104857600 )); then echo "$image"; return; fi
     local hash cache_file
-    hash="$(sha256sum "$image" | cut -c1-12)"
+    hash="$(stat -c '%n%s%Y' "$image" | md5sum | cut -c1-12)"
     cache_file="$prepared_dir/$hash.png"
     if [[ -f "$cache_file" ]]; then echo "$cache_file"; return; fi
     if magick "$image" -resize "3840x2160>" "$cache_file" \
@@ -84,6 +84,24 @@ prepare_image() {
         notify-send "theme-apply" "Даунскейл не удался: изображение слишком большое для wallust" -u critical
         return 1
     fi
+}
+
+get_image_hash() {
+    local image="$1"
+    stat -c '%n%s%Y' "$image" | md5sum | cut -c1-12
+}
+
+check_palette_cache() {
+    local hash="$1" palette_cache_dir="$HOME/.cache/theme-hub/palettes"
+    local palette_file="$palette_cache_dir/$hash.json"
+    [[ -f "$palette_file" ]] && cat "$palette_file"
+}
+
+save_palette_cache() {
+    local hash="$1" palette_json="$2"
+    local palette_cache_dir="$HOME/.cache/theme-hub/palettes"
+    mkdir -p "$palette_cache_dir"
+    echo "$palette_json" > "$palette_cache_dir/$hash.json"
 }
 
 update_state() {
@@ -144,6 +162,16 @@ main() {
     notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
     ORIG_IMAGE="$IMAGE"
     IMAGE="$(prepare_image "$IMAGE")" || exit 1
+    IMAGE_HASH="$(get_image_hash "$ORIG_IMAGE")"
+
+    # Check palette cache first
+    PALETTE_JSON="$(check_palette_cache "$IMAGE_HASH")"
+    if [[ -n "$PALETTE_JSON" ]]; then
+        # Cache hit — skip wallust entirely
+        update_state "$ORIG_IMAGE" "$PALETTE_JSON"
+        apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
+        exit 0
+    fi
 
     (
         if timeout 30 wallust run "$IMAGE" >>"$STATE_DIR/wallust.log" 2>&1; then
@@ -158,6 +186,7 @@ main() {
                 exit 1
             }
         fi
+        save_palette_cache "$IMAGE_HASH" "$PALETTE_JSON"
         update_state "$ORIG_IMAGE" "$PALETTE_JSON"
         apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
     ) &
