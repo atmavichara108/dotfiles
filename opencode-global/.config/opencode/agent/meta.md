@@ -1,7 +1,7 @@
 ---
 description: Meta-infra editor. Правит агентную инфраструктуру OpenCode из любого проекта. НЕ трогает код приложений.
 mode: subagent
-model: opencode-go/glm-5.2
+model: opencode/ling-3.0-flash-free
 temperature: 0.1
 permission:
   edit: allow
