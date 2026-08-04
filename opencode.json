@@ -241,7 +241,10 @@
           "chmod +x*": "allow",
           "touch*": "allow",
           "echo*": "allow",
-          "which*": "allow"
+          "which*": "allow",
+          "wallust*": "allow",
+          "python3*": "allow",
+          "jq*": "allow"
         }
       }
     },
