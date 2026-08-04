@@ -2,8 +2,10 @@
 # ALACRITTY — Dual 4K / tmux primary workflow
 # ============================================================
 # Opacity управляется picom rules (0.88 для Alacritty).
-# Цвета не задаём — во второй волне подключим через тему.
+# Цвета генерируются wallust из обоев (шаблон colors-alacritty.toml).
 # ============================================================
+
+import = ["~/.cache/wal/colors-alacritty.toml"]
 
 [env]
 TERM = "xterm-256color"

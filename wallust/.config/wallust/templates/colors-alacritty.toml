@@ -1,0 +1,23 @@
+[colors.primary]
+background = "{{ background }}"
+foreground = "{{ foreground }}"
+
+[colors.normal]
+black = "{{ color0 | lighten(0.4) }}"
+red = "{{ color1 | lighten(0.4) }}"
+green = "{{ color2 | lighten(0.4) }}"
+yellow = "{{ color3 | lighten(0.4) }}"
+blue = "{{ color4 | lighten(0.4) }}"
+magenta = "{{ color5 | lighten(0.4) }}"
+cyan = "{{ color6 | lighten(0.4) }}"
+white = "{{ color7 | lighten(0.4) }}"
+
+[colors.bright]
+black = "{{ color8 | lighten(0.35) }}"
+red = "{{ color9 | lighten(0.35) }}"
+green = "{{ color10 | lighten(0.35) }}"
+yellow = "{{ color11 | lighten(0.35) }}"
+blue = "{{ color12 | lighten(0.35) }}"
+magenta = "{{ color13 | lighten(0.35) }}"
+cyan = "{{ color14 | lighten(0.35) }}"
+white = "{{ color15 | lighten(0.35) }}"

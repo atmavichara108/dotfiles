@@ -45,3 +45,4 @@ saturation = 85
 # ¡ If either one is a directory, then both SHOULD be one. !
 # zathura = { template = 'zathura', target = '~/.config/zathura/zathurarc' }
 pywal_json = { template = 'colors-json.json', target = '~/.cache/wal/colors.json' }
+alacritty = { template = 'colors-alacritty.toml', target = '~/.cache/wal/colors-alacritty.toml' }
