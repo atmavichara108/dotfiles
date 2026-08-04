@@ -5,6 +5,7 @@
 # Цвета генерируются wallust из обоев (шаблон colors-alacritty.toml).
 # ============================================================
 
+[general]
 import = ["~/.cache/wal/colors-alacritty.toml"]
 
 [env]
