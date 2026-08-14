@@ -242,15 +242,6 @@ json.dump(d,open(os.path.join(s,"wall.json"),"w"),indent=2)
 PYEOF
 }
 
-read_palette_from_state() {
-    [[ -f "$STATE_DIR/wall.json" ]] && python3 -c "
-import json,sys
-d=json.load(open(sys.argv[1]))
-print(json.dumps({'bg':d.get('background',''),'fg':d.get('foreground',''),'palette':d.get('palette',[])}))
-" "$STATE_DIR/wall.json" 2>/dev/null && return
-    [[ -f "$STATE_DIR/bar.json" ]] && cat "$STATE_DIR/bar.json"
-}
-
 apply_wallpaper() {
     local image="$1" notify_msg="$2"
     timeout 5 feh --bg-fill "$image" 2>/dev/null || true

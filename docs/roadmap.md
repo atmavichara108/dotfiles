@@ -76,7 +76,7 @@ Stow + пакеты (S0)
 - [x] **Lock serialization:** `flock` на `apply.lock` — параллельные apply сериализованы; `--last` в общем lock-контуре (1a2230d)
 - [x] **`--last` history:** повтор последних обоев + state-sync (`update_state` в обоих путях); при отсутствии palette cache — ошибка, без fallback на чужую палитру (1a2230d)
 - [x] **Trade-off:** первый 22K prepare — высокий пик памяти ImageMagick; повторные apply — мгновенные cache hits
-- [x] **Code efficiency:** theme-apply ~320 строк (169 → 320 после palette cache + lock), helpers извлечены (TD-001)
+- [x] **Code efficiency:** theme-apply ~355 строк (169 → 355 после palette cache + lock), helpers извлечены (TD-001)
 
 #### Part 2 · bar layer — IN PROGRESS (блокеров нет, timeline: эта неделя)
 - [ ] **Bar live refresh:** `refresh_bar_colors` без `reload_config` (ADR-010)

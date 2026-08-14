@@ -21,7 +21,7 @@ timestamp: 2026-07-31
 **Триггер:** любой performance-pass по theme/rofi/qtile; code review агентов
 
 **Резолюция (2026-08-02) — Part 1 S2:**
-- **Code efficiency:** theme-apply 207 → 169 строк (рефакторинг 183801b), но после palette cache и flock вырос до ~320 (678784b, 839cbba). Извлечены helpers (`prepare_image`, `update_state`, `extract_palette`, `read_prev_wallpaper`, `resolve_image`, `check/save/restore_palette_cache`); DRY применён.
+- **Code efficiency:** theme-apply 207 → 169 строк (рефакторинг 183801b), но после palette cache и flock вырос до ~355 (678784b, 839cbba). Извлечены helpers (`prepare_image`, `update_state`, `extract_palette`, `read_prev_wallpaper`, `resolve_image`, `check/save/restore_palette_cache`); DRY применён.
 - **State management:** state-drift устранён — `--last` теперь синхронизирует `wall.json` через `update_state` (раньше только main-путь писал state).
 - **Memory (компромисс):** magick НЕ убран полностью — он используется для downscale 22K (`magick -resize 3840x2160>`, ADR-011). zimg/ffmpeg отвергнут (недоступен в Manjaro, BUG-001). Пик памяти высок на **первом** prepare, повторные apply — cache hits (PNG prepared + palette cache).
 - **Остаточный долг:** оптимизация первого downscale 22K — magick не streaming; варианты: более лёгкий rescale / параллельная подготовка / JPEG XL.
