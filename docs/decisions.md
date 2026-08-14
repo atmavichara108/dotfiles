@@ -302,20 +302,27 @@ tmux-sensible, vim-tmux-navigator. Критично сохранение/вос�
 
 ---
 
-### ADR-011: 22K Wallpaper Support via Streaming Downscale
-**Дата:** 2026-08-02
+### ADR-011: 22K Wallpaper Support — ImageMagick downscale + lossless PNG cache
+**Дата:** 2026-08-02 (обновлено 2026-08-14: зафиксирована фактическая реализация)
 **Контекст:** wallust имеет хардкодный лимит декода 512 MiB; 22K-изображения превышают его → OOM. Нужно прозрачное решение без ручной предобработки и без ущерба UX.
-**Решение:**
-- Guard размерностей изображения перед wallust (>8192px по большей стороне или >100 MP).
-- Streaming downscale через `ffmpeg zimg` (строит output построчно, константная память).
-- Кэш даунскейленных JPG (~2-5 MB) в `~/.cache/theme-hub/prepared/` по sha256-префиксу.
-**Обоснование:** streaming избегает оверхеда полного декода; качество zimg достаточно для обоев; кэш делает повторный apply мгновенным.
+**Решение (фактическая реализация):**
+- **Guard:** проверка размерностей перед wallust — `identify -format "%wx%h"`, downscale при >8192px по большей стороне или >100 MP.
+- **Downscale:** ImageMagick `magick <img> -resize "3840x2160>" <png>` — подготовка 4K для wallust.
+- **Lossless PNG cache:** даунскейл сохраняется как lossless PNG в `~/.cache/theme-hub/prepared/<hash>.png`.
+- **Metadata key:** `stat -c '%n%s%Y' <img> | md5sum` (путь+размер+mtime, 12 hex) — дешёвый key без чтения пикселей.
+- **Palette cache:** `~/.cache/theme-hub/palettes/<hash>.json` — на повторных изображениях палитра берётся из кэша, wallust не запускается.
+- **Cache-hit restore consumers:** `restore_palette_cache` восстанавливает `~/.cache/wal/colors.json` + `colors-alacritty.toml` из кэша.
+- **flock serialization:** `apply.lock` через `flock -n` / `flock -w 3` — параллельные apply не гоняют wallust одновременно.
+**Trade-off (честно):**
+- ImageMagick `-resize` — не streaming: высокий пик памяти на **первом** prepare большого изображения.
+- Повторные apply — мгновенные cache hits (PNG prepared + palette cache + restore consumers).
+**Почему не ffmpeg zimg:** фильтр `zimg` отсутствует в Manjaro ffmpeg (не скомпилирован `--enable-libzimg`, BUG-001); decode-limit wallust 512 MiB при этом остаётся. zimg/ffmpeg-путь отвергнут.
 **Последствия:**
 - 22K-изображения прозрачны для пользователя (авто-downscale до 4K).
-- Theme apply чуть медленнее на первом прогоне (2-3s downscale), повторно — мгновенно из кэша.
+- Первый прогон на 22K — заметный downscale (magick), повторно — мгновенно из кэша.
 - Состояние всегда консистентно: оба пути (`--last` и основной) вызывают `update_state` → `wall.json` синхронен.
 **Альтернативы отвергнуты:**
 - Смена бэкенда — все бэкенды упираются в тот же 512 MiB лимит.
-- `magick resize` — non-streaming, 5-10s на 22K, высокий пик памяти.
+- `ffmpeg zimg` — фильтр недоступен в Manjaro ffmpeg (BUG-001).
 - Ручная предобработка пользователем — плохой UX, prone to user error.
 **Статус:** Part 1 S2 (wall layer) COMPLETE; Part 2 S2 (bar layer, live refresh без reload_config) — in progress.

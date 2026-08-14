@@ -28,6 +28,7 @@
 - Слои: `wall` | `bar` | `apps` (targets.toml)
 - Бар: live `refresh_bar_colors`, без reload_config
 - Fallback: last known-good из `~/.local/state/theme-hub/` или cyber-solar base palette
+- 22K: ImageMagick downscale + lossless PNG prepared cache + palette cache (ADR-011) — повторные apply мгновенные
 
 ## Для агентов
 

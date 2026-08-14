@@ -63,19 +63,20 @@ Stow + пакеты (S0)
 **Зависит от:** S0.
 **Блокирует:** визуальный polish S1/S3/S4.
 **DoD:** смена обоев/палитры перекрашивает стек без ручной правки N утилит.
-**Доктрина:** ADR-009 (cyberpunk ∩ solarpunk) + ADR-010 (layers + engine + no-reload bar) + ADR-011 (22K streaming downscale)
+**Доктрина:** ADR-009 (cyberpunk ∩ solarpunk) + ADR-010 (layers + engine + no-reload bar) + ADR-011 (22K downscale + caches)
 **Статус:** Part 1 (wall layer) DONE; Part 2 (bar layer) IN PROGRESS
 
-#### Part 1 · wall layer — DONE (2026-08-02)
+#### Part 1 · wall layer — DONE (2026-08-02, подтверждено 2026-08-14)
 - [x] Выбран основной генератор: **wallust** (pywal fallback убран, wallust обязателен — ADR-010/011)
 - [x] Оркестратор `theme-apply` + rofi-меню `theme-hub`
 - [x] Хоткеи: `Mod+F5` hub, `Mod+Shift+F5` random
 - [x] `wal-set` → thin wrapper на `theme-apply`
-- [x] **22K support:** streaming downscale через `ffmpeg zimg`, guard >8192px/>100MP, кэш в `~/.cache/theme-hub/prepared/` (ADR-011)
+- [x] **22K support:** guard >8192px/>100MP, ImageMagick `magick -resize 3840x2160>` + lossless PNG cache в `~/.cache/theme-hub/prepared/` (ADR-011)
+- [x] **Palette cache:** stat+md5 metadata key, кэш в `~/.cache/theme-hub/palettes/`, cache-hit восстанавливает colors.json + alacritty без wallust
+- [x] **Lock serialization:** `flock` на `apply.lock` — параллельные apply сериализованы
 - [x] **`--last` history:** повтор последних обоев + state-sync (`update_state` в обоих путях)
-- [x] **Async apply:** wallust в фоне, UI не блокируется
-- [x] **Memory-efficient:** ffmpeg streaming = константная память, OOM на 22K устранён
-- [x] **Code efficiency:** theme-apply 207 → 169 строк, helpers извлечены, DRY (TD-001 резолюция)
+- [x] **Trade-off:** первый 22K prepare — высокий пик памяти ImageMagick; повторные apply — мгновенные cache hits
+- [x] **Code efficiency:** theme-apply ~320 строк (169 → 320 после palette cache + lock), helpers извлечены (TD-001)
 
 #### Part 2 · bar layer — IN PROGRESS (блокеров нет, timeline: эта неделя)
 - [ ] **Bar live refresh:** `refresh_bar_colors` без `reload_config` (ADR-010)
@@ -126,7 +127,7 @@ S6 = вне критического пути
 
 ## Открытые решения (разблокируют Next)
 
-1. ~~**S2:** что реально основной генератор сейчас — pywal / wallust / tinty?~~ → **pywal** (ADR-008) ✅
+1. ~~**S2:** что реально основной генератор сейчас — pywal / wallust / tinty?~~ → **wallust** (ADR-010/011) ✅
 2. После S0 сразу **S2 polish** (шаблоны GTK/dunst/rofi) или временно S3 capture-only?
 
 ## Milestone Done (не список коммитов)
