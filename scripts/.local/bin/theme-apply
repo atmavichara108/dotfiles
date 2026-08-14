@@ -265,9 +265,6 @@ apply_wallpaper() {
 acquire_lock() {
     exec 9>"$LOCK_FILE"
     if ! flock -n 9; then
-        if (( OPT_LAST )); then
-            return 0
-        fi
         if ! flock -w 3 9; then
             _notify "theme-apply" "Другой процесс уже применяет тему" -t 2000
             exit 1
@@ -281,6 +278,8 @@ release_lock() {
 
 main() {
     parse_args "$@"
+    acquire_lock
+    trap release_lock EXIT
 
     if (( OPT_LAST )); then
         wp="$(read_prev_wallpaper)"
@@ -291,51 +290,45 @@ main() {
         local last_hash
         last_hash="$(get_image_hash "$wp")"
         PALETTE_JSON="$(check_palette_cache "$last_hash")" || {
-            PALETTE_JSON="$(read_palette_from_state)"
-            if [[ -z "$PALETTE_JSON" ]]; then
-                _notify "theme-apply" "--last: нет сохранённой палитры" -u critical
-                exit 1
-            fi
-            PALETTE_JSON="$(python3 -c "
-import json,sys
-p=json.loads(sys.argv[1])
-print(json.dumps({'bg':p.get('bg',p.get('background','')),'fg':p.get('fg',p.get('foreground','')),'palette':p['palette'],'wallpaper':sys.argv[2],'alpha':'100','cursor':p.get('cursor',p.get('fg',p.get('foreground','')))}))
-" "$PALETTE_JSON" "$wp")"
+            _notify "theme-apply" "--last: палитра для этого wallpaper не найдена в кэше" -u critical
+            exit 1
         }
         if ! restore_palette_cache "$PALETTE_JSON"; then
             _notify "theme-apply" "--last: не удалось восстановить consumers" -u critical
             exit 1
         fi
-        update_state "$wp" "$PALETTE_JSON"
+        if ! update_state "$wp" "$PALETTE_JSON"; then
+            _notify "theme-apply" "--last: не удалось обновить состояние" -u critical
+            exit 1
+        fi
         apply_wallpaper "$wp" "$(basename "$wp")"
         exit 0
     fi
 
     validate_tools
-    acquire_lock
 
     IMAGE="$(resolve_image)"
     if [[ -z "$IMAGE" ]] || [[ ! -f "$IMAGE" ]]; then
         _notify "theme-apply" "${IMAGE:+Файл не найден: }${IMAGE:-Нет обоев в $WALLDIR}" -u critical
-        release_lock
         exit 1
     fi
 
     > "$STATE_DIR/wallust.log"; > "$STATE_DIR/prepare.log"
     _notify "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
     ORIG_IMAGE="$IMAGE"
-    IMAGE="$(prepare_image "$IMAGE")" || { release_lock; exit 1; }
+    IMAGE="$(prepare_image "$IMAGE")" || exit 1
     IMAGE_HASH="$(get_image_hash "$ORIG_IMAGE")"
 
     PALETTE_JSON="$(check_palette_cache "$IMAGE_HASH")" && {
         if ! restore_palette_cache "$PALETTE_JSON"; then
             _notify "theme-apply" "cache hit, но восстановление consumers не удалось" -u critical
-            release_lock
             exit 1
         fi
-        update_state "$ORIG_IMAGE" "$PALETTE_JSON"
+        if ! update_state "$ORIG_IMAGE" "$PALETTE_JSON"; then
+            _notify "theme-apply" "не удалось обновить состояние" -u critical
+            exit 1
+        fi
         apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
-        release_lock
         exit 0
     }
 
@@ -344,26 +337,28 @@ print(json.dumps({'bg':p.get('bg',p.get('background','')),'fg':p.get('fg',p.get(
 
     if [[ $wallust_exit -eq 124 ]]; then
         _notify "theme-apply" "wallust timeout (${WALLUST_TIMEOUT}s)" -u critical
-        release_lock
         exit 1
     elif [[ $wallust_exit -ne 0 ]]; then
         local err
         err="$(head -1 "$STATE_DIR/wallust.log" 2>/dev/null | cut -c1-100)"
         _notify "theme-apply" "wallust failed: ${err:-unknown}" -u critical
-        release_lock
         exit 1
     fi
 
     if ! PALETTE_JSON="$(extract_palette)"; then
         _notify "theme-apply" "wallust output invalid" -u critical
-        release_lock
         exit 1
     fi
 
-    save_palette_cache "$IMAGE_HASH" "$PALETTE_JSON" "$ORIG_IMAGE"
-    update_state "$ORIG_IMAGE" "$PALETTE_JSON"
+    if ! save_palette_cache "$IMAGE_HASH" "$PALETTE_JSON" "$ORIG_IMAGE"; then
+        _notify "theme-apply" "не удалось сохранить палитру в кэш" -u critical
+        exit 1
+    fi
+    if ! update_state "$ORIG_IMAGE" "$PALETTE_JSON"; then
+        _notify "theme-apply" "не удалось обновить состояние" -u critical
+        exit 1
+    fi
     apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
-    release_lock
 }
 
 main "$@"
