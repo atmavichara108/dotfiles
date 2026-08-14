@@ -10,7 +10,7 @@ timestamp: 2026-07-31
 ---
 
 ### TD-001: Эффективность кода и агентной работы (theme-hub incident)
-**Дата:** 2026-07-31 (обновлено 2026-08-02)
+**Дата:** 2026-07-31 (обновлено 2026-08-02, 2026-08-14)
 **Суть:** «Оптимизации» theme-apply (magick resize + thumb + сложный fallback) ухудшили UX: выше CPU/GPU/temp, медленнее выбор обоев. Больше кода ≠ лучше.
 **Правило:**
 - Hot path = минимум syscalls и декодов изображений
@@ -25,5 +25,5 @@ timestamp: 2026-07-31
 - **State management:** state-drift устранён — `--last` теперь синхронизирует `wall.json` через `update_state` (раньше только main-путь писал state).
 - **Memory (компромисс):** magick НЕ убран полностью — он используется для downscale 22K (`magick -resize 3840x2160>`, ADR-011). zimg/ffmpeg отвергнут (недоступен в Manjaro, BUG-001). Пик памяти высок на **первом** prepare, повторные apply — cache hits (PNG prepared + palette cache).
 - **Остаточный долг:** оптимизация первого downscale 22K — magick не streaming; варианты: более лёгкий rescale / параллельная подготовка / JPEG XL.
-- **Residual risk:** concurrent runtime test был ограничен permissions — сериализация через flock (839cbba) не проверена при реальном параллельном apply; требуется повторить тест после расширения тестового pipeline.
+- **Residual risk (обязательный DoD до merge):** concurrent runtime test был ограничен permissions — сериализация через flock (839cbba, 1a2230d) не проверена при реальном параллельном apply; тест обязателен до merge, если ещё не прошёл.
 - **Next:** мониторить Part 2 S2 (bar layer) на аналогичные паттерны — не допустить повторного разрастания hot path.

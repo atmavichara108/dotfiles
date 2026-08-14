@@ -269,7 +269,7 @@ timestamp: 2026-07-31
 - **Metadata key:** `stat -c '%n%s%Y' <img> | md5sum` (путь+размер+mtime, 12 hex) — дешёвый key без чтения пикселей.
 - **Palette cache:** `~/.cache/theme-hub/palettes/<hash>.json` — на повторных изображениях палитра берётся из кэша, wallust не запускается.
 - **Cache-hit restore consumers:** `restore_palette_cache` восстанавливает `~/.cache/wal/colors.json` + `colors-alacritty.toml` из кэша.
-- **flock serialization:** `apply.lock` через `flock -n` / `flock -w 3` — параллельные apply не гоняют wallust одновременно.
+- **flock serialization:** `apply.lock` через `flock -n` / `flock -w 3` — параллельные apply не гоняют wallust одновременно; `--last` входит в общий lock-контур (`acquire_lock` в `main()` до ветвления, `trap release_lock EXIT`, 1a2230d).
 **Trade-off (честно):**
 - ImageMagick `-resize` — не streaming: высокий пик памяти на **первом** prepare большого изображения.
 - Повторные apply — мгновенные cache hits (PNG prepared + palette cache + restore consumers).
@@ -278,6 +278,7 @@ timestamp: 2026-07-31
 - 22K-изображения прозрачны для пользователя (авто-downscale до 4K).
 - Первый прогон на 22K — заметный downscale (magick), повторно — мгновенно из кэша.
 - Состояние всегда консистентно: оба пути (`--last` и основной) вызывают `update_state` → `wall.json` синхронен.
+- Строгий fallback: при отсутствии palette cache для prev-wall `--last` завершается ошибкой — подстановка чужой/сохранённой палитры из state убрана (1a2230d).
 **Альтернативы отвергнуты:**
 - Смена бэкенда — все бэкенды упираются в тот же 512 MiB лимит.
 - `ffmpeg zimg` — фильтр недоступен в Manjaro ffmpeg (BUG-001).

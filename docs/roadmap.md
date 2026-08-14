@@ -73,8 +73,8 @@ Stow + пакеты (S0)
 - [x] `wal-set` → thin wrapper на `theme-apply`
 - [x] **22K support:** guard >8192px/>100MP, ImageMagick `magick -resize 3840x2160>` + lossless PNG cache в `~/.cache/theme-hub/prepared/` (ADR-011)
 - [x] **Palette cache:** stat+md5 metadata key, кэш в `~/.cache/theme-hub/palettes/`, cache-hit восстанавливает colors.json + alacritty без wallust
-- [x] **Lock serialization:** `flock` на `apply.lock` — параллельные apply сериализованы
-- [x] **`--last` history:** повтор последних обоев + state-sync (`update_state` в обоих путях)
+- [x] **Lock serialization:** `flock` на `apply.lock` — параллельные apply сериализованы; `--last` в общем lock-контуре (1a2230d)
+- [x] **`--last` history:** повтор последних обоев + state-sync (`update_state` в обоих путях); при отсутствии palette cache — ошибка, без fallback на чужую палитру (1a2230d)
 - [x] **Trade-off:** первый 22K prepare — высокий пик памяти ImageMagick; повторные apply — мгновенные cache hits
 - [x] **Code efficiency:** theme-apply ~320 строк (169 → 320 после palette cache + lock), helpers извлечены (TD-001)
 
