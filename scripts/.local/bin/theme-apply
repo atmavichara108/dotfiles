@@ -5,11 +5,17 @@ WALLDIR="${THEME_WALLDIR:-$HOME/wallpapers}"
 STATE_DIR="$HOME/.local/state/theme-hub"
 WAL_CACHE_DIR="$HOME/.cache/wal"
 LOCK_FILE="$STATE_DIR/apply.lock"
+PREPARE_TIMEOUT="${THEME_PREPARE_TIMEOUT:-60}"
+WALLUST_TIMEOUT="${THEME_WALLUST_TIMEOUT:-30}"
 
 mkdir -p "$STATE_DIR" "$WAL_CACHE_DIR"
 
 OPT_RANDOM=0; OPT_LAST=0; IMAGE_ARG=""
 [[ "${THEME_UPDATE_LOCK:-0}" == "1" ]] && OPT_LOCK=1 || OPT_LOCK=0
+
+_notify() {
+    ( timeout 2 notify-send "$@" 2>/dev/null ) &
+}
 
 seed_bar_json() {
     [[ -f "$STATE_DIR/bar.json" ]] && return
@@ -49,7 +55,7 @@ resolve_image() {
 validate_tools() {
     for tool in identify magick wallust; do
         command -v "$tool" &>/dev/null || {
-            notify-send "theme-apply" "$tool не найден" -u critical
+            _notify "theme-apply" "$tool не найден" -u critical
             exit 1
         }
     done
@@ -78,11 +84,18 @@ prepare_image() {
     hash="$(stat -c '%n%s%Y' "$image" | md5sum | cut -c1-12)"
     cache_file="$prepared_dir/$hash.png"
     if [[ -f "$cache_file" ]]; then echo "$cache_file"; return; fi
-    if magick "$image" -resize "3840x2160>" "$cache_file" \
-        2>>"$STATE_DIR/prepare.log"; then
+    local prepare_exit=0
+    timeout "$PREPARE_TIMEOUT" magick "$image" -resize "3840x2160>" "$cache_file" \
+        2>>"$STATE_DIR/prepare.log" || prepare_exit=$?
+    if [[ $prepare_exit -eq 0 ]]; then
         echo "$cache_file"
+    elif [[ $prepare_exit -eq 124 ]]; then
+        _notify "theme-apply" "Даунскейл timeout (${PREPARE_TIMEOUT}s)" -u critical
+        return 1
     else
-        notify-send "theme-apply" "Даунскейл не удался: изображение слишком большое для wallust" -u critical
+        local err
+        err="$(head -1 "$STATE_DIR/prepare.log" 2>/dev/null | cut -c1-100)"
+        _notify "theme-apply" "Даунскейл failed: ${err:-unknown}" -u critical
         return 1
     fi
 }
@@ -99,11 +112,17 @@ check_palette_cache() {
     local content
     content="$(cat "$palette_file")" || return 1
     if ! python3 -c "
-import json,sys
+import json,sys,re
 d=json.loads(sys.argv[1])
-required=['bg','fg','palette','wallpaper']
+required=['bg','fg','palette','wallpaper','alpha','cursor']
 if not all(k in d for k in required): sys.exit(1)
 if not isinstance(d.get('palette'),list) or len(d['palette'])!=16: sys.exit(1)
+hex_re=re.compile(r'^#[0-9A-Fa-f]{6}$')
+for k in ['bg','fg','cursor']:
+    if not hex_re.match(str(d.get(k,''))): sys.exit(1)
+for c in d['palette']:
+    if not hex_re.match(str(c)): sys.exit(1)
+if not isinstance(d.get('wallpaper'),str) or not d['wallpaper'].strip(): sys.exit(1)
 " "$content" 2>/dev/null; then
         return 1
     fi
@@ -128,9 +147,14 @@ extended={
 }
 tmp=os.path.join(cache_dir,f".{hash_val}.tmp")
 final=os.path.join(cache_dir,f"{hash_val}.json")
-with open(tmp,"w") as f:
-    json.dump(extended,f)
-os.replace(tmp,final)
+try:
+    with open(tmp,"w") as f:
+        json.dump(extended,f)
+    os.replace(tmp,final)
+except:
+    if os.path.exists(tmp):
+        os.remove(tmp)
+    raise
 PYEOF
 }
 
@@ -155,11 +179,7 @@ colors_json={
 }
 
 colors_json_path=os.path.join(wal_cache,"colors.json")
-tmp=colors_json_path+".tmp"
-with open(tmp,"w") as f:
-    json.dump(colors_json,f,indent=4)
-os.replace(tmp,colors_json_path)
-
+tmp_colors=colors_json_path+".tmp"
 def lighten(hex_color,factor):
     hex_color=hex_color.lstrip('#')
     r,g,b=int(hex_color[0:2],16),int(hex_color[2:4],16),int(hex_color[4:6],16)
@@ -194,10 +214,19 @@ white = "{lighten(palette[15],0.35)}"
 """
 
 alacritty_path=os.path.join(wal_cache,"colors-alacritty.toml")
-tmp=alacritty_path+".tmp"
-with open(tmp,"w") as f:
-    f.write(alacritty)
-os.replace(tmp,alacritty_path)
+tmp_alacritty=alacritty_path+".tmp"
+try:
+    with open(tmp_colors,"w") as f:
+        json.dump(colors_json,f,indent=4)
+    os.replace(tmp_colors,colors_json_path)
+    with open(tmp_alacritty,"w") as f:
+        f.write(alacritty)
+    os.replace(tmp_alacritty,alacritty_path)
+except:
+    for tmp in [tmp_colors,tmp_alacritty]:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    raise
 PYEOF
 }
 
@@ -224,11 +253,10 @@ print(json.dumps({'bg':d.get('background',''),'fg':d.get('foreground',''),'palet
 
 apply_wallpaper() {
     local image="$1" notify_msg="$2"
-    feh --bg-fill "$image"
-    killall -q dunst
-    sleep 0.1
-    dunst &
-    notify-send "Тема [wall]" "$notify_msg" -t 3000
+    timeout 5 feh --bg-fill "$image" 2>/dev/null || true
+    killall -q dunst 2>/dev/null || true
+    ( sleep 0.1; exec dunst 2>/dev/null ) &
+    ( timeout 2 notify-send "Тема [wall]" "$notify_msg" -t 3000 2>/dev/null ) &
     if [[ "${OPT_LOCK:-0}" == "1" ]] && command -v betterlockscreen &>/dev/null; then
         betterlockscreen -u "$image" &
     fi
@@ -241,7 +269,7 @@ acquire_lock() {
             return 0
         fi
         if ! flock -w 3 9; then
-            notify-send "theme-apply" "Другой процесс уже применяет тему" -t 2000
+            _notify "theme-apply" "Другой процесс уже применяет тему" -t 2000
             exit 1
         fi
     fi
@@ -257,11 +285,28 @@ main() {
     if (( OPT_LAST )); then
         wp="$(read_prev_wallpaper)"
         if [[ -z "$wp" ]] || [[ ! -f "$wp" ]]; then
-            notify-send "theme-apply" "--last: нет валидных обоев" -u critical
+            _notify "theme-apply" "--last: нет валидных обоев" -u critical
             exit 1
         fi
-        PALETTE_JSON="$(read_palette_from_state)"
-        [[ -n "$PALETTE_JSON" ]] && update_state "$wp" "$PALETTE_JSON"
+        local last_hash
+        last_hash="$(get_image_hash "$wp")"
+        PALETTE_JSON="$(check_palette_cache "$last_hash")" || {
+            PALETTE_JSON="$(read_palette_from_state)"
+            if [[ -z "$PALETTE_JSON" ]]; then
+                _notify "theme-apply" "--last: нет сохранённой палитры" -u critical
+                exit 1
+            fi
+            PALETTE_JSON="$(python3 -c "
+import json,sys
+p=json.loads(sys.argv[1])
+print(json.dumps({'bg':p.get('bg',p.get('background','')),'fg':p.get('fg',p.get('foreground','')),'palette':p['palette'],'wallpaper':sys.argv[2],'alpha':'100','cursor':p.get('cursor',p.get('fg',p.get('foreground','')))}))
+" "$PALETTE_JSON" "$wp")"
+        }
+        if ! restore_palette_cache "$PALETTE_JSON"; then
+            _notify "theme-apply" "--last: не удалось восстановить consumers" -u critical
+            exit 1
+        fi
+        update_state "$wp" "$PALETTE_JSON"
         apply_wallpaper "$wp" "$(basename "$wp")"
         exit 0
     fi
@@ -271,19 +316,23 @@ main() {
 
     IMAGE="$(resolve_image)"
     if [[ -z "$IMAGE" ]] || [[ ! -f "$IMAGE" ]]; then
-        notify-send "theme-apply" "${IMAGE:+Файл не найден: }${IMAGE:-Нет обоев в $WALLDIR}" -u critical
+        _notify "theme-apply" "${IMAGE:+Файл не найден: }${IMAGE:-Нет обоев в $WALLDIR}" -u critical
         release_lock
         exit 1
     fi
 
     > "$STATE_DIR/wallust.log"; > "$STATE_DIR/prepare.log"
-    notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
+    _notify "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
     ORIG_IMAGE="$IMAGE"
     IMAGE="$(prepare_image "$IMAGE")" || { release_lock; exit 1; }
     IMAGE_HASH="$(get_image_hash "$ORIG_IMAGE")"
 
     PALETTE_JSON="$(check_palette_cache "$IMAGE_HASH")" && {
-        restore_palette_cache "$PALETTE_JSON"
+        if ! restore_palette_cache "$PALETTE_JSON"; then
+            _notify "theme-apply" "cache hit, но восстановление consumers не удалось" -u critical
+            release_lock
+            exit 1
+        fi
         update_state "$ORIG_IMAGE" "$PALETTE_JSON"
         apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
         release_lock
@@ -291,22 +340,22 @@ main() {
     }
 
     local wallust_exit=0
-    timeout 30 wallust run "$IMAGE" >>"$STATE_DIR/wallust.log" 2>&1 || wallust_exit=$?
+    timeout "$WALLUST_TIMEOUT" wallust run "$IMAGE" >>"$STATE_DIR/wallust.log" 2>&1 || wallust_exit=$?
 
     if [[ $wallust_exit -eq 124 ]]; then
-        notify-send "theme-apply" "wallust timeout" -u critical
+        _notify "theme-apply" "wallust timeout (${WALLUST_TIMEOUT}s)" -u critical
         release_lock
         exit 1
     elif [[ $wallust_exit -ne 0 ]]; then
         local err
         err="$(head -1 "$STATE_DIR/wallust.log" 2>/dev/null | cut -c1-100)"
-        notify-send "theme-apply" "wallust failed: ${err:-unknown}" -u critical
+        _notify "theme-apply" "wallust failed: ${err:-unknown}" -u critical
         release_lock
         exit 1
     fi
 
     if ! PALETTE_JSON="$(extract_palette)"; then
-        notify-send "theme-apply" "wallust output invalid" -u critical
+        _notify "theme-apply" "wallust output invalid" -u critical
         release_lock
         exit 1
     fi
