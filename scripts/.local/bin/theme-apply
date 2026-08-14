@@ -4,6 +4,7 @@ set -uo pipefail
 WALLDIR="${THEME_WALLDIR:-$HOME/wallpapers}"
 STATE_DIR="$HOME/.local/state/theme-hub"
 WAL_CACHE_DIR="$HOME/.cache/wal"
+LOCK_FILE="$STATE_DIR/apply.lock"
 
 mkdir -p "$STATE_DIR" "$WAL_CACHE_DIR"
 
@@ -94,14 +95,110 @@ get_image_hash() {
 check_palette_cache() {
     local hash="$1" palette_cache_dir="$HOME/.cache/theme-hub/palettes"
     local palette_file="$palette_cache_dir/$hash.json"
-    [[ -f "$palette_file" ]] && cat "$palette_file"
+    [[ -f "$palette_file" ]] || return 1
+    local content
+    content="$(cat "$palette_file")" || return 1
+    if ! python3 -c "
+import json,sys
+d=json.loads(sys.argv[1])
+required=['bg','fg','palette','wallpaper']
+if not all(k in d for k in required): sys.exit(1)
+if not isinstance(d.get('palette'),list) or len(d['palette'])!=16: sys.exit(1)
+" "$content" 2>/dev/null; then
+        return 1
+    fi
+    echo "$content"
 }
 
 save_palette_cache() {
-    local hash="$1" palette_json="$2"
+    local hash="$1" palette_json="$2" wallpaper="$3"
     local palette_cache_dir="$HOME/.cache/theme-hub/palettes"
     mkdir -p "$palette_cache_dir"
-    echo "$palette_json" > "$palette_cache_dir/$hash.json"
+    python3 - "$hash" "$palette_json" "$wallpaper" "$palette_cache_dir" <<'PYEOF'
+import json,sys,os
+hash_val,palette_json,wallpaper,cache_dir=sys.argv[1],sys.argv[2],sys.argv[3],sys.argv[4]
+p=json.loads(palette_json)
+extended={
+    "bg":p["bg"],
+    "fg":p["fg"],
+    "palette":p["palette"],
+    "wallpaper":wallpaper,
+    "alpha":"100",
+    "cursor":p.get("cursor",p["fg"])
+}
+tmp=os.path.join(cache_dir,f".{hash_val}.tmp")
+final=os.path.join(cache_dir,f"{hash_val}.json")
+with open(tmp,"w") as f:
+    json.dump(extended,f)
+os.replace(tmp,final)
+PYEOF
+}
+
+restore_palette_cache() {
+    local palette_json="$1"
+    python3 - "$palette_json" "$WAL_CACHE_DIR" <<'PYEOF'
+import json,sys,os
+palette_json,wal_cache=sys.argv[1],sys.argv[2]
+d=json.loads(palette_json)
+wallpaper=d.get("wallpaper","")
+alpha=d.get("alpha","100")
+bg=d["bg"]
+fg=d["fg"]
+cursor=d.get("cursor",fg)
+palette=d["palette"]
+
+colors_json={
+    "wallpaper":wallpaper,
+    "alpha":alpha,
+    "special":{"background":bg,"foreground":fg,"cursor":cursor},
+    "colors":{f"color{i}":palette[i] for i in range(16)}
+}
+
+colors_json_path=os.path.join(wal_cache,"colors.json")
+tmp=colors_json_path+".tmp"
+with open(tmp,"w") as f:
+    json.dump(colors_json,f,indent=4)
+os.replace(tmp,colors_json_path)
+
+def lighten(hex_color,factor):
+    hex_color=hex_color.lstrip('#')
+    r,g,b=int(hex_color[0:2],16),int(hex_color[2:4],16),int(hex_color[4:6],16)
+    r=min(255,int(r+(255-r)*factor))
+    g=min(255,int(g+(255-g)*factor))
+    b=min(255,int(b+(255-b)*factor))
+    return f"#{r:02X}{g:02X}{b:02X}"
+
+alacritty=f"""[colors.primary]
+background = "{bg}"
+foreground = "{fg}"
+
+[colors.normal]
+black = "{lighten(palette[0],0.4)}"
+red = "{lighten(palette[1],0.4)}"
+green = "{lighten(palette[2],0.4)}"
+yellow = "{lighten(palette[3],0.4)}"
+blue = "{lighten(palette[4],0.4)}"
+magenta = "{lighten(palette[5],0.4)}"
+cyan = "{lighten(palette[6],0.4)}"
+white = "{lighten(palette[7],0.4)}"
+
+[colors.bright]
+black = "{lighten(palette[8],0.35)}"
+red = "{lighten(palette[9],0.35)}"
+green = "{lighten(palette[10],0.35)}"
+yellow = "{lighten(palette[11],0.35)}"
+blue = "{lighten(palette[12],0.35)}"
+magenta = "{lighten(palette[13],0.35)}"
+cyan = "{lighten(palette[14],0.35)}"
+white = "{lighten(palette[15],0.35)}"
+"""
+
+alacritty_path=os.path.join(wal_cache,"colors-alacritty.toml")
+tmp=alacritty_path+".tmp"
+with open(tmp,"w") as f:
+    f.write(alacritty)
+os.replace(tmp,alacritty_path)
+PYEOF
 }
 
 update_state() {
@@ -132,12 +229,30 @@ apply_wallpaper() {
     sleep 0.1
     dunst &
     notify-send "Тема [wall]" "$notify_msg" -t 3000
-    [[ "${OPT_LOCK:-0}" == "1" ]] && betterlockscreen -u "$image" --display 1 &
+    if [[ "${OPT_LOCK:-0}" == "1" ]] && command -v betterlockscreen &>/dev/null; then
+        betterlockscreen -u "$image" &
+    fi
+}
+
+acquire_lock() {
+    exec 9>"$LOCK_FILE"
+    if ! flock -n 9; then
+        if (( OPT_LAST )); then
+            return 0
+        fi
+        if ! flock -w 3 9; then
+            notify-send "theme-apply" "Другой процесс уже применяет тему" -t 2000
+            exit 1
+        fi
+    fi
+}
+
+release_lock() {
+    flock -u 9 2>/dev/null || true
 }
 
 main() {
     parse_args "$@"
-    validate_tools
 
     if (( OPT_LAST )); then
         wp="$(read_prev_wallpaper)"
@@ -151,47 +266,55 @@ main() {
         exit 0
     fi
 
+    validate_tools
+    acquire_lock
+
     IMAGE="$(resolve_image)"
     if [[ -z "$IMAGE" ]] || [[ ! -f "$IMAGE" ]]; then
         notify-send "theme-apply" "${IMAGE:+Файл не найден: }${IMAGE:-Нет обоев в $WALLDIR}" -u critical
+        release_lock
         exit 1
     fi
 
-    killall -q notify-send 2>/dev/null || true
     > "$STATE_DIR/wallust.log"; > "$STATE_DIR/prepare.log"
     notify-send "theme-apply" "Применяю $(basename "$IMAGE")..." -t 2000
     ORIG_IMAGE="$IMAGE"
-    IMAGE="$(prepare_image "$IMAGE")" || exit 1
+    IMAGE="$(prepare_image "$IMAGE")" || { release_lock; exit 1; }
     IMAGE_HASH="$(get_image_hash "$ORIG_IMAGE")"
 
-    # Check palette cache first
-    PALETTE_JSON="$(check_palette_cache "$IMAGE_HASH")"
-    if [[ -n "$PALETTE_JSON" ]]; then
-        # Cache hit — skip wallust entirely
+    PALETTE_JSON="$(check_palette_cache "$IMAGE_HASH")" && {
+        restore_palette_cache "$PALETTE_JSON"
         update_state "$ORIG_IMAGE" "$PALETTE_JSON"
         apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
+        release_lock
         exit 0
+    }
+
+    local wallust_exit=0
+    timeout 30 wallust run "$IMAGE" >>"$STATE_DIR/wallust.log" 2>&1 || wallust_exit=$?
+
+    if [[ $wallust_exit -eq 124 ]]; then
+        notify-send "theme-apply" "wallust timeout" -u critical
+        release_lock
+        exit 1
+    elif [[ $wallust_exit -ne 0 ]]; then
+        local err
+        err="$(head -1 "$STATE_DIR/wallust.log" 2>/dev/null | cut -c1-100)"
+        notify-send "theme-apply" "wallust failed: ${err:-unknown}" -u critical
+        release_lock
+        exit 1
     fi
 
-    (
-        if timeout 30 wallust run "$IMAGE" >>"$STATE_DIR/wallust.log" 2>&1; then
-            PALETTE_JSON="$(extract_palette)" || {
-                notify-send "theme-apply" "colors.json пуст" -u critical
-                exit 1
-            }
-        else
-            PALETTE_JSON="$(extract_palette)" || {
-                err="$(head -1 "$STATE_DIR/wallust.log" 2>/dev/null | cut -c1-100)"
-                notify-send "theme-apply" "wallust: OOM (${err:-unknown})" -u critical
-                exit 1
-            }
-        fi
-        save_palette_cache "$IMAGE_HASH" "$PALETTE_JSON"
-        update_state "$ORIG_IMAGE" "$PALETTE_JSON"
-        apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
-    ) &
+    if ! PALETTE_JSON="$(extract_palette)"; then
+        notify-send "theme-apply" "wallust output invalid" -u critical
+        release_lock
+        exit 1
+    fi
 
-    exit 0
+    save_palette_cache "$IMAGE_HASH" "$PALETTE_JSON" "$ORIG_IMAGE"
+    update_state "$ORIG_IMAGE" "$PALETTE_JSON"
+    apply_wallpaper "$IMAGE" "$(basename "$ORIG_IMAGE")"
+    release_lock
 }
 
 main "$@"
