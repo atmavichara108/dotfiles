@@ -184,7 +184,12 @@
           "echo*": "allow",
           "head*": "allow",
           "tail*": "allow",
-          "jq*": "allow"
+          "jq*": "allow",
+          "python3 -c*": "allow",
+          "bash -c*": "allow",
+          "flock*": "allow",
+          "wait*": "allow",
+          "ps*": "allow"
         }
       }
     },
@@ -276,7 +281,12 @@
           "chmod +x*": "allow",
           "which*": "allow",
           "ps*": "allow",
-          "echo*": "allow"
+          "echo*": "allow",
+          "python3 -c*": "allow",
+          "bash -c*": "allow",
+          "flock*": "allow",
+          "theme-apply*": "allow",
+          "wait*": "allow"
         }
       }
     },
