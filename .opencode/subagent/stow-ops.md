@@ -1,7 +1,7 @@
 ---
 description: Специалист по файловым операциям dotfiles. Массовый stow, реструктуризация пакетов, исправление дрейфа, создание симлинков, миграция конфигов из ~/.config в dotfiles.
 mode: subagent
-model: opencode-go/qwen3.7-plus
+model: opencode-go/deepseek-v4-flash
 temperature: 0.1
 steps: 25
 permission:

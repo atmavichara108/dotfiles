@@ -1,7 +1,7 @@
 ---
 description: Системный оператор Manjaro. Инспектирует систему, конфиги, пакеты. Read-only, предлагает изменения текстом, НЕ применяет.
 mode: primary
-model: opencode/deepseek-v4-flash-free
+model: opencode-go/deepseek-v4-flash
 temperature: 0.1
 steps: 20
 permission:

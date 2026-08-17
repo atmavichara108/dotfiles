@@ -1,7 +1,7 @@
 ---
 description: Meta-infra editor. Правит агентную инфраструктуру OpenCode из любого проекта. НЕ трогает код приложений.
 mode: subagent
-model: opencode/deepseek-v4-flash-free
+model: opencode-go/gpt-5.6-luna
 temperature: 0.1
 permission:
   edit: allow

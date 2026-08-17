@@ -1,7 +1,7 @@
 ---
 description: Архитектор dotfiles. Анализирует систему, проектирует решения, оформляет ADR. Read-only, не пишет код.
 mode: primary
-model: opencode/claude-sonnet-4-6
+model: opencode-go/gpt-5.6-luna
 temperature: 0.2
 steps: 20
 permission:

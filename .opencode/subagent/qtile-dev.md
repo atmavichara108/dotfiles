@@ -1,7 +1,7 @@
 ---
 description: Qtile-специалист. Пишет/правит конфиги qtile, виджеты, хуки, keybindings, screen layouts. Python + qtile API.
 mode: subagent
-model: opencode-go/qwen3.7-plus
+model: opencode-go/gpt-5.6-luna
 temperature: 0.1
 steps: 20
 permission:

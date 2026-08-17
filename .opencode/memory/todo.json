@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "content": "Определить точный состав ветки: theme-изменения, agent-infra и прочие изменения",
+    "status": "completed",
+    "priority": "high"
+  },
+  {
+    "content": "Спроектировать безопасную стратегию публикации и переноса non-theme изменений в main",
+    "status": "completed",
+    "priority": "high"
+  },
+  {
+    "content": "Передать builder задачу на push, merge non-theme и переход на main",
+    "status": "in_progress",
+    "priority": "high"
+  },
+  {
+    "content": "Проверить результат и зафиксировать состояние веток",
+    "status": "pending",
+    "priority": "high"
+  }
+]

@@ -82,16 +82,16 @@ Planner:
 
 | Агент | Роль | Модель (ярус) |
 |-------|------|---------------|
-| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | `opencode/claude-sonnet-4-6` · Strategic |
-| **think** | сверх-сложные рассуждения; делегируется planner через `task` | `opencode/grok-build-0.1` · Agentic |
-| **builder** | реализует конфиги/скрипты; вызывает `reviewer` | `opencode-go/qwen3.7-plus` · Coding |
-| **qtile-dev** | Qtile (WM, виджеты, Python) | `opencode-go/qwen3.7-plus` · Coding |
-| **bash-dev** | bash-скрипты, автоматизация | `opencode-go/qwen3.7-plus` · Coding |
-| **util-dev** | утилиты (макросы, нотификации, rofi) | `opencode-go/qwen3.7-plus` · Coding |
-| **stow-ops** | stow-операции, реструктуризация, миграция, дрейф | `opencode-go/qwen3.7-plus` · Coding |
-| **sysop** | read-only аудит системы | `opencode/deepseek-v4-flash-free` · Free |
-| **reviewer** | ревьюер (PASS/FAIL, безопасность, спека) | `opencode/deepseek-v4-flash-free` · Free |
-| **verifier** | верификатор применимости (синтаксис, stow dry-run, готовность) | `opencode/deepseek-v4-flash-free` · Free |
+| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | `opencode-go/gpt-5.6-luna` · Go |
+| **think** | сверх-сложные рассуждения; делегируется planner через `task` | `opencode-go/gpt-5.6-luna` · Go |
+| **builder** | реализует конфиги/скрипты; вызывает `reviewer` | `opencode-go/gpt-5.6-luna` · Go |
+| **qtile-dev** | Qtile (WM, виджеты, Python) | `opencode-go/gpt-5.6-luna` · Go |
+| **bash-dev** | bash-скрипты, автоматизация | `opencode-go/gpt-5.6-luna` · Go |
+| **util-dev** | утилиты (макросы, нотификации, rofi) | `opencode-go/gpt-5.6-luna` · Go |
+| **stow-ops** | stow-операции, реструктуризация, миграция, дрейф | `opencode-go/deepseek-v4-flash` · Go |
+| **sysop** | read-only аудит системы | `opencode-go/deepseek-v4-flash` · Go |
+| **reviewer** | ревьюер (PASS/FAIL, безопасность, спека) | `opencode-go/deepseek-v4-flash` · Go |
+| **verifier** | верификатор применимости (синтаксис, stow dry-run, готовность) | `opencode-go/deepseek-v4-flash` · Go |
 | **researcher** | исследование кода, файлов, git-истории, документации; read-only, запускается planner через `task` | `opencode-go/deepseek-v4-flash` · Go |
 
 Точные `model` ID — в `opencode.json` (`agent.<name>.model`), резолвятся из подписок `opencode-go` / `opencode-zen`. Обоснование — ADR-007.
