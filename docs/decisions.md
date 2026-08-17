@@ -327,3 +327,36 @@ tmux-sensible, vim-tmux-navigator. Критично сохранение/вос�
 - `ffmpeg zimg` — фильтр недоступен в Manjaro ffmpeg (BUG-001).
 - Ручная предобработка пользователем — плохой UX, prone to user error.
 **Статус:** Part 1 S2 (wall layer) COMPLETE; Part 2 S2 (bar layer, live refresh без reload_config) — in progress.
+
+---
+
+### ADR-012: Markdown Workbench
+**Дата:** 2026-08-17
+
+**Проблема/контекст:** Markdown — основной формат заметок, спецификаций и runbook-файлов, но сейчас нет единого terminal-native рабочего процесса. Neovim (LazyVim) должен быть быстрым редактором с live-rendering, Ranger — точкой навигации и предпросмотра, а Glow — независимым полноэкранным fallback/viewer. Компоненты должны жить в отдельных Stow-пакетах, не дублировать источник правды и не превращать просмотр Markdown в тяжёлый GUI.
+
+**Решение:**
+- Описать и реализовать Markdown Workbench как связку `nvim/.config/nvim/` + `ranger/.config/ranger/`, без нового отдельного пакета.
+- Подключить `MeanderingProgrammer/render-markdown.nvim` через LazyVim spec с явным `opts`, используя публичные команды/API плагина для toggle/enable/disable; `lazy-lock.json` намеренно обновлён до commit `4663eb3ecd538bd5062628fb6d95bbe6bdca78f6` для воспроизводимости.
+- Сохранить исходный Markdown единственным source-of-truth; render-markdown.nvim отвечает только за представление буфера, а Glow — за внешний просмотр.
+- Расширить Ranger preview через существующий `scope.sh` с проверяемым наличием Glow и безопасным текстовым fallback; запуск Glow из Ranger — отдельное действие, не подмена редактора.
+- Зафиксировать mappings, fallback, зависимости, границы и smoke tests в `docs/specs/markdown-workbench.md`; операционные процедуры — в `docs/runbooks/markdown-workbench.md`.
+
+**Альтернативы:**
+- Только Glow — отвергнуто: нет редактирования и live-rendering.
+- Только render-markdown.nvim — отвергнуто: просмотр из файлового менеджера и аварийный путь зависят от Neovim.
+- GUI Markdown-приложение или browser/WebKit — отвергнуто: лишние зависимости, задержка и нарушение terminal-native UX.
+- Дублировать Markdown в HTML/PDF — отвергнуто: два источника правды и stale-артефакты.
+- Новый Stow-пакет `markdown/` — отвергнуто: настройка принадлежит существующим владельцам `nvim` и `ranger`.
+
+**Последствия:**
+- Быстрый единый путь: навигация в Ranger → preview/Glow → редактирование в Neovim.
+- Добавляются внешние optional/runtime зависимости Glow и Treesitter Markdown; отсутствие Glow не ломает Ranger или Neovim.
+- API плагина и формат его lock-записи требуют проверки при обновлении; lock-файл может изменяться, если обновление намеренно фиксирует нужный commit для воспроизводимости. Smoke tests выполняются verifier и учитываются только при наличии факта их выполнения.
+- Conceal/rendering остаются presentation-layer: файл на диске не изменяется.
+
+**Границы:**
+- Первый этап — контракт и документация; реализация использует существующие владельцы `nvim` и `ranger`, а `lazy-lock.json` намеренно изменён для фиксации commit render-markdown.nvim. README и roadmap не меняются.
+- Решение намеренно ограничено Markdown пользовательским scope; Quarto не является требованием и не входит в контракт.
+- Не входят Markdown LSP, note-taking workflow, wiki/backlinks, экспорт, синхронизация, автокоммиты и управление пакетами.
+- Не входят правки `/etc`, systemd, глобальных переменных окружения и секретов.

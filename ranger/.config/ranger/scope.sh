@@ -35,7 +35,7 @@ extension=$(/bin/echo "${path##*.}" | awk '{print tolower($0)}')
 # Functions:
 # runs a command and saves its output into $output.  Useful if you need
 # the return value AND want to use the output in a pipe
-try() { output=$(eval '"$@"'); }
+try() { output=$("$@"); }
 
 # writes the output of the previously used "try" command
 dump() { /bin/echo "$output"; }
@@ -62,6 +62,19 @@ if [ "$preview_images" = "True" ]; then
             ffmpegthumbnailer -i "$path" -o "$cached" -s 0 && exit 6 || exit 1;;
     esac
 fi
+
+# Markdown preview: keep Glow output separate so a failed render can use the
+# existing highlight/plain-text path without leaking partial output.
+case "$extension:$mimetype" in
+    md:*|markdown:*|*:text/markdown)
+        if [ -f "$path" ] && command -v glow >/dev/null 2>&1; then
+            if output=$(glow --style auto --width "$width" --pager=false -- "$path" 2>/dev/null); then
+                printf '%s\n' "$output" | trim
+                exit 0
+            fi
+        fi
+        ;;
+esac
 
 case "$extension" in
     # Archive extensions:
