@@ -268,3 +268,20 @@ export HTTP_PROXY="$http_proxy"
 export HTTPS_PROXY="$https_proxy"
 export NO_PROXY="localhost,127.0.0.1,::1,.local"
 export TOR_PROXY="socks5://127.0.0.1:9050"
+
+# OpenCode через локальный HTTP-прокси HAPP.
+# Круглые скобки запускают функцию в subshell:
+# переменные и unset не затрагивают родительский Zsh.
+opencode() (
+  unset ALL_PROXY all_proxy
+
+  export HTTP_PROXY="http://127.0.0.1:10809"
+  export HTTPS_PROXY="http://127.0.0.1:10809"
+  export http_proxy="$HTTP_PROXY"
+  export https_proxy="$HTTPS_PROXY"
+
+  export NO_PROXY="localhost,127.0.0.1,::1"
+  export no_proxy="$NO_PROXY"
+
+  command opencode "$@"
+)
