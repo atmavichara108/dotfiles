@@ -1,6 +1,79 @@
 #!/bin/bash
-if xrandr --query | grep "^DP-3 connected"; then
-    ~/.screenlayout/dual-right.sh
-else
-    ~/.screenlayout/single.sh
+# monitor-setup — detect external output and apply single/dual layout.
+# Usage: monitor-setup [--dry-run]
+set -euo pipefail
+
+# --- Strict argument parsing ---
+DRY_RUN=false
+case "${1:-}" in
+    "")           ;; # no args — normal mode
+    --dry-run)    DRY_RUN=true ;;
+    *)
+        echo "Usage: monitor-setup [--dry-run]" >&2
+        exit 2
+        ;;
+esac
+
+# --- Single-instance lock (flock, non-blocking) ---
+runtime_dir="${XDG_RUNTIME_DIR:-/tmp/user-$(id -u)}"
+mkdir -p "$runtime_dir"
+LOCKFILE="$runtime_dir/monitor-setup.lock"
+exec 9>"$LOCKFILE"
+if ! flock -n 9; then
+    echo "monitor-setup: another instance is running (lockfile=$LOCKFILE)" >&2
+    exit 1
 fi
+
+# --- Query RandR state ---
+query=$(xrandr --query 2>&1) || {
+    echo "monitor-setup: xrandr --query failed:" >&2
+    echo "$query" >&2
+    exit 1
+}
+
+if $DRY_RUN; then
+    echo "=== xrandr --query ==="
+    echo "$query"
+    echo ""
+fi
+
+# --- Detect external connected outputs (exclude internal eDP-* and virtual) ---
+mapfile -t external_outputs < <(
+    printf '%s\n' "$query" | awk '/ connected/ { print $1 }' | grep -v '^eDP-' || true
+)
+
+# --- Choose layout ---
+layout="single"
+chosen_ext=""
+
+if [[ ${#external_outputs[@]} -eq 0 ]]; then
+    layout="single"
+elif [[ " ${external_outputs[*]} " =~ " DP-3 " ]]; then
+    # DP-3 present — use dual-right geometry (dual-right.sh is hardcoded for DP-3)
+    layout="dual"
+    chosen_ext="DP-3"
+else
+    # External output(s) present but not DP-3 — unsupported, abort
+    echo "monitor-setup: external output(s) [${external_outputs[*]}] connected, but only DP-3 is supported" >&2
+    exit 2
+fi
+
+# --- Build command ---
+case "$layout" in
+    dual)
+        cmd=("$HOME/.screenlayout/dual-right.sh")
+        ;;
+    single)
+        cmd=("$HOME/.screenlayout/single.sh")
+        ;;
+esac
+
+# --- Dry-run: print and exit ---
+if $DRY_RUN; then
+    echo "=== selected layout: $layout${chosen_ext:+ (external: $chosen_ext)} ==="
+    echo "=== command: ${cmd[*]} ==="
+    exit 0
+fi
+
+# --- Apply layout ---
+"${cmd[@]}"

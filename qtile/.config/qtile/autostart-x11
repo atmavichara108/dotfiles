@@ -10,8 +10,8 @@ systemctl --user import-environment XDG_CURRENT_DESKTOP
 # portal стартует через dbus-активацию при первом запросе
 # systemd override убирает Requisite=graphical-session.target
 
-# --- Монитор ---
-~/.local/bin/monitor-setup &
+# --- Монитор (синхронно, после startup_once → Qtile уже инициализировал screens) ---
+~/.local/bin/monitor-setup
 
 # --- Композитор ---
 picom --daemon
