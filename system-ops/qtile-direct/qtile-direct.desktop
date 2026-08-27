@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Qtile Direct
+Comment=Qtile X11 session without systemd user service
+Exec=/usr/bin/qtile start
+TryExec=/usr/bin/qtile
+Type=Application
+DesktopNames=qtile
+Keywords=wm;tiling;
