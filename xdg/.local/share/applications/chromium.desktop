@@ -1,0 +1,20 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Chromium Web Browser
+Comment=Access the Internet
+Exec=chromium-happ %U
+Icon=chromium
+Terminal=false
+Categories=Network;WebBrowser;
+MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
+StartupNotify=true
+Actions=new-window;new-private-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=chromium-happ --new-window %U
+
+[Desktop Action new-private-window]
+Name=New Incognito Window
+Exec=chromium-happ --incognito %U

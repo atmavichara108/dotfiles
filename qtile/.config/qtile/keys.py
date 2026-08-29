@@ -54,6 +54,7 @@ keys = [
     Key([mod], "space", lazy.layout.next(), desc="Move window focus to other window"),
 
     Key([mod, "shift"], "w", lazy.spawn(myBrowser), desc='Web browser'),
+    Key([mod], "g", lazy.spawn("chromium-happ"), desc="Chromium (HAPP-aware)"),
     Key([mod, "shift"], "n", lazy.spawn(f"notion-app --proxy-server={_proxy}"), desc="Launch Notion"),
     Key([mod, "shift"], "g", lazy.spawn('chromium --app=https://genspark.ai --proxy-server="socks5://127.0.0.1:9050"'), desc="Genspark"),
 

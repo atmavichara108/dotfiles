@@ -1,0 +1,65 @@
+#!/bin/bash
+# Chromium HAPP-aware wrapper
+# Reads proxy mode from ~/.config/proxyctl/mode and configures proxy accordingly
+#
+# Modes:
+#   happ → socks5://127.0.0.1:10808 (HAPP proxy)
+#   tor  → socks5://127.0.0.1:9050  (Tor fallback)
+#   off  → direct (no proxy)
+#   auto → check port 10808, if active → happ, else → tor
+
+set -euo pipefail
+
+MODE_FILE="${HOME}/.config/proxyctl/mode"
+HAPP_PROXY="socks5://127.0.0.1:10808"
+TOR_PROXY="socks5://127.0.0.1:9050"
+
+# Read mode from file, default to 'auto' if file doesn't exist
+if [[ -f "$MODE_FILE" ]]; then
+    mode=$(<"$MODE_FILE")
+    mode="${mode//[$'\t\r\n ']}"  # trim whitespace
+else
+    mode="auto"
+fi
+
+# Function to check if a port is listening
+check_port() {
+    local port=$1
+    (echo > /dev/tcp/127.0.0.1/"$port") 2>/dev/null
+    return $?
+}
+
+# Determine proxy based on mode
+case "$mode" in
+    happ)
+        proxy="$HAPP_PROXY"
+        ;;
+    tor)
+        proxy="$TOR_PROXY"
+        ;;
+    off)
+        proxy=""
+        ;;
+    auto)
+        if check_port 10808; then
+            proxy="$HAPP_PROXY"
+        else
+            proxy="$TOR_PROXY"
+        fi
+        ;;
+    *)
+        # Unknown mode, fallback to auto
+        if check_port 10808; then
+            proxy="$HAPP_PROXY"
+        else
+            proxy="$TOR_PROXY"
+        fi
+        ;;
+esac
+
+# Build chromium command
+if [[ -n "$proxy" ]]; then
+    exec chromium --proxy-server="$proxy" "$@"
+else
+    exec chromium "$@"
+fi

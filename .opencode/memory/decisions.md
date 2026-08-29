@@ -205,3 +205,34 @@ timestamp: 2026-06-30
 - Planner теперь может делегировать исследование researcher через `task(agent="researcher", prompt="...")`
 - Builder также может вызывать researcher в пайплайнах (например, `/research` команда)
 - Явная таблица кто может вызывать researcher в AGENTS.md
+
+---
+
+### ADR-008: Chromium запускается через единый HAPP-aware wrapper
+**Дата:** 2026-08-29
+**Контекст:** HAPP на `127.0.0.1:10808`/`10809` подтверждён через `curl`, а
+Chromium с явным proxy flag и чистым профилем работает. Системный desktop entry
+запускает Chromium напрямую; singleton-процесс не принимает proxy flag второго
+запуска.
+**Решение:** Обычный Chromium запускается через stow-wrapper с учётом
+`proxyctl`; пользовательский desktop entry и обычные launch-paths используют
+wrapper. `Super+G` запускает обычный Chromium, `Super+Shift+G` для Genspark/Tor
+сохраняется. Tor web-apps и TUN не меняются.
+**Альтернативы:** env-переменные и ручной flag отвергнуты из-за отсутствия
+надёжной автоматизации; TUN отвергнут по ADR-004.
+**Последствия:** Единый proxy entrypoint Chromium; после смены proxy mode нужен
+полный выход Chromium. Реализация выполняется по спецификации Chromium/HAPP.
+
+---
+
+### Flush 2026-08-29: Состояние реализации Chromium/HAPP
+**Контекст:** В ходе реализации первоначальный wrapper оказался жёстко привязан
+к HTTP-порту 10809 и был неисполняемым; reviewer/verifier это выявили.
+**Решение:** Builder довёл реализацию до требований ADR-008: wrapper исполняемый,
+читает `proxyctl/mode`, поддерживает `happ`/`tor`/`off`/`auto`; Ranger не обходит
+wrapper; пользовательский desktop entry и `Super+G` направлены через него.
+Случайное изменение `environment.d/proxy.conf` откатено.
+**Последствия:** Автоматические проверки (bash, desktop entry, Python, Stow и
+режимы wrapper) заявлены PASS. Ручная проверка launch-paths и утечки
+маршрута остаётся перед production-применением. Коммит и push на момент flush
+не выполнялись.
