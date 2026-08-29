@@ -34,27 +34,37 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 
 | Агент | Роль | Модель (ярус) |
 |-------|------|---------------|
-| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | `opencode-go/grok-4.5` · Strategic |
+| **planner** | проектирует (ADR, спеку), код не пишет; делегирует через `task` | `opencode-go/gpt-5.6-luna` · Strategic |
 | **think** | сверх-сложные рассуждения; делегируется planner через `task` | `opencode/grok-build-0.1` · Agentic |
 | **builder** | реализует конфиги/скрипты; вызывает `reviewer` | `opencode-go/qwen3.7-plus` · Coding |
 | **qtile-dev** | Qtile (WM, виджеты, Python) | `opencode-go/qwen3.7-plus` · Coding |
 | **bash-dev** | bash-скрипты, автоматизация | `opencode-go/qwen3.7-plus` · Coding |
 | **util-dev** | утилиты (макросы, нотификации, rofi) | `opencode-go/qwen3.7-plus` · Coding |
 | **stow-ops** | stow-операции, реструктуризация, миграция, дрейф | `opencode-go/qwen3.7-plus` · Coding |
-| **sysop** | read-only аудит системы | `opencode/deepseek-v4-flash-free` · Free |
-| **reviewer** | ревьюер (PASS/FAIL, безопасность, спека) | `opencode/deepseek-v4-flash-free` · Free |
+| **sysop** | `system-audit`: global read-only аудит системы и экосистемы | `opencode-go/deepseek-v4-flash` · Go |
+| **reviewer** | read-only quality/style/domain reviewer | `opencode-go/deepseek-v4-flash` · Go |
 | **verifier** | верификатор применимости (синтаксис, stow dry-run, готовность) | `opencode/deepseek-v4-flash-free` · Free |
-| **researcher** | исследование кода, файлов, git-истории, документации; read-only, запускается planner через `task` | `opencode-go/deepseek-v4-flash` · Go |
+| **researcher** | исследование кода, файлов, git-истории, документации; read-only, предназначен для запуска planner через `task` | `opencode-go/deepseek-v4-flash` · Go |
+
+Canonical global sysop prompt: `opencode-global/.config/opencode/agent/sysop.md`
+(после stow — `~/.config/opencode/agent/sysop.md`). Это `system-audit` role:
+только sourced read-only audit, без edit/create, commit, `task`/agents,
+`system-ops` или system changes. Audit и apply всегда разделены.
+
+Local `.opencode/agent/sysop.md` не удаляется: это dotfiles-specific extension
+для Manjaro и действует в local scope с precedence локального определения над
+global при его явном выборе. Она не заменяет canonical global role. Live
+dispatch/runtime evidence для `/sysaudit` пока не подтверждены.
 
 Точные `model` ID — в `opencode.json` (`agent.<name>.model`), резолвятся из подписок `opencode-go` / `opencode-zen`. Обоснование — ADR-007.
 
-### Вызов researcher из planner
+### Конфигурация вызова researcher из planner
 
-Planner (роль: проектирует, НЕ пишет код) может запускать **researcher** на лету для исследования без нарушения своей роли.
+Planner (роль: проектирует, НЕ пишет код) имеет конфигурационный контракт для запуска **researcher** без нарушения своей роли. Live dispatch и runtime evidence отдельно не подтверждены.
 
-**Важно:** researcher — subagent, его определение лежит в `.opencode/subagent/researcher.md`. Для вызова через `task()` необходимо:
+**Важно:** researcher — subagent, его каноническое определение лежит в global path `opencode-global/.config/opencode/agent/researcher.md` (после stow — `~/.config/opencode/agent/researcher.md`). Для вызова через `task()` необходимо:
 1. Агент `researcher` определён в `opencode.json` (`agent.researcher`)
-2. Файл `.opencode/subagent/researcher.md` существует с корректным frontmatter (mode: subagent, permission-блок)
+2. Global prompt-файл существует с корректным frontmatter (mode: subagent, permission-блок)
 3. Вызывающий агент (planner) имеет `"task": { "*": "allow" }` или `"task": { "researcher": "allow" }`
 
 ```text
@@ -90,11 +100,26 @@ Researcher имеет:
 | **reviewer** | ❌ | Нет task-permissions |
 | **verifier** | ❌ | Нет task-permissions |
 
+Canonical reviewer prompt: `opencode-global/.config/opencode/agent/reviewer.md`
+(после stow — `~/.config/opencode/agent/reviewer.md`), capability —
+`quality-review`. Planner и builder настроены как callers reviewer; live dispatch
+и runtime evidence пока не подтверждены. Reviewer возвращает findings,
+recommendations и собственный reviewer verdict; acceptance PASS/FAIL остаётся
+исключительно за verifier.
+
 ## Пайплайны (slash-команды)
 
-`/sysaudit` · `/script` · `/qtile` · `/util` · `/notify` · `/macro` · `/plugin` · `/stow` · `/loop` · `/prompt` · `/flush`
+`/bridge` · `/sysaudit` · `/script` · `/qtile` · `/util` · `/notify` · `/macro` · `/plugin` · `/stow` · `/loop` · `/prompt` · `/flush`
+
+Глобальная `/spec` читает только canonical execution specs из
+`/home/rudra/Projects/OpenCode-Vault/06-Specs/<project>/` после чтения локальных
+`AGENTS.md`/`README.md`; локальные pointers не являются источником правды и
+недоступность Vault должна давать `BLOCKED`, без fallback.
 
 Большинство: `planner → <dev-agent> → reviewer`. Полные определения — в `.opencode/command/`.
+Глобальная `/bridge` запускает protocol entrypoint canonical AndroidOS
+Coordination Bridge в текущем репозитории; она не фиксирует агента и не делает
+`general` fallback при отсутствии доказуемой named role.
 
 ## Конвенции
 
