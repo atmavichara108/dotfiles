@@ -236,3 +236,29 @@ wrapper; пользовательский desktop entry и `Super+G` напра�
 режимы wrapper) заявлены PASS. Ручная проверка launch-paths и утечки
 маршрута остаётся перед production-применением. Коммит и push на момент flush
 не выполнялись.
+
+---
+
+### Flush 2026-08-30: T-108 — permission/root smoke-test
+**Контекст:** В canonical AndroidOS Coordination Bridge добавлены task
+`AOS-T108-001` и handoff `H-108-002` для проверки dotfiles-local
+`system-ops`. Требовалось исключить root/host mutation и сохранить новый
+append-only evidence непосредственно в bridge.
+**Решение:** Маршрут зафиксирован как named `system-ops`; разрешены только
+read-only audit и запись нового файла в
+`/home/rudra/Projects/AndroidOS/coordination/bridge/evidence/**`. В
+`opencode.json` сохранены deny для task и опасных операций, `sudo *: ask`, а
+доступ к task/handoff/evidence ограничен canonical bridge scopes.
+**Наблюдение:** Fresh named dispatch доказал чтение task/handoff и корректную
+статическую policy, но runtime заблокировал `apply_patch` при записи
+`E-108-003.md`. Host, dotfiles WIP, task, handoff и старое evidence не менялись.
+`E-108-002.md` создан librarian как partial report и не является evidence,
+созданным `system-ops`.
+**Статус:** T-108 остаётся `BLOCKED`: persistence gate не пройден. Не доказано,
+что причина — stale session; текущий gap — несоответствие между effective
+`edit` allow для внешнего evidence path и фактическим permission evaluator
+`apply_patch`.
+**Следствие:** Не расширять allowlist и не использовать fallback. Нужен
+отдельный runtime-level способ дать named `system-ops` запись только в
+`evidence/**`; после этого создать новый `E-108-003.md` append-only и передать
+его librarian. Коммит и push не выполнялись.
