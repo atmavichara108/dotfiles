@@ -1,7 +1,7 @@
 ---
 description: "system-audit: глобальный read-only аудит системы и экосистемы по sourced evidence"
 mode: primary
-model: opencode-go/deepseek-v4-flash
+model: opencode-go/glm-5.3-flash
 temperature: 0.1
 steps: 20
 permission:

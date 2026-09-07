@@ -1,7 +1,7 @@
 ---
 description: Strict acceptance verifier. Checks work against DoD. Returns PASS/FAIL, never edits.
 mode: subagent
-model: opencode-go/glm-5.2
+model: opencode-go/glm-5.3-flash
 temperature: 0.1
 permission:
   edit: deny

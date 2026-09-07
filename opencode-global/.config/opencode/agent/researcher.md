@@ -1,7 +1,7 @@
 ---
 description: "read-research: исследование repo/system artifacts по sourced evidence, строго read-only"
 mode: subagent
-model: opencode-go/deepseek-v4-flash
+model: opencode-go/qwen3.8-max
 temperature: 0.1
 permission:
   edit: deny

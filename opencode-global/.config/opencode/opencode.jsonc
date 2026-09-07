@@ -1,3 +1,66 @@
 {
-  "$schema": "https://opencode.ai/config.json"
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode-go/glm-5.3-flash",
+  "agent": {
+    "general": { "model": "opencode-go/deepseek-v4-pro" },
+    "build": { "model": "opencode-go/gpt-5.6-luna" },
+    "explore": { "model": "opencode-go/glm-5.3-flash" },
+    "plan": { "model": "opencode-go/gpt-5.6-luna" }
+  },
+  "permission": {
+    "task": "allow",
+    "edit": "allow",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "doom_loop": "deny",
+    "external_directory": {
+      "*": "deny",
+      "/home/rudra/Projects/**": "allow",
+      "/home/rudra/dotfiles/**": "allow",
+      "**/.env*": "deny",
+      "**/credentials.json": "deny",
+      "**/*.pem": "deny",
+      "**/*.key": "deny",
+      "**/id_rsa*": "deny",
+      "**/id_ed25519*": "deny"
+    },
+    "bash": {
+      "*": "allow",
+      "sudo *": "deny",
+      "chown *": "deny",
+      "chmod *": "deny",
+      "mkfs*": "deny",
+      "shutdown*": "deny",
+      "reboot*": "deny",
+      "systemctl stop*": "deny",
+      "systemctl disable*": "deny",
+      "systemctl mask*": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git branch -D*": "deny",
+      "git tag -d*": "deny",
+      "git reset --hard*": "ask",
+      "git clean*": "ask",
+      "rm -rf*": "deny",
+      "rm -fr*": "deny",
+      "rm*": "ask",
+      "ssh*": "ask"
+    }
+  },
+  "provider": {
+    "linaliapi": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LinaliAPI",
+      "options": { "baseURL": "https://api.linaliapi.com/v1" },
+      "models": {
+        "anthropic/claude-opus-5": { "name": "Claude Opus 5", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "openai/gpt-5.6-sol": { "name": "GPT-5.6 Sol", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "openai/gpt-5.6-luna": { "name": "GPT-5.6 Luna", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "google/gemini-3.8-flash": { "name": "Gemini 3.8 Flash", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "z-ai/glm-5.3": { "name": "GLM 5.3", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
+      }
+    }
+  }
 }
