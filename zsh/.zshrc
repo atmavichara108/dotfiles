@@ -1,3 +1,6 @@
+eval $(thefuck --alias)
+eval "$(navi widget zsh)"
+eval "$(direnv hook zsh)"
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 # Initialization code that may require console input (password prompts, [y/n]
 # confirmations, etc.) must go above this block; everything else may go below.
@@ -235,7 +238,6 @@ export EDITOR=nvim
 # fi
 #
 # TheFuck
-eval $(thefuck --alias)
 
 # CUDA
 export PATH=/usr/local/cuda-11.8/bin:$PATH
@@ -243,7 +245,6 @@ export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH
 export CUDA_PATH=/usr/local/cuda-11.8
 
 # Navi — interactive cheatsheet (Ctrl+G)
-eval "$(navi widget zsh)"
 
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
@@ -257,7 +258,6 @@ export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 
 # direnv
-eval "$(direnv hook zsh)"
 
 # === Proxy: Happ primary (SOCKS5h 10808 / HTTP 10809), Tor 9050 fallback ===
 export ALL_PROXY="socks5h://127.0.0.1:10808"
