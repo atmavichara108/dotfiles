@@ -262,3 +262,22 @@ read-only audit и запись нового файла в
 отдельный runtime-level способ дать named `system-ops` запись только в
 `evidence/**`; после этого создать новый `E-108-003.md` append-only и передать
 его librarian. Коммит и push не выполнялись.
+
+---
+
+### ADR-010: Консолидация агентов dotfiles — один primary `sysop`
+**Дата:** 2026-09-17
+**Контекст:** Три primary (sysop/planner/builder) плодили путаницу владения;
+имя `sysop` означало и локального оператора, и глобального `system-audit`.
+Атавизм `think` (grok-build-0.1) — agent-блок без prompt-файла и роутинга.
+**Решение:** Один primary `sysop` (оператор-оркестратор, luna) + субагенты
+(planner/builder/domain-dev/verifier локально; researcher/reviewer/meta/
+system-ops/`system-audit` глобально). planner/builder → subagent. Субагенты
+перенесены из `.opencode/subagent/` → `.opencode/agent/` (авто-дискавери по
+`.md`-frontmatter). Глобальный `sysop` переименован в `system-audit` (subagent).
+В `opencode.json` удалены мои agent-блоки (sysop/planner/builder/think),
+`default_agent: sysop`. `think` удалён. Канон агента = `.md`-frontmatter.
+**Последствия:** Требуется перезапуск TUI. `opencode agent list` (CLI) не
+показывает локальных агентов — особенность CLI, проверяется в live-сессии.
+Полная вычистка `opencode.json` от остальных agent-блоков — отдельным заходом
+(субагентные модельные правки соседней сессии ещё не закоммичены).

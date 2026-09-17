@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "default_agent": "planner",
+  "default_agent": "sysop",
   "lsp": true,
   "model": "opencode/deepseek-v4-flash-free",
   "permission": {
@@ -50,87 +50,6 @@
     "webfetch": "allow"
   },
   "agent": {
-    "sysop": {
-      "mode": "primary",
-      "model": "opencode-go/deepseek-v4-flash",
-      "temperature": 0.1,
-      "steps": 20,
-      "permission": {
-        "edit": "deny",
-        "task": "deny",
-        "read": "allow",
-        "glob": "allow",
-        "grep": "allow",
-        "webfetch": "deny",
-        "bash": {
-          "*": "deny",
-          "ls*": "allow",
-          "cat*": "allow",
-          "grep*": "allow",
-          "find*": "allow",
-          "which*": "allow",
-          "type*": "allow",
-          "head*": "allow",
-          "tail*": "allow",
-          "wc*": "allow",
-          "file*": "allow",
-          "stat*": "allow",
-          "readlink*": "allow",
-          "realpath*": "allow",
-          "basename*": "allow",
-          "dirname*": "allow",
-          "git status*": "allow",
-          "git diff*": "allow",
-          "git log*": "allow",
-          "git show*": "allow",
-          "git blame*": "allow",
-          "pacman -Q*": "allow",
-          "pacman -Qi*": "allow",
-          "pacman -Qm*": "allow",
-          "pacman -Qe*": "allow",
-          "systemctl status*": "allow",
-          "journalctl --user*": "allow",
-          "stow -n*": "allow",
-          "stow --adopt -n*": "allow",
-          "uname*": "allow",
-          "hostnamectl*": "allow",
-          "df*": "allow",
-          "free*": "allow",
-          "ps*": "allow",
-          "du -sh*": "allow",
-          "lsblk*": "allow",
-          "ip addr*": "allow",
-          "ss -tlnp*": "allow"
-        }
-      }
-    },
-    "planner": {
-      "mode": "primary",
-      "model": "opencode-go/gpt-5.6-luna",
-      "temperature": 0.2,
-      "steps": 20,
-      "permission": {
-        "edit": "deny",
-        "bash": "deny",
-        "task": { "*": "allow" }
-      }
-    },
-        "builder": {
-          "mode": "primary",
-          "model": "opencode-go/qwen3.7-plus",
-          "temperature": 0.1,
-          "steps": 30,
-          "permission": {
-            "edit": "allow",
-            "bash": "ask",
-            "task": {
-              "reviewer": "allow",
-              "verifier": "allow",
-              "stow-ops": "allow",
-              "researcher": "allow"
-            }
-          }
-        },
     "reviewer": {
       "mode": "subagent",
       "model": "opencode-go/deepseek-v4-flash",
@@ -281,16 +200,6 @@
           "ps*": "allow",
           "echo*": "allow"
         }
-      }
-    },
-    "think": {
-      "mode": "subagent",
-      "model": "opencode/grok-build-0.1",
-      "temperature": 0.2,
-      "steps": 25,
-      "permission": {
-        "edit": "deny",
-        "bash": "deny"
       }
     },
     "researcher": {

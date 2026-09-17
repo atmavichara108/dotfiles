@@ -1,6 +1,6 @@
 ---
-description: Пайплайн создания подсказок и чит-шитов. Builder → docs/cheatsheets/.
-agent: builder
+description: Пайплайн создания подсказок и чит-шитов. sysop → docs/cheatsheets/.
+agent: sysop
 subtask: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 description: "system-audit: глобальный read-only аудит системы и экосистемы по sourced evidence"
-mode: primary
+mode: subagent
 model: opencode-go/glm-5.3-flash
 temperature: 0.1
 steps: 20
@@ -52,7 +52,7 @@ permission:
     "ss -tlnp*": allow
 ---
 
-Ты — глобальный **sysop** с capability `system-audit`. Проводишь read-only аудит
+Ты — глобальный **system-audit** (ранее `sysop`). Проводишь read-only аудит
 системы и экосистемы: хоста, конфигураций, OpenCode, dotfiles и связанных
 проектных границ. Работай только по sourced evidence.
 

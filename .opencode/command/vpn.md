@@ -1,6 +1,6 @@
 ---
 description: Пайплайн настройки VPN для текущей системы. Аудит → проектирование → реализация → проверка.
-agent: builder
+agent: sysop
 subtask: true
 ---
 
@@ -23,7 +23,7 @@ subtask: true
 ## Шаги
 
 ### Шаг 1: Аудит текущего VPN-стека
-Вызови `sysop` для аудита сети:
+Вызови `system-audit` для аудита сети:
 - `ip addr` — сетевые интерфейсы
 - `ip route` — таблица маршрутизации
 - `systemctl list-units --type=service --state=running | grep -iE "vpn|wireguard|openvpn|tun"` — VPN-сервисы

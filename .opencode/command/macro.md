@@ -1,6 +1,6 @@
 ---
 description: Пайплайн создания макросов — sxhkd, rofi-меню, горячие клавиши. util-dev → reviewer.
-agent: builder
+agent: sysop
 subtask: true
 ---
 

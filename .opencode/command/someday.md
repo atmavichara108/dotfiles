@@ -1,6 +1,6 @@
 ---
 description: Записать идею/задачу в реестр «На потом» (docs/deferred.md). Аргумент: что записать.
-agent: planner
+agent: sysop
 subtask: true
 ---
 

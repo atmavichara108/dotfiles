@@ -1,6 +1,6 @@
 ---
 description: Пайплайн создания утилит — макросы, rofi-меню, btop-темы, wal-схемы. util-dev → reviewer.
-agent: builder
+agent: sysop
 subtask: true
 ---
 

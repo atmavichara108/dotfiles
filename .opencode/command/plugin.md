@@ -1,6 +1,6 @@
 ---
-description: Пайплайн создания плагинов — для nvim, rofi, btop и других инструментов. builder → reviewer.
-agent: builder
+description: Пайплайн создания плагинов — для nvim, rofi, btop и других инструментов. sysop → reviewer.
+agent: sysop
 subtask: true
 ---
 

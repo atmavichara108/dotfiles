@@ -1,6 +1,6 @@
 ---
 description: Пайплайн создания/изменения bash-скриптов. bash-dev → reviewer. Аргумент: описание скрипта.
-agent: builder
+agent: sysop
 subtask: true
 ---
 

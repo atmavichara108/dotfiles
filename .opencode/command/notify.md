@@ -1,6 +1,6 @@
 ---
 description: Пайплайн настройки уведомлений — dunst, notify-send, скрипты нотификаций. util-dev → reviewer.
-agent: builder
+agent: sysop
 subtask: true
 ---
 

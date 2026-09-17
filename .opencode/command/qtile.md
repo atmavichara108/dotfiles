@@ -1,6 +1,6 @@
 ---
-description: Пайплайн разработки qtile — конфиги, виджеты, хуки, keybindings. planner → qtile-dev → reviewer.
-agent: planner
+description: Пайплайн разработки qtile — конфиги, виджеты, хуки, keybindings. sysop → qtile-dev → reviewer.
+agent: sysop
 subtask: true
 ---
 
