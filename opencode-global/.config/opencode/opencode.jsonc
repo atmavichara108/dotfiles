@@ -9,7 +9,14 @@
   },
   "permission": {
     "task": "allow",
-    "edit": "allow",
+    "edit": {
+      "*": "allow",
+      "**/TASKS.md": "ask",
+      "**/00-INDEX.md": "ask",
+      "**/active-context.md": "ask",
+      "**/registry.json": "ask",
+      "**/AGENTS.md": "ask"
+    },
     "read": "allow",
     "glob": "allow",
     "grep": "allow",
