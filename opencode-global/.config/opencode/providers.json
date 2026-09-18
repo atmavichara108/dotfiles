@@ -1,0 +1,8 @@
+{
+  "lnl": { "provider": "linaliapi", "medium": "linaliapi/anthropic/claude-opus-5", "free": "linaliapi/z-ai/glm-5.3", "note": "модели условно равнозначны; режимы — ориентиры" },
+  "ocg": { "provider": "opencode-go", "medium": "opencode-go/glm-5.3-flash", "free": null, "note": "free нет: брать бесплатные у провайдера opencode (zen); medium кандидаты: glm-5.3-flash (2x usage), gpt-5.6-luna; добор deepseek/qwen" },
+  "oc":  { "provider": "opencode", "medium": null, "free": null, "note": "opencode zen — источник free-моделей для ocg" },
+  "orr": { "provider": "openrouter", "medium": null, "free": null, "note": "заглушка, пока не используется" },
+  "mst": { "provider": "mistral", "medium": null, "free": null, "note": "заглушка, пока не используется" },
+  "jwk": { "provider": "justwoker", "medium": null, "free": null, "note": "заглушка, пока не используется" }
+}

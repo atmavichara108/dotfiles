@@ -5,7 +5,7 @@
  * ============================================================ */
 
 configuration {
-    modi:                "drun,run,window,ssh,filebrowser";
+    modi:                "drun,run,window,ssh,filebrowser,pipboy:/home/rudra/.local/bin/pipboy-rofi";
     show-icons:          true;
     icon-theme:          "Papirus-Dark";
     display-drun:        " Apps";
@@ -13,6 +13,7 @@ configuration {
     display-window:      " Windows";
     display-ssh:         " SSH";
     display-filebrowser: " Files";
+    display-pipboy:      " Pip-Boy";
     drun-display-format: "{name}";
     hover-select:        true;
     me-select-entry:     "";

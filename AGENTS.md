@@ -124,10 +124,10 @@ recommendations и собственный reviewer verdict; acceptance PASS/FAIL
 Отдельной slash-команды для `system-ops` нет: маршрут только named task из
 `sysop` (primary) после system-audit и с explicit user approval.
 
-Глобальная `/spec` читает только canonical execution specs из
-`/home/rudra/Projects/OpenCode-Vault/06-Specs/<project>/` после чтения локальных
-`AGENTS.md`/`README.md`; локальные pointers не являются источником правды и
-недоступность Vault должна давать `BLOCKED`, без fallback.
+Глобальная `/spec` резолвит canonical execution specs только внутри `spec-home`
+текущего проекта (репо-локально, `<repo>/docs/specs/`) после чтения локальных
+`AGENTS.md`/`README.md`; Vault не хранит чужие спеки, локальные pointers не
+являются источником правды, и недоступность `spec-home` даёт `BLOCKED`, без fallback.
 
 Основной: `sysop → <subagent> → verifier`. Для high-risk host scope:
 `system-audit → sysop plan → system-ops apply → verifier/post-check`, причём

@@ -1,0 +1,111 @@
+#!/bin/bash
+# mcode-open — открыть проект из ~/Projects/ в MCode
+# Использование: mcode-open [project-name|path]
+# Без аргументов — интерактивный выбор через rofi
+
+set -euo pipefail
+
+PROJECTS_DIR="$HOME/Projects"
+
+# Обход AppImageLauncher — предотвращает ошибку регистрации через libappimage
+export APPIMAGELAUNCHER_DISABLE=1
+
+# Поиск AppImage: сначала канонический путь, затем вариант,
+# переименованный AppImageLauncher (mcode-desktop-...-<hash>.AppImage)
+MCODE="$HOME/Applications/mcode/mcode-desktop-linux-x86_64.AppImage"
+if [[ ! -x "$MCODE" ]]; then
+    MCODE=$(find "$HOME/Applications" -maxdepth 2 -name 'mcode-desktop-linux-x86_64*.AppImage' \
+        -type f -executable -print 2>/dev/null | sort | tail -n1)
+fi
+
+# Проверка существования MCode
+if [[ -z "$MCODE" || ! -x "$MCODE" ]]; then
+    echo "MCode AppImage not found in $HOME/Applications" >&2
+    exit 1
+fi
+
+# --- Proxy только для Node-стороны (sidecar) ---
+# Все API-запросы (к LinaliAPI и т.п.) делает sidecar-процесс на стороне Node,
+# а renderer ходит только на локальный sidecar через 127.0.0.1.
+#
+# Изначальная причина "upstream unavailable": sidecar наследовал
+# ALL_PROXY=socks5h://127.0.0.1:10808, а Node-клиент (undici) не понимает
+# схему socks5h — запросы разваливались. TUI (Bun) отрабатывает её иначе,
+# поэтому у него работало.
+#
+# Решение: сбрасываем sock-переменные и оставляем только рабочий HTTP-прокси
+# Happ (тот же 10809, что использует TUI). Chromium-флаг --proxy-server НЕ
+# задаём — он ломает подключение renderer к собственному sidecar.
+MODE_FILE="${HOME}/.config/proxyctl/mode"
+mode="auto"
+if [[ -f "$MODE_FILE" ]]; then
+    mode="$(tr -d '[:space:]' < "$MODE_FILE")"
+fi
+
+# Сбрасываем все socks-переменные в любом случае.
+unset ALL_PROXY all_proxy
+
+if [[ "$mode" != "off" ]]; then
+    export HTTPS_PROXY="http://127.0.0.1:10809" https_proxy="http://127.0.0.1:10809"
+    export HTTP_PROXY="http://127.0.0.1:10809"  http_proxy="http://127.0.0.1:10809"
+else
+    unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy
+fi
+
+# Локальный sidecar — всегда напрямую (и для Node-стороны).
+export NO_PROXY="127.0.0.1,localhost,::1"
+export no_proxy="$NO_PROXY"
+
+launch() {
+    exec "$MCODE" "$@"
+}
+
+# Если передан аргумент — открыть указанный проект
+if [[ $# -gt 0 ]]; then
+    project="$1"
+    # Если это существующий путь (абсолютный или относительный) — использовать как есть
+    if [[ -e "$project" ]]; then
+        launch "$project"
+    fi
+    # Иначе искать в ~/Projects/
+    project="$PROJECTS_DIR/$project"
+    if [[ ! -d "$project" ]]; then
+        echo "Project not found: $project" >&2
+        exit 1
+    fi
+    launch "$project"
+fi
+
+# Интерактивный выбор
+if [[ ! -d "$PROJECTS_DIR" ]]; then
+    echo "Projects directory not found: $PROJECTS_DIR" >&2
+    exit 1
+fi
+
+# Получить список проектов (директории первого уровня)
+projects=$(find "$PROJECTS_DIR" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort)
+
+if [[ -z "$projects" ]]; then
+    echo "No projects found in $PROJECTS_DIR" >&2
+    exit 1
+fi
+
+# Выбрать через rofi (если доступен) или fallback
+if command -v rofi &>/dev/null; then
+    selected=$(echo "$projects" | rofi -dmenu -p "Open project" -i)
+    if [[ -n "$selected" ]]; then
+        launch "$PROJECTS_DIR/$selected"
+    fi
+else
+    echo "Available projects in $PROJECTS_DIR:"
+    echo "$projects" | nl
+    read -rp "Select project number: " num
+    if [[ "$num" =~ ^[0-9]+$ ]]; then
+        selected=$(echo "$projects" | sed -n "${num}p")
+        if [[ -n "$selected" ]]; then
+            launch "$PROJECTS_DIR/$selected"
+        fi
+    fi
+    echo "Invalid selection" >&2
+    exit 1
+fi

@@ -57,7 +57,10 @@ export function buildNudgeParts() {
   return [{ type: "text", text: NO_OP_NUDGE, synthetic: true }]
 }
 
-export default {
+// Auto-discovery loads every module in this directory as a plugin and expects
+// its default export to be callable. Keep the helper surface on that function
+// so CommonJS require() destructuring still exposes the named helpers.
+export default Object.assign(async () => ({}), {
   NO_OP_OUTPUT_THRESHOLD,
   NO_OP_RETRY_LIMIT,
   NO_OP_NUDGE,
@@ -65,4 +68,4 @@ export default {
   hasToolActivity,
   isNoOpTurn,
   buildNudgeParts,
-}
+})
