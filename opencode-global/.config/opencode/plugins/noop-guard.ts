@@ -16,6 +16,8 @@ import type { Plugin } from "@opencode-ai/plugin"
 import {
   NO_OP_RETRY_LIMIT,
   isNoOpTurn,
+  isAbortedTurn,
+  looksLikeAwaitingUser,
   buildNudgeParts,
 } from "./noop-guard-helpers.js"
 
@@ -44,6 +46,21 @@ const plugin: Plugin = async ({ client }) => {
 
       const messageID = lastAssistant.info?.id
       const parts = lastAssistant.parts
+      const info = lastAssistant.info
+
+      // Прерванный ход (abort/Esc) — не no-op: не пинаем.
+      if (isAbortedTurn(info)) {
+        retries.delete(sessionID)
+        seen.delete(sessionID)
+        return
+      }
+
+      // Агент задал вопрос / ждёт подтверждения — осознанная остановка, не no-op.
+      if (looksLikeAwaitingUser(parts)) {
+        retries.delete(sessionID)
+        seen.delete(sessionID)
+        return
+      }
 
       // Нормальный ход — сброс счётчика no-op.
       if (!isNoOpTurn(parts)) {
