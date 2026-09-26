@@ -92,7 +92,10 @@ export function redactText(text) {
   return out
 }
 
-export default {
+// Auto-discovery loads every module in this directory as a plugin and expects
+// its default export to be callable. Keep the helper surface on that function
+// so CommonJS require() destructuring still exposes the named helpers.
+export default Object.assign(async () => ({}), {
   SYSTEM_REMINDER_RE,
   TRANSPORT_MARKUP_TAGS,
   REDACT_PATTERNS,
@@ -101,4 +104,4 @@ export default {
   escapeMarkupTags,
   sanitizeText,
   redactText,
-}
+})

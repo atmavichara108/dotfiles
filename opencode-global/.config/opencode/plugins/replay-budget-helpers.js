@@ -29,6 +29,8 @@ export const PRUNED_INPUT_KEEP = [
   "url",
   "offset",
   "limit",
+  "prompt",
+  "content",
 ]
 
 const MARKER_PREFIX = "[mcode: replay budget"
@@ -127,7 +129,19 @@ export function applyReplayBudget(messages, opts = {}) {
       if (part.type === "tool") {
         const state = part.state
         if (!state) continue
-        if (state.input != null) pruneToolInput(state.input, inputMinChars, keep)
+        // The transform hook must mutate its message array in-place, but tool
+        // inputs can still be live references into the session store. Clone
+        // before pruning so the recursive helper never edits that store object.
+        // The current assistant turn is kept intact, matching reasoning below.
+        if (i !== newestAssistantIndex && state.input != null) {
+          let inputCopy
+          try {
+            inputCopy = structuredClone(state.input)
+          } catch {
+            inputCopy = JSON.parse(JSON.stringify(state.input))
+          }
+          state.input = pruneToolInput(inputCopy, inputMinChars, keep)
+        }
         if (state.status === "completed" && typeof state.output === "string") {
           if (state.output.length > toolOutputMaxChars && protectedBudget <= 0) {
             state.output = truncateToolOutput(state.output, toolOutputMaxChars)
@@ -147,7 +161,10 @@ export function applyReplayBudget(messages, opts = {}) {
   return messages
 }
 
-export default {
+// Auto-discovery loads every module in this directory as a plugin and expects
+// its default export to be callable. Keep the helper surface on that function
+// so CommonJS require() destructuring still exposes the named helpers.
+export default Object.assign(async () => ({}), {
   TOOL_OUTPUT_MAX_CHARS,
   REPLAY_PROTECTED_CHARS,
   PRUNED_INPUT_MIN_CHARS,
@@ -157,4 +174,4 @@ export default {
   pruneToolInput,
   clearImagePart,
   applyReplayBudget,
-}
+})
