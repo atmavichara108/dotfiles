@@ -28,6 +28,17 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 - монтирование ФС.
 - **Никаких секретов** (ключи, токены, пароли) в репо — анти-goal, вынесено из репо.
 
+## Чистое дерево (tree-hygiene)
+
+Параллельные сессии не должны спутывать работы. Правило исполняется **программно**, а не по договорённости:
+
+1. **Старт — task-ветка**, не `main`: `git switch -c task/<slug>`.
+2. **Один коммит = один сюжет/зона** — гейт `githooks/pre-commit` (zone-mix); обход `MIXED_OK=1` только с объяснением в сообщении.
+3. **До смены ветки дерево чистое** — гейт `plugins/tree-hygiene.ts` блокирует `git switch/checkout` при грязном worktree и `git stash push` без `-m`.
+4. **В `main` — только merge** — `githooks/pre-commit` + `plugins/main-protector.ts`.
+5. **dotfiles — без git worktree**: stow-симлинки живут в одном checkout; изоляция = task-ветки.
+6. Скилл-памятка: `.opencode/skills/tree-hygiene/SKILL.md`.
+
 ## Роли агентов и роутинг
 
 **Один primary + субагенты.** `sysop` — единственный primary, оператор-оркестратор Manjaro: сам анализирует, проектирует, пишет конфиги и по необходимости запускает субагентов через `task`. Раньше в dotfiles было три primary (sysop/planner/builder) — это плодило путаницу во владении; теперь канон: primary решает, субагенты исполняют.
@@ -124,10 +135,10 @@ recommendations и собственный reviewer verdict; acceptance PASS/FAIL
 Отдельной slash-команды для `system-ops` нет: маршрут только named task из
 `sysop` (primary) после system-audit и с explicit user approval.
 
-Глобальная `/spec` читает только canonical execution specs из
-`/home/rudra/Projects/OpenCode-Vault/06-Specs/<project>/` после чтения локальных
-`AGENTS.md`/`README.md`; локальные pointers не являются источником правды и
-недоступность Vault должна давать `BLOCKED`, без fallback.
+Глобальная `/spec` резолвит canonical execution specs только внутри `spec-home`
+текущего проекта (репо-локально, `<repo>/docs/specs/`) после чтения локальных
+`AGENTS.md`/`README.md`; Vault не хранит чужие спеки, локальные pointers не
+являются источником правды, и недоступность `spec-home` даёт `BLOCKED`, без fallback.
 
 Основной: `sysop → <subagent> → verifier`. Для high-risk host scope:
 `system-audit → sysop plan → system-ops apply → verifier/post-check`, причём

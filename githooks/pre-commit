@@ -1,0 +1,77 @@
+#!/bin/bash
+# Dotfiles pre-commit: гигиена параллельной работы агентов (tree-hygiene).
+# Установка: ln -sf ../../githooks/pre-commit .git/hooks/pre-commit
+#
+# Гейты:
+#   1. Branch gate — коммит напрямую в main/master запрещён (кроме merge
+#      и явного ALLOW_MAIN=1). В main — только merge.
+#   2. Conflict-marker gate —<<<<<<< / ======= / >>>>>>> в staged-файлах.
+#   3. Zone-mix gate — staged-файлы из разных тематических зон в одном
+#      коммите запрещены: один коммит = один сюжет. Обход: MIXED_OK=1
+#      (осознанный интеграционный коммит, объясни причину в сообщении).
+#
+# Зоны (порядок важен: первый матч побеждает):
+#   promo-provider | pipboy | opencode | specs-docs | sysconfig | docs | misc
+
+set -u
+
+die() { echo "❌ $*" >&2; exit 1; }
+
+git_branch() { git symbolic-ref --short -q HEAD 2>/dev/null || echo "(detached)"; }
+is_merge()   { test -f "$(git rev-parse --git-dir)/MERGE_HEAD"; }
+
+# --- Гейт 1: не коммитить напрямую в main/master -----------------------------
+if is_merge || [ "${ALLOW_MAIN:-0}" = "1" ]; then
+  : # merge/release — разрешено
+else
+  br=$(git_branch)
+  case "$br" in
+    main|master)
+      die "Коммит напрямую в '$br' запрещён. Работай в task/<slug>-ветке; в main — только merge (или ALLOW_MAIN=1 для осознанного release)."
+      ;;
+  esac
+fi
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+[ -z "$staged" ] && exit 0
+
+# --- Гейт 2: conflict-маркеры в staged ---------------------------------------
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  case "$f" in
+    *.png|*.jpg|*.jpeg|*.gif|*.woff*|*.ttf|*.zip|*.7z|*.pdf) continue ;;
+  esac
+  if git show ":$f" 2>/dev/null | grep -qE '^(<{7,8}|={7}$|>{7,8}) '; then
+    die "Conflict-маркеры в staged-файле: $f"
+  fi
+done <<< "$staged"
+
+# --- Гейт 3: один коммит = одна зона -----------------------------------------
+zone_of() {
+  case "$1" in
+    scripts/*|docs/specs/promo-provider*)      echo promo-provider ;;
+    qtile/*|rofi/*|docs/specs/pipboy*)         echo pipboy ;;
+    .opencode/*|opencode-global/*|opencode.json|opencode.jsonc|AGENTS.md|.gitignore|githooks/*) echo opencode ;;
+    docs/specs/*|docs/decisions.md)            echo specs-docs ;;
+    environment.d/*|git/*|lazygit/*|nvim/*|flameshot/*|zsh/*|picom/*|x11/*|systemd/*|screenlayout/*|dunst/*|tmux/*|alacritty/*|btop/*|bat/*|htop/*|neofetch/*|ranger/*|taskwarrior/*|wal/*|weathr/*|xdg/*) echo sysconfig ;;
+    docs/*|README*|*.md)                       echo docs ;;
+    *)                                         echo misc ;;
+  esac
+}
+
+zones=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  z=$(zone_of "$f")
+  case " $zones " in *" $z "*) ;; *) zones="$zones $z" ;; esac
+done <<< "$staged"
+
+n=$(echo $zones | wc -w)
+if [ "$n" -gt 1 ] && [ "${MIXED_OK:-0}" != "1" ]; then
+  echo "❌ Один коммит = один сюжет. Staged затрагивает $n зоны:$zones" >&2
+  echo "   Разбей на отдельные коммиты по зонам или подтверди интеграционный: MIXED_OK=1 git commit ..." >&2
+  exit 1
+fi
+
+echo "✅ tree-hygiene: ветка/маркеры/зоны в порядке"
+exit 0
