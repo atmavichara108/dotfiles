@@ -4,7 +4,7 @@ title: Promo-provider probe + balance hook (dotfiles)
 description: Execution spec для dotfiles-агентов: read-only probe и balance monitor промо/реферальных провайдеров. Scope — только dotfiles скрипты/конфиги. Реализация ожидает независимой верификации.
 tags: [spec, dotfiles, provider, balance-hook, promo-provider]
 timestamp: 2026-09-16
-status: review
+status: implemented
 ---
 
 # Spec: Promo-provider probe + balance hook (dotfiles)
