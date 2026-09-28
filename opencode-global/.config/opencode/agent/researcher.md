@@ -1,8 +1,9 @@
 ---
 description: "read-research: исследование repo/system artifacts по sourced evidence, строго read-only"
 mode: subagent
-model: opencode-go/qwen3.8-max
+model: opencode/muse-spark-1.3-contributor-free
 temperature: 0.1
+steps: 15
 permission:
   edit: deny
   task: deny

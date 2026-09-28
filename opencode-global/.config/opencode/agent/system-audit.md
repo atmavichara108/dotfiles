@@ -1,7 +1,7 @@
 ---
 description: "system-audit: глобальный read-only аудит системы и экосистемы по sourced evidence"
 mode: subagent
-model: opencode-go/glm-5.3-flash
+model: opencode/muse-spark-1.3-contributor-free
 temperature: 0.1
 steps: 20
 permission:
