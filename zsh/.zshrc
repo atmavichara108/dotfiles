@@ -271,3 +271,12 @@ export TOR_PROXY="socks5://127.0.0.1:9050"
 
 # opencode
 export PATH=/home/rudra/.opencode/bin:$PATH
+
+# Провайдерные ключи для SDK с жёстким именем переменной.
+# @ai-sdk/anthropic (провайдер justwoker) требует именно ANTHROPIC_API_KEY
+# и не подхватывает ключ из auth.json по custom id. Маппим молча один раз.
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    _jw_key="$(python3 -c "import json;print((json.load(open('$HOME/.local/share/opencode/auth.json')).get('justwoker') or {}).get('key',''))" 2>/dev/null)"
+    [[ -n "$_jw_key" ]] && export ANTHROPIC_API_KEY="$_jw_key"
+    unset _jw_key
+fi
