@@ -5,10 +5,11 @@
 // не капит tool-выводы, поэтому плагин применяет replay budget на месте.
 //
 // Fail-safe: любая ошибка логируется и не роняет turn — история уходит как есть.
-// Семантика и константы — в ./replay-budget-helpers.js (checked из app.asar M Code).
+// Семантика и константы — в ../lib/replay-budget-helpers.js (checked из app.asar M Code).
+// Хелперы лежат вне plugins/: загрузчик OpenCode сканирует каждый файл plugins/ как плагин.
 
 import type { Plugin } from "@opencode-ai/plugin"
-import { applyReplayBudget } from "./replay-budget-helpers.js"
+import { applyReplayBudget } from "../lib/replay-budget-helpers.js"
 
 const plugin: Plugin = async ({ client }) => {
   return {

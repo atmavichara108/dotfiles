@@ -9,7 +9,7 @@
 // Fail-safe: любая ошибка логируется, turn не роняется (история уходит как есть).
 
 import type { Plugin } from "@opencode-ai/plugin"
-import { sanitizeText, redactText } from "./input-security-helpers.js"
+import { sanitizeText, redactText } from "../lib/input-security-helpers.js"
 
 const plugin: Plugin = async ({ client }) => {
   const sanitizeParts = (parts: any[]) => {

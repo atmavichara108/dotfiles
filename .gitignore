@@ -72,6 +72,9 @@ Desktop.ini
 *.bak
 *.old
 
+# model-router бэкапы (точечная правка model: — runtime)
+.model-router-backups/
+
 # Oh-My-Zsh — не версионировать сам фреймворк
 zsh/.oh-my-zsh/*
 !zsh/.oh-my-zsh/custom/
