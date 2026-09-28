@@ -480,10 +480,12 @@ Qtile-логику оставить post-login слоем для dual layout и 
    молча (перед коммитом `diff --stat` vs чужая ветка).
 3. Sync: task-ветку обновлять через `merge origin/main`; main — только merge;
    push main — только по approval.
-4. Рапорт: в конце сессии — файл
-   `.opencode/memory/session-reports/<дата>-<слаг>.md` по
-   `session-reports/_template.md`; мультпроект — плюс строка-указатель в
-   Vault `04-Memory/session-log/<дата>.md`.
+4. Раппорт в начале (handshake): сессия объявляет себя файлом
+   `.opencode/memory/session-reports/active/<слаг>.md` (кто, ветка, scope,
+   старт, heartbeat); чужие handshake-файлы — read-only; heartbeat старше
+   24ч считается мёртвым и может быть убран с пометкой. Рапорт в конце:
+   файл `<дата>-<слаг>.md` по шаблону + удаление своего handshake;
+   мультпроект — плюс строка-указатель в Vault session-log.
 5. Финал: дерево чистое; свои смерженные ветки — снести (local + remote).
 **Альтернативы:**
 - Git worktree на сессию — отвергнуто для dotfiles: stow-симлинки живут в
