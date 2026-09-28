@@ -74,6 +74,15 @@ timestamp: 2026-06-30
 - **Home:** `/home/rudra/`
 - **Dotfiles:** `/home/rudra/dotfiles/` (GNU Stow)
 
+## Железо (зафиксировано 2026-08-25, стеш broken-monitor-debug)
+
+- **Ноутбук:** Lenovo ThinkPad P51 (`20HHS1VV00`)
+- **CPU:** Intel Core i7-7820HQ, 4 cores / 8 threads
+- **RAM:** ~15.3 GiB
+- **Storage:** WD Blue SN570 NVMe 500 GB
+- **GPU:** Intel HD Graphics 630 + NVIDIA Quadro M2200
+- Версии kernel/драйвера/сети (`6.12.94-1`, nvidia `570.211.01`, Wi-Fi up / Ethernet down) — на дату фиксации; перепроверять при аудите.
+
 ## Последние изменения (2026-07-01)
 
 - **Браузер:** Chromium вместо Google Chrome
