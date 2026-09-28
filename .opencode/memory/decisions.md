@@ -281,3 +281,57 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 показывает локальных агентов — особенность CLI, проверяется в live-сессии.
 Полная вычистка `opencode.json` от остальных agent-блоков — отдельным заходом
 (субагентные модельные правки соседней сессии ещё не закоммичены).
+
+---
+
+### Flush 2026-09-28: переезд opencode TUI v1 → v2 (dream-дистилляция)
+**Контекст:** Сессия покрыла весь переезд: бэкап → dual-конфиги → 14 плагинов
+на V2 → установка v2 → чинка загрузки → коммиты в 3 репо + push. ADR-011 уже в
+`docs/decisions.md`; здесь — переносимое.
+**Решения:**
+- Одна волна вместо двух (параллельная работа в проектах не терпит staging).
+- Билдеру — бесплатная `muse-spark-1.3-free` (доказанная tool_call); nemotron-3
+  ultra для агентов непригоден (нет tool_call).
+- Dual-обёртка плагинов «V1-функция + .id/.setup» отвергнута загрузчиком
+  (`SchemaError(Expected object)`); только нативный `Plugin.define`.
+- Конфликт serp env-guard сведён слиянием (V2-каркас + precision соседней
+  сессии), не выбором одной стороны.
+**Reusable patterns:**
+- V2 = клиент + фоновый сервис: рестарт TUI сервис не трогает; залипшие ошибки
+  плагинов лечатся перезапуском `serve --service` (19-часовой процесс 14 часов
+  переигрывал ошибку несуществующего состояния).
+- Диагностика плагинов: `plugin list` (прочерк = не загрузился) → ref-ошибка в
+  `~/.local/share/opencode/log/opencode.log` → `node -e import()` файла.
+- Смена ветки при грязном дереве: `stash push -m` → `switch -c` → `pop`
+  (гейт tree-hygiene иначе блокирует).
+**Lessons:**
+- Билдер без свежих доков угадывает формат — давать ему URL гайда миграции
+  в спеке обязательно.
+- Параллельная сессия переписывала те же 6 плагинов в день миграции; перед
+  коммитом сверять `diff --stat` и не коммитить чужое молча.
+- `git pull` при `pull.rebase=true` на main рвёт правило «в main только merge»:
+  выходить через `rebase --abort` + чистый `merge origin/main`.
+**Confirmed facts:** 14/14 плагинов грузятся с ID; dotfiles/dv-hub/serp
+смержены в main и запушены; serp env-guard смоук 14/14, полный сьют 393.
+**Open questions:** 5 `V2-TODO` в плагинах (поведенческие тонкости); runtime
+`cli.json`/`service.json` machine-local (в игнорах).
+**Next focus:** при первом входе в dv-hub/serp проверить загрузку их 4+4
+проектных плагинов живьём.
+
+---
+
+### Flush 2026-09-29: разбор дерева + Flameshot Print
+**Контекст:** Точечная сессия: разобрать грязное дерево на task/spec-write-routing и выложить готовое; затем Print перестал запускать Flameshot (хоткей в keys.py на месте, трей-клик работает).
+**Решения:**
+- На origin/main выложены только 2 коммита (fast-forward d631067..9136841): 9a66785 chore(git) credential-helper через gh; 9136841 fix(opencode) callable plugin defaults + noop/replay. Временная ветка удалена; task/spec-write-routing и локальный main не тронуты.
+- Остальное не выкладывали: proxy.conf (живой дрейф), opencode.json (настоящий apiKey), смены моделей, lazygit (неверная схема), pipboy DoD, promo-probe без верификации, decision-queue/mcode/команды-черновики, nvim lock, /agents только локально.
+- Flameshot: `flameshot full` 30с ждал портал и обрывался (EXIT 2); добавлен `useX11LegacyScreenshot=true` в flameshot.ini, демон перезапущен, `flameshot full -p /tmp/flameshot-test.png` ok (~4.7MB). Хоткей не менялся.
+**Reusable patterns:**
+- Land subset без ветки: detached worktree от origin/main + точечное копирование файлов + secret-scan (`apiKey|token|secret|sk-`) до коммита.
+- Flameshot X11: сначала `flameshot full -p /tmp/...` (секунды) — портал-таймаут → сразу legacy-флаг, а не копание grab/логов (продолжение ADR-002).
+- lazygit v0.64: `colorArg` только у `stdinFilter`, у `rawGit` его нет — ловится до коммита.
+**Lessons:**
+- Первый коммит ушёл в текущую ветку вместо worktree (не тот cwd) — откат `reset --mixed HEAD~1`; перед коммитом сверять ветку.
+- По требованию экономить токены: точечная задача = самая дешёвая гипотеза первой; глубокое расследование только после её провала.
+**Confirmed facts:** 2 коммита на origin/main; legacy-флаг в дереве, снимок создан, демон в трее. **Open:** flameshot.ini не закоммичен; локальный main ahead 1 / behind 3; lazygit-схема, HITL-расхождение AGENTS/ADR-009, ручные DoD pipboy, верификация promo-probe.
+**Next focus:** точечно закоммитить flameshot.ini (`fix(flameshot): legacy X11 capture`) и запушить.
