@@ -1,6 +1,12 @@
 // Enforce project-directed execution-spec writes at the tool boundary.
-// A skill explains routing; this hook prevents the common Vault-staging mistake.
-import type { Plugin } from "@opencode-ai/plugin"
+// Нативный V2-формат (OpenCode 2.0.18): Plugin.define({ id, setup(ctx) }).
+//
+// Маппинг хуков V1 → V2:
+//   tool.execute.before → ctx.tool.hook("execute.before", ...)
+//     V1 (input.tool, output.args) → V2 (event.tool, event.input)
+//     Логика роутинга/блокировок сохранена 1:1.
+
+import { Plugin } from "@opencode/plugin"
 import path from "path"
 
 const ROUTES: Record<string, string> = {
@@ -32,23 +38,25 @@ function pathsOf(args: unknown): string[] {
   return found
 }
 
-const plugin: Plugin = async () => ({
-  "tool.execute.before": async (input: any, output: any) => {
-    const tool = String(input?.tool ?? input?.name ?? "").toLowerCase()
-    if (tool !== "edit" && tool !== "write") return
-    const args = output?.args ?? input?.args
-    const project = projectOf(args)
-    if (!project || !ROUTES[project]) return
-    const expected = path.resolve(ROUTES[project])
-    const paths = pathsOf(args).map(path.resolve)
-    const vaultSpec = "/home/rudra/Projects/OpenCode-Vault/docs/specs"
-    if (project !== "vault" && paths.some((p) => p === vaultSpec || p.startsWith(`${vaultSpec}/`))) {
-      throw new Error(`BLOCKED: spec for project ${project} must be written to ${expected}, not Vault docs/specs`)
-    }
-    if (paths.length > 0 && !paths.some((p) => p === expected || p.startsWith(`${expected}/`))) {
-      throw new Error(`BLOCKED: spec for project ${project} must be written inside ${expected}`)
-    }
+export default Plugin.define({
+  id: "spec-write-routing",
+  async setup(ctx) {
+    await ctx.tool.hook("execute.before", (event: { tool?: string; input?: unknown }) => {
+      const tool = String(event?.tool ?? "").toLowerCase()
+      if (tool !== "edit" && tool !== "write") return
+      // V1: output.args ?? input.args → V2: event.input (это и есть аргументы инструмента)
+      const args = event?.input ?? {}
+      const project = projectOf(args)
+      if (!project || !ROUTES[project]) return
+      const expected = path.resolve(ROUTES[project])
+      const paths = pathsOf(args).map(path.resolve)
+      const vaultSpec = "/home/rudra/Projects/OpenCode-Vault/docs/specs"
+      if (project !== "vault" && paths.some((p) => p === vaultSpec || p.startsWith(`${vaultSpec}/`))) {
+        throw new Error(`BLOCKED: spec for project ${project} must be written to ${expected}, not Vault docs/specs`)
+      }
+      if (paths.length > 0 && !paths.some((p) => p === expected || p.startsWith(`${expected}/`))) {
+        throw new Error(`BLOCKED: spec for project ${project} must be written inside ${expected}`)
+      }
+    })
   },
 })
-
-export default plugin

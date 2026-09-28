@@ -1,0 +1,100 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "apinex/free/claude-opus-4.6",
+  "provider": {
+    "apinex": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "APInex",
+      "options": {
+        "baseURL": "https://api.apinex.bond/v1",
+        "apiKey": "sk-apx79a5d0b43725e39e85aec283ef16144d13f188409d6f63d"
+      },
+      "models": {
+        "free/claude-opus-4.6": {
+          "name": "Claude 4.6 Opus"
+        },
+        "free/claude-sonnet-4.6": {
+          "name": "Claude 4.6 Sonnet"
+        },
+        "claude-fable-5.1": {
+          "name": "Claude Fable 5.1"
+        },
+        "claude-opus-5": {
+          "name": "Claude Opus 5"
+        },
+        "claude-opus-5.5": {
+          "name": "Claude Opus 5.5"
+        },
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5"
+        },
+        "free/deepseek-v4-flash-0731": {
+          "name": "Deepseek V4 Flash"
+        },
+        "deepseek-v4-flash": {
+          "name": "Deepseek V4 Flash"
+        },
+        "free/deepseek-v4-pro-0813": {
+          "name": "Deepseek V4 Pro"
+        },
+        "deepseek-v4-pro": {
+          "name": "Deepseek V4 Pro"
+        },
+        "free/deepseek-v4.1-flash": {
+          "name": "Deepseek V4.1 Flash"
+        },
+        "deepseek-v4.1-flash": {
+          "name": "Deepseek V4.1 Flash"
+        }
+      }
+    }
+  },
+  "providers": {
+    "apinex": {
+      "package": "aisdk:@ai-sdk/openai-compatible",
+      "name": "APInex",
+      "settings": {
+        "baseURL": "https://api.apinex.bond/v1",
+        "apiKey": "[redacted]"
+      },
+      "models": {
+        "free/claude-opus-4.6": {
+          "name": "Claude 4.6 Opus"
+        },
+        "free/claude-sonnet-4.6": {
+          "name": "Claude 4.6 Sonnet"
+        },
+        "claude-fable-5.1": {
+          "name": "Claude Fable 5.1"
+        },
+        "claude-opus-5": {
+          "name": "Claude Opus 5"
+        },
+        "claude-opus-5.5": {
+          "name": "Claude Opus 5.5"
+        },
+        "claude-sonnet-5": {
+          "name": "Claude Sonnet 5"
+        },
+        "free/deepseek-v4-flash-0731": {
+          "name": "Deepseek V4 Flash"
+        },
+        "deepseek-v4-flash": {
+          "name": "Deepseek V4 Flash"
+        },
+        "free/deepseek-v4-pro-0813": {
+          "name": "Deepseek V4 Pro"
+        },
+        "deepseek-v4-pro": {
+          "name": "Deepseek V4 Pro"
+        },
+        "free/deepseek-v4.1-flash": {
+          "name": "Deepseek V4.1 Flash"
+        },
+        "deepseek-v4.1-flash": {
+          "name": "Deepseek V4.1 Flash"
+        }
+      }
+    }
+  }
+}

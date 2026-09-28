@@ -1,33 +1,26 @@
 // ~/.config/opencode/plugins/replay-budget.ts
 // T-135 — порт M Code replay budget в TUI-стек (первый приоритет P6).
-// Хук experimental.chat.messages.transform срабатывает прямо перед отправкой
-// истории модели (в главном цикле: toModelMessagesEffect(C, Z)). Здесь апстрим
-// не капит tool-выводы, поэтому плагин применяет replay budget на месте.
+// Нативный V2-формат (OpenCode 2.0.18): Plugin.define({ id, setup(ctx) }).
+//
+// Маппинг хуков V1 → V2:
+//   experimental.chat.messages.transform → ctx.session.hook("context", ...)
+//     с правкой event.messages (массив сообщений, уходит в applyReplayBudget 1:1)
 //
 // Fail-safe: любая ошибка логируется и не роняет turn — история уходит как есть.
-// Семантика и константы — в ../lib/replay-budget-helpers.js (checked из app.asar M Code).
-// Хелперы лежат вне plugins/: загрузчик OpenCode сканирует каждый файл plugins/ как плагин.
 
-import type { Plugin } from "@opencode-ai/plugin"
+import { Plugin } from "@opencode/plugin"
 import { applyReplayBudget } from "../lib/replay-budget-helpers.js"
 
-const plugin: Plugin = async ({ client }) => {
-  return {
-    "experimental.chat.messages.transform": async (_input, output) => {
+export default Plugin.define({
+  id: "replay-budget",
+  async setup(ctx) {
+    await ctx.session.hook("context", (event: { messages?: unknown[] }) => {
       try {
-        if (!output || !Array.isArray(output.messages)) return
-        applyReplayBudget(output.messages)
+        if (!event || !Array.isArray(event.messages)) return
+        applyReplayBudget(event.messages)
       } catch (err) {
-        client.app.log({
-          body: {
-            service: "replay-budget",
-            level: "error",
-            message: `replay budget apply failed: ${err}`,
-          },
-        })
+        console.error(`[replay-budget] replay budget apply failed: ${err}`)
       }
-    },
-  }
-}
-
-export default plugin
+    })
+  },
+})
