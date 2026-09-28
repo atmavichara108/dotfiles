@@ -1,7 +1,7 @@
 ---
 description: "Read-only quality, style and domain reviewer for dotfiles"
 mode: subagent
-model: opencode-go/deepseek-v4-pro
+model: anymodel/cx/gpt-5.6-sol
 temperature: 0.1
 steps: 15
 permission:

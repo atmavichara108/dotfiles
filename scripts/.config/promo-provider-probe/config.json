@@ -1,0 +1,20 @@
+{
+  "providers": {
+    "justwoker": {
+      "endpoint": "https://api.justwoker.icu/v1",
+      "proxy": null,
+      "auth_source": "auth-store",
+      "auth_store_path": "~/.local/share/opencode/auth.json",
+      "smoke_chat": false,
+      "notify": false
+    },
+    "linaliapi": {
+      "endpoint": "https://api.linaliapi.com/v1",
+      "proxy": null,
+      "auth_source": "auth-store",
+      "auth_store_path": "~/.local/share/opencode/auth.json",
+      "smoke_chat": false,
+      "notify": false
+    }
+  }
+}

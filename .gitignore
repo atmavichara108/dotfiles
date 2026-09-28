@@ -118,3 +118,6 @@ scripts/.local/bin/pytest
 opencode-global/.config/opencode/node_modules/
 opencode-global/.config/opencode/package-lock.json
 opencode-global/.config/opencode/bun.lock
+
+# M Code runtime
+mcode/

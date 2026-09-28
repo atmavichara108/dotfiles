@@ -1,7 +1,7 @@
 ---
 description: "system-ops: approval-gated high-risk host apply planner"
 mode: subagent
-model: opencode-go/gpt-5.6-luna
+model: anymodel/cx/gpt-5.6-sol
 temperature: 0.1
 steps: 25
 permission:

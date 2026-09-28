@@ -1,7 +1,7 @@
 ---
 description: Строитель dotfiles. Пишет конфиги, скрипты, qtile-модули, плагины. Работает по спеку от sysop (primary). Вызывается через task.
 mode: subagent
-model: opencode-go/qwen3.7-plus
+model: opencode/mimo-v2.6-flash-free
 temperature: 0.1
 steps: 30
 permission:

@@ -1,6 +1,7 @@
 git:
-  pagers:
+  diffRenderers:
     - colorArg: always
+      type: rawGit
   commit:
     signOff: false
   merging:

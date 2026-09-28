@@ -278,6 +278,60 @@ flag отвергнут из-за отсутствия автоматизаци�
 
 ---
 
+### ADR-009: Глобальный human-in-the-loop гейт и глобальная /flush
+**Дата:** 2026-08-30
+**Контекст:** По умолчанию OpenCode разрешает все операции без approval:
+primary-агент может вызывать subagent'ы (`task`) и править файлы молча.
+Требовалось обязательное подтверждение пользователя перед любым
+subagent/task dispatch и изменениями, а `/flush` существовала только как
+проектная команда dotfiles (привязана к `agent: planner` и
+`.opencode/memory/decisions.md`), недоступная из других проектов.
+**Решение:** Реализовать human-in-the-loop двумя слоями в global source of
+truth (`opencode-global/.config/opencode/`, после stow — `~/.config/opencode/`):
+1. Prompt-контракт в глобальном `AGENTS.md` (был пуст): обычный запрос сначала
+   clarification/plan/proposal; до явного подтверждения запрещены `task`/
+   @subagent и изменения; неоднозначное «ок» — не подтверждение; изменение
+   scope — отдельный re-confirm; после подтверждения исполняется только
+   согласованный scope/route; subagent внутри подтверждённого scope не
+   переспрашивает, но не расширяет его.
+2. Runtime-гейт в `opencode.jsonc`: `permission.task: "ask"` и
+   `permission.edit: "ask"` — каждый dispatch и каждая правка требуют одобрения
+   в TUI (once/always/reject). Подтверждено по бинарнику 1.18.5: global loader
+   читает и `opencode.json`, и `opencode.jsonc` (мержатся).
+Плюс глобальная команда `command/flush.md`: без `agent:` (текущий агент),
+модель памяти проекта определяется по факту (`.opencode/memory/`,
+`docs/decisions.md`, `04-Memory/`), неоднозначность — явный вопрос,
+append-only, без коммитов. Локальная `/flush` dotfiles сохранена и имеет
+приоритет в репозитории dotfiles (паттерн local extension, как с sysop).
+**Альтернативы:**
+- Отдельный runtime prompt-engineer/task-compiler/automatic router — отвергнуто:
+  design note 2026-08-25 определяет их как будущий слой; текущая конфигурация
+  их не поддерживает, неподтверждённый router не создаётся.
+- Только prompt-контракт без permissions — отвергнуто: инструкции не
+  гарантируют гейт; runtime `ask` — единственный enforceable механизм.
+- `permission: "ask"` на все инструменты — отвергнуто: избыточный шум,
+  read-only исследование должно оставаться свободным.
+- Managed settings (`/etc/opencode/`) для абсолютного гейта — отвергнуто:
+  вне scope, требует root, ломает local ownership.
+**Последствия:**
+- Требуется перезапуск OpenCode (config/commands не hot-reload).
+- Граница local ownership: проектные/агентные permissions, явно разрешающие
+  `task`/`edit`, переопределяют глобальный гейт (agent rules take precedence).
+  На сегодня переопределено: dotfiles (planner `task: {"*": "allow"}`,
+  builder `edit: "allow"`), serp (`task: {"*": "allow"}`, `edit: "allow"`),
+  dv-hub (mixed). В ChaT, AndroidOS и Vault гейт действует: в Vault нет
+  permission-секций в `opencode.json`, а per-agent блок librarian в
+  `.opencode/agent/librarian.md` инертен — frontmatter не парсится из-за
+  пустой первой строки (подтверждено `opencode debug config`: prompt
+  librarian начинается с `---`; у глобальных агентов с frontmatter с первой
+  строки блоки резолвятся). Это задокументированная граница, не silent
+  fallback; починка librarian.md — отдельная vault-задача.
+- Неинтерактивный `opencode run` с ask-гейтами требует `--auto` или
+  проектных override.
+- Гейт не создаёт automatic router: неопределённый route — UNROUTABLE/вопрос.
+
+---
+
 ### ADR-010: Консолидация агентов — один primary `sysop` + субагенты
 **Дата:** 2026-09-17
 **Контекст:** В dotfiles накопилось три primary (sysop/planner/builder),
