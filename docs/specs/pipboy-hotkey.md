@@ -2,8 +2,8 @@
 type: Execution Spec
 title: Pip-Boy хоткей (dotfiles / qtile)
 project: dotfiles
-status: proposed
-timestamp: 2026-09-16
+status: accepted
+timestamp: 2026-09-18
 related: "[[03-Projects/vault]]"
 ---
 
@@ -22,41 +22,47 @@ related: "[[03-Projects/vault]]"
 - Тот же URL работает в GUI-браузере, TUI-браузере и смартфоне (LAN).
 - Хост сам гасится через 1800s простоя — держать его «навсегда» не нужно.
 
+## Конфликты клавиш
+
+При анализе `qtile/.config/qtile/keys.py` обнаружены конфликты:
+
+| Клавиша | Занята | Назначение |
+|---|---|---|
+| `mod4 + p` | **KeyChord** | dm-scripts hub (dm-hub, dm-sounds, dm-setbg, …) — `keys.py:124` |
+| `mod4 + b` | **Key** | `lazy.hide_show_bar(position='all')` — bar toggle — `keys.py:40` |
+
+Обе клавиши (`p` и `b` без модификаторов) заняты, поэтому прямое назначение
+`mod4 + p` или `mod4 + b` невозможно без поломки существующего функционала.
+
 ## Решение
 
-Забиндить хоткей в qtile (`~/.config/qtile/config.py`, раздел `keys`),
-вызывающий существующий `pipboy-rofi open`:
+Назначен безопасный хоткей **`Super + Shift + P`** — свободен, не конфликтует
+ни с одним существующим биндингом:
 
 ```python
-from libqtile.config import Key
-from libqtile.lazy import lazy
-
-Key(["mod4"], "p", lazy.spawn("pipboy-rofi open"), desc="Pip-Boy"),
+Key([mod, "shift"], "p", lazy.spawn("pipboy-rofi open"), desc="Pip-Boy"),
 ```
 
-- `mod4` = Super/Win; клавиша `p` свободна в стандартной раскладке qtile.
+- Добавлен в `qtile/.config/qtile/keys.py` в секции app launchers (после
+  Genspark, перед layout shuffle keys).
 - `pipboy-rofi open` идемпотентен: если host поднят — просто откроет браузер,
   если нет — поднимет и откроет. Никакой новой логики писать не надо.
-- Спawn применяется через GNU Stow (пакет `qtile` уже управляется Stow).
-
-## Вариант на выбор (при конфликте клавиши)
-
-| Клавиша | Замечание |
-|---|---|
-| `mod4 + p` | предпочтительно (Pip-Boy → p) |
-| `mod4 + b` | если `p` занята менеджером паролей/другое |
+- Existing KeyChord `mod4 + p` **не тронут**.
 
 ## DoD
 
-- [ ] Хоткей добавлен в `qtile/config.py` keys.
+- [x] Хоткей `Super+Shift+P` добавлен в `qtile/.config/qtile/keys.py`.
+- [ ] `python -m py_compile` — синтаксис без ошибок (проверено локально, cache в /tmp).
 - [ ] `qtile cmd-obj -o cmd -f restart` (или `qtile shell` → `restart`) — конфиг без ошибок.
-- [ ] Нажатие `mod4 + p` открывает Pip-Boy в браузере; повторное — не плодит вкладки.
+- [ ] Нажатие `Super+Shift+P` открывает Pip-Boy в браузере; повторное — не плодит вкладки.
 - [ ] `pipboy-rofi open` вызывается без ручного подъёма host (проверено: host сам поднимается).
+- [ ] Существующий KeyChord `Super+P` (dm-scripts) продолжает работать.
 
 ## Rollback
 
-Убрать строку `Key([...] "p", lazy.spawn("pipboy-rofi open"))` из
-`qtile/config.py` и перезапустить qtile. Хост/рофи-скрипт не затрагиваются.
+Убрать строку `Key([mod, "shift"], "p", lazy.spawn("pipboy-rofi open"), desc="Pip-Boy")`
+из `qtile/.config/qtile/keys.py` и перезапустить qtile. Хост/рофи-скрипт не
+затрагиваются.
 
 ## Не входит в scope
 
