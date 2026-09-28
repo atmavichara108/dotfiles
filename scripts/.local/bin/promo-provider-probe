@@ -1,0 +1,550 @@
+#!/usr/bin/env python3
+"""
+promo-provider-probe — read-only probe для промо/реферальных провайдеров.
+
+Usage:
+    promo-provider-probe <provider_id> [options]
+
+Options:
+    --config PATH       Путь к конфигу (default: ~/.config/promo-provider-probe/config.json)
+    --smoke             Включить smoke chat (default: OFF, тратит кредиты)
+    --notify            Включить desktop notify (default: OFF)
+    --json              Вывести JSON (default: human-readable)
+    --timeout SEC       HTTP timeout (default: 10)
+
+Exit codes:
+    0 - ACTIVE: probe успешен, модели есть, balance известен
+    1 - DEGRADED: отвечает, но проблемы (balance unknown, smoke failed)
+    2 - BLOCKED: нет моделей (empty data) / 401/403
+    3 - ERROR: сеть / auth-store unavailable / 5xx
+
+Auth resolution (в порядке приоритета):
+    1. Env var: PROMO_PROVIDER_<PROVIDER_ID>_KEY
+    2. Auth-store: ~/.local/share/opencode/auth.json (по provider_id)
+
+Секреты НЕ выводятся в JSON, stderr, notify.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+
+# ── Constants ────────────────────────────────────────────────────────────────
+
+EXIT_ACTIVE = 0
+EXIT_DEGRADED = 1
+EXIT_BLOCKED = 2
+EXIT_ERROR = 3
+
+STATUS_ACTIVE = "ACTIVE"
+STATUS_DEGRADED = "DEGRADED"
+STATUS_BLOCKED = "BLOCKED"
+STATUS_ERROR = "ERROR"
+
+DEFAULT_CONFIG_PATH = "~/.config/promo-provider-probe/config.json"
+DEFAULT_AUTH_STORE_PATH = "~/.local/share/opencode/auth.json"
+DEFAULT_TIMEOUT = 10
+
+BALANCE_THRESHOLDS = {
+    "low": 25.0,
+    "critical": 10.0,
+    "zero": 0.0,
+}
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def die(msg: str, exit_code: int = EXIT_ERROR) -> None:
+    """Вывести ошибку и выйти."""
+    print(f"Error: {msg}", file=sys.stderr)
+    sys.exit(exit_code)
+
+
+def log(msg: str) -> None:
+    """Лог в stderr (не содержит секретов)."""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", file=sys.stderr)
+
+
+def expand_path(path: str) -> Path:
+    """Раскрыть ~ и environment variables."""
+    return Path(os.path.expandvars(os.path.expanduser(path)))
+
+
+def load_json_file(path: Path) -> dict:
+    """Безопасно загрузить JSON. Не печатает содержимое файла при ошибках."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError:
+        die(f"Invalid JSON in {path}")
+    except Exception:
+        die(f"Cannot read {path}")
+
+
+def join_endpoint(base: str, path: str) -> str:
+    """
+    Соединить endpoint и path без дублирования /v1/v1.
+    base: https://api.example.com/v1
+    path: /models или models
+    Result: https://api.example.com/v1/models
+    """
+    base = base.rstrip("/")
+    path = path.lstrip("/")
+    return f"{base}/{path}"
+
+
+# ── Auth resolution ──────────────────────────────────────────────────────────
+
+
+def resolve_auth_from_env(provider_id: str) -> Optional[str]:
+    """Получить ключ из env: PROMO_PROVIDER_<PROVIDER_ID>_KEY."""
+    env_var = f"PROMO_PROVIDER_{provider_id.upper()}_KEY"
+    return os.environ.get(env_var)
+
+
+def resolve_auth_from_store(provider_id: str, store_path: str) -> Optional[str]:
+    """
+    Получить ключ из auth-store по provider_id.
+    Поддерживает форматы:
+      - {"providers": {"<id>": {"api_key": "..."}}}
+      - {"<id>": {"api_key": "..."}}
+    Поля: api_key, key, token, secret
+    """
+    path = expand_path(store_path)
+    if not path.exists():
+        return None
+
+    data = load_json_file(path)
+    if not data:
+        return None
+
+    # Try nested format: providers.<id>
+    provider_data = None
+    if "providers" in data and isinstance(data["providers"], dict):
+        provider_data = data["providers"].get(provider_id)
+    # Try flat format: <id>
+    elif provider_id in data:
+        provider_data = data[provider_id]
+
+    if not provider_data or not isinstance(provider_data, dict):
+        return None
+
+    # Try common field names
+    for field in ["api_key", "key", "token", "secret"]:
+        if field in provider_data and isinstance(provider_data[field], str):
+            return provider_data[field]
+
+    return None
+
+
+def resolve_auth(provider_id: str, config: dict) -> str:
+    """
+    Резолвить auth: env → auth-store.
+    Возвращает ключ или die(ERROR).
+    """
+    # 1. Env
+    key = resolve_auth_from_env(provider_id)
+    if key:
+        log(f"Auth resolved from env for {provider_id}")
+        return key
+
+    # 2. Auth-store
+    auth_source = config.get("auth_source", "auth-store")
+    if auth_source == "env":
+        die(f"Auth source is 'env' but PROMO_PROVIDER_{provider_id.upper()}_KEY not set", EXIT_ERROR)
+
+    store_path = config.get("auth_store_path", DEFAULT_AUTH_STORE_PATH)
+    key = resolve_auth_from_store(provider_id, store_path)
+    if key:
+        log(f"Auth resolved from auth-store for {provider_id}")
+        return key
+
+    die(f"Auth not found for {provider_id} (env or {store_path})", EXIT_ERROR)
+
+
+# ── HTTP via curl ────────────────────────────────────────────────────────────
+
+
+def curl_request(
+    url: str,
+    headers: dict,
+    proxy: Optional[str],
+    timeout: int,
+    method: str = "GET",
+    data: Optional[dict] = None,
+) -> tuple[int, dict, str]:
+    """
+    Выполнить HTTP запрос через curl.
+    Возвращает (status_code, response_dict, error_message).
+    
+    Важно: error_message НЕ содержит response body (может содержать секреты).
+    """
+    cmd = [
+        "curl",
+        "-s",  # silent
+        "-S",  # show errors
+        "-w", "%{http_code}",  # output status code
+        "-o", "-",  # output body to stdout
+        "--max-time", str(timeout),
+        "--connect-timeout", str(timeout),
+    ]
+
+    if proxy:
+        cmd.extend(["--proxy", proxy])
+
+    for key, value in headers.items():
+        cmd.extend(["-H", f"{key}: {value}"])
+
+    if method == "POST" and data:
+        cmd.extend(["-X", "POST", "-d", json.dumps(data)])
+
+    cmd.append(url)
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout + 5,
+        )
+
+        # Check returncode first
+        if result.returncode != 0:
+            return 0, {}, f"curl failed (exit {result.returncode})"
+
+        # Parse output: last 3 chars are status code
+        output = result.stdout
+        if len(output) < 3:
+            return 0, {}, "Invalid curl output"
+
+        status_code = int(output[-3:])
+        body = output[:-3]
+
+        if not body:
+            return status_code, {}, ""
+
+        try:
+            response_data = json.loads(body)
+            return status_code, response_data, ""
+        except json.JSONDecodeError:
+            return status_code, {}, "Invalid JSON response"
+
+    except subprocess.TimeoutExpired:
+        return 0, {}, "Request timeout"
+    except Exception as e:
+        return 0, {}, str(e)
+
+
+# ── Probe logic ──────────────────────────────────────────────────────────────
+
+
+def probe_models(
+    endpoint: str,
+    api_key: str,
+    proxy: Optional[str],
+    timeout: int,
+) -> tuple[Optional[list], Optional[str]]:
+    """
+    GET /models.
+    Возвращает (models_list, error_message).
+    """
+    url = join_endpoint(endpoint, "/models")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    status, data, error = curl_request(url, headers, proxy, timeout)
+
+    if error:
+        return None, error
+
+    if status == 401 or status == 403:
+        return None, f"Auth failed (HTTP {status})"
+
+    if status >= 500:
+        return None, f"Server error (HTTP {status})"
+
+    if status != 200:
+        return None, f"Unexpected status {status}"
+
+    # Extract models
+    if not isinstance(data, dict):
+        return None, "Invalid response format"
+
+    models = data.get("data", [])
+    if not isinstance(models, list):
+        return None, "Invalid models format"
+
+    return models, None
+
+
+def smoke_chat(
+    endpoint: str,
+    api_key: str,
+    model: str,
+    proxy: Optional[str],
+    timeout: int,
+) -> Optional[str]:
+    """
+    POST /chat/completions с минимальным запросом.
+    Возвращает error_message или None при успехе.
+    """
+    url = join_endpoint(endpoint, "/chat/completions")
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1,
+    }
+
+    status, data, error = curl_request(url, headers, proxy, timeout, "POST", payload)
+
+    if error:
+        return error
+
+    if status >= 500:
+        return f"Server error (HTTP {status})"
+
+    if status == 401 or status == 403:
+        return f"Auth failed (HTTP {status})"
+
+    if status != 200:
+        return f"Unexpected status {status}"
+
+    return None
+
+
+def check_balance(
+    endpoint: str,
+    api_key: str,
+    proxy: Optional[str],
+    timeout: int,
+    balance_endpoint: Optional[str],
+    balance_selector: Optional[str],
+) -> tuple[Optional[float], Optional[str]]:
+    """
+    Получить баланс из декларативно настроенного endpoint.
+    Если balance_endpoint не настроен → (None, "not_configured").
+    Возвращает (balance, error_message).
+    """
+    if not balance_endpoint or not balance_selector:
+        return None, "not_configured"
+
+    url = join_endpoint(endpoint, balance_endpoint)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    status, data, error = curl_request(url, headers, proxy, timeout)
+
+    if error:
+        return None, error
+
+    if status != 200:
+        return None, f"HTTP {status}"
+
+    # Extract balance by selector
+    if not isinstance(data, dict):
+        return None, "Invalid response format"
+
+    balance = data.get(balance_selector)
+    if balance is None or not isinstance(balance, (int, float)):
+        return None, f"Selector '{balance_selector}' not found or invalid"
+
+    return float(balance), None
+
+
+# ── Notification ─────────────────────────────────────────────────────────────
+
+
+def send_notification(title: str, message: str) -> None:
+    """Отправить desktop notification (без секретов)."""
+    try:
+        subprocess.run(
+            ["notify-send", title, message],
+            capture_output=True,
+            timeout=5,
+        )
+    except Exception:
+        pass  # Не фатально
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Read-only probe для промо/реферальных провайдеров",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument("provider_id", help="Provider ID из конфига")
+    parser.add_argument("--config", default=DEFAULT_CONFIG_PATH, help="Путь к конфигу")
+    parser.add_argument("--smoke", action="store_true", help="Включить smoke chat (тратит кредиты)")
+    parser.add_argument("--notify", action="store_true", help="Включить desktop notify")
+    parser.add_argument("--json", action="store_true", help="Вывести JSON")
+    parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="HTTP timeout")
+
+    args = parser.parse_args()
+
+    # Load config
+    config_path = expand_path(args.config)
+    config = load_json_file(config_path)
+
+    if not config:
+        die(f"Config not found or empty: {config_path}", EXIT_ERROR)
+
+    providers = config.get("providers", {})
+    if args.provider_id not in providers:
+        die(f"Provider '{args.provider_id}' not found in config", EXIT_ERROR)
+
+    provider_config = providers[args.provider_id]
+
+    # Extract provider settings
+    endpoint = provider_config.get("endpoint")
+    if not endpoint:
+        die(f"Endpoint not configured for {args.provider_id}", EXIT_ERROR)
+
+    proxy = provider_config.get("proxy")
+    smoke_enabled = args.smoke or provider_config.get("smoke_chat", False)
+    smoke_model = provider_config.get("smoke_model")
+    notify_enabled = args.notify or provider_config.get("notify", False)
+
+    # Balance config
+    balance_endpoint = provider_config.get("balance_endpoint")
+    balance_selector = provider_config.get("balance_selector")
+    balance_kind_config = provider_config.get("balance_kind")
+    balance_initial = provider_config.get("balance_initial")
+    balance_total = provider_config.get("balance_total")
+
+    # Resolve auth
+    api_key = resolve_auth(args.provider_id, provider_config)
+
+    # Probe models
+    log(f"Probing {args.provider_id} at {endpoint}")
+    models, error = probe_models(endpoint, api_key, proxy, args.timeout)
+
+    warnings = []
+    status = STATUS_ACTIVE
+    exit_code = EXIT_ACTIVE
+
+    if error:
+        if "Auth failed" in error:
+            status = STATUS_BLOCKED
+            exit_code = EXIT_BLOCKED
+        elif "Server error" in error or "timeout" in error.lower():
+            status = STATUS_ERROR
+            exit_code = EXIT_ERROR
+        else:
+            status = STATUS_ERROR
+            exit_code = EXIT_ERROR
+        warnings.append(f"probe_error: {error}")
+    elif not models:
+        status = STATUS_BLOCKED
+        exit_code = EXIT_BLOCKED
+        warnings.append("empty_models")
+    else:
+        log(f"Found {len(models)} models")
+
+    # Smoke chat (opt-in)
+    if smoke_enabled and status == STATUS_ACTIVE:
+        if not smoke_model:
+            # --smoke без smoke_model → DEGRADED warning без запроса
+            status = STATUS_DEGRADED
+            exit_code = EXIT_DEGRADED
+            warnings.append("smoke_model_not_configured")
+        else:
+            log(f"Running smoke chat with model: {smoke_model}")
+            smoke_error = smoke_chat(endpoint, api_key, smoke_model, proxy, args.timeout)
+            if smoke_error:
+                status = STATUS_DEGRADED
+                exit_code = EXIT_DEGRADED
+                warnings.append(f"smoke_failed: {smoke_error}")
+            else:
+                log("Smoke chat OK")
+
+    # Balance check
+    balance, balance_error = check_balance(
+        endpoint, api_key, proxy, args.timeout,
+        balance_endpoint, balance_selector
+    )
+
+    balance_kind = None
+    if balance is not None:
+        # balance_kind только для подтверждённого usable balance
+        balance_kind = balance_kind_config
+        
+        # Thresholds (percent)
+        denominator = balance_initial or balance_total
+        if denominator and denominator > 0:
+            percent = (balance / denominator) * 100.0
+            if percent <= BALANCE_THRESHOLDS["zero"]:
+                warnings.append("balance_zero")
+                if status == STATUS_ACTIVE:
+                    status = STATUS_DEGRADED
+                    exit_code = EXIT_DEGRADED
+            elif percent <= BALANCE_THRESHOLDS["critical"]:
+                warnings.append("balance_critical")
+            elif percent <= BALANCE_THRESHOLDS["low"]:
+                warnings.append("balance_low")
+        # Если нет denominator → не выдавать percentage warnings
+
+    if balance is None:
+        warnings.append("balance_unknown")
+        if status == STATUS_ACTIVE:
+            status = STATUS_DEGRADED
+            exit_code = EXIT_DEGRADED
+
+    # Proxy warning
+    if proxy:
+        warnings.append("proxy_required")
+
+    # Build output
+    output = {
+        "provider_id": args.provider_id,
+        "status": status,
+        "models_count": len(models) if models else 0,
+        "usable_balance": balance,
+        "balance_kind": balance_kind,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "warnings": warnings,
+        "evidence_refs": [f"config:{config_path}"],
+    }
+
+    # Output
+    if args.json:
+        print(json.dumps(output, indent=2))
+    else:
+        print(f"Provider: {args.provider_id}")
+        print(f"Status: {status}")
+        print(f"Models: {output['models_count']}")
+        print(f"Balance: {balance} ({balance_kind})" if balance is not None else "Balance: unknown")
+        if warnings:
+            print(f"Warnings: {', '.join(warnings)}")
+
+    # Notification (opt-in, без секретов)
+    if notify_enabled:
+        send_notification(
+            f"Provider probe: {args.provider_id}",
+            f"Status: {status}\nModels: {output['models_count']}\nWarnings: {len(warnings)}",
+        )
+
+    sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()
