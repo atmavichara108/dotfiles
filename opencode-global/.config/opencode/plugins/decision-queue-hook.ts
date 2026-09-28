@@ -119,18 +119,22 @@ function fromEvaluate(event: PermissionEvaluateEvent): PermissionEvent {
   }
 }
 
-// Адаптация V2 стрим-события permission.asked (PermissionV1.Request payload) → PermissionEvent.
-// V2-TODO: V1 catch-all фильтровался по "permission.ask" / "permission.request";
-// в V2-стриме событие называется "permission.asked" (поля: permission, patterns[], tool).
+// Адаптация V2 стрим-события permission.asked → PermissionEvent.
+// Форма подтверждена по схеме (@opencode/schema permission.d.ts): flat-конверт
+// { id, type: "permission.asked", data: { sessionID, action, resources[],
+// metadata?, source? } }. Читаем data с фолбэком на flat (на случай envelope-less
+// подписки) — fail-safe: неизвестные поля дают "unknown", карточка всё равно пишется.
 function fromAsked(event: Record<string, any>): PermissionEvent {
+  const payload = (event?.data ?? event ?? {}) as Record<string, any>
   return {
     id: event.id,
-    type: event.permission,
-    pattern: Array.isArray(event.patterns) ? event.patterns.join(" ") : "",
-    sessionID: event.sessionID,
-    messageID: event.tool?.messageID,
-    callID: event.tool?.callID,
-    metadata: event.metadata,
+    type: payload.action,
+    pattern: Array.isArray(payload.resources) ? payload.resources.join(" ") : "",
+    sessionID: payload.sessionID,
+    messageID: payload.source?.messageID,
+    callID: payload.source?.id,
+    title: typeof payload.message === "string" ? payload.message : undefined,
+    metadata: payload.metadata,
   }
 }
 

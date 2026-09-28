@@ -5,21 +5,30 @@
 // Маппинг хуков V1 → V2:
 //   chat.message → ctx.session.hook("prompt", ...)
 //     V1 санитизировал text-части message.parts → V2: санитизация event.prompt.text
+//     (у PromptInput.Prompt есть только text/files/agents/skills — подтверждено по схеме)
 //   experimental.chat.messages.transform → ctx.session.hook("context", ...)
-//     с правкой event.messages (redactParts по entry.parts — 1:1)
+//     с правкой event.messages: поле V2 — entry.content (не entry.parts),
+//     part-формы V2 — text/media/tool-call/tool-result (не V1 tool/state)
 //
 // Fail-safe: любая ошибка логируется, turn не роняется.
 
 import { Plugin } from "@opencode/plugin"
 import { sanitizeText, redactText } from "../lib/input-security-helpers.js"
 
-const redactParts = (parts: any[]) => {
-  for (const part of parts ?? []) {
+const redactContent = (content: any[]): void => {
+  for (const part of content ?? []) {
     if (!part) continue
     if (part.type === "text" && typeof part.text === "string") {
       part.text = redactText(part.text)
-    } else if (part.type === "tool" && part.state?.status === "completed" && typeof part.state.output === "string") {
-      part.state.output = redactText(part.state.output)
+    } else if (part.type === "tool-result" && part.result) {
+      const res = part.result
+      if ((res.type === "text" || res.type === "error") && typeof res.value === "string") {
+        res.value = redactText(res.value)
+      } else if (res.type === "content" && Array.isArray(res.value)) {
+        redactContent(res.value)
+      } else if (res.type === "json" && typeof res.value === "string") {
+        res.value = redactText(res.value)
+      }
     }
   }
 }
@@ -28,8 +37,8 @@ export default Plugin.define({
   id: "input-security",
   async setup(ctx) {
     // V1 chat.message → V2 prompt admission hook.
-    // V2-TODO: у prompt-hook есть только prompt.text/files/agents/skills — структуры
-    // parts нет, санитизируется только text (файлы/упоминания резолвятся отдельным
+    // Подтверждено по схеме: у PromptInput.Prompt только text/files/agents/skills,
+    // parts нет — санитизируется только text (файлы/упоминания резолвятся отдельным
     // конвейером и V1-санитизации не подвергались).
     await ctx.session.hook("prompt", (event: { prompt: { text?: string } }) => {
       try {
@@ -42,10 +51,10 @@ export default Plugin.define({
     })
 
     // V1 experimental.chat.messages.transform → V2 context hook (messages уходят модели).
-    await ctx.session.hook("context", (event: { messages?: Array<{ parts?: any[] }> }) => {
+    await ctx.session.hook("context", (event: { messages?: Array<{ content?: any[] }> }) => {
       try {
         for (const entry of event?.messages ?? []) {
-          redactParts(entry?.parts)
+          redactContent(entry?.content)
         }
       } catch (err) {
         console.error(`[input-security] redact failed: ${err}`)
