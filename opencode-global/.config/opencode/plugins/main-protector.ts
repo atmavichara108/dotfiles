@@ -1,22 +1,18 @@
 // ~/.config/opencode/plugins/main-protector.ts
 // Защита main/master от агентских коммитов и от затирания hot-files.
-// Единый runtime-гейт многопотока (часть B, «не бегать за агентами»):
-// работает на уровне tool.execute.before, потому неотвратим для любого
-// инструмента (bash-`git commit`, edit/write) — как commit-guard/env-guard.
+// Нативный V2-формат (OpenCode 2.0.18): Plugin.define({ id, setup(ctx) }).
 //
-// Что блокирует:
-//   1. `git commit` в защищённой ветке (main/master), кроме merge.
-//      → агент не может оставить работу кучей в каноне; в main только merge.
-//   2. edit/write на hot-files (TASKS.md, 00-INDEX.md, active-context.md,
-//      registry.json, AGENTS.md) находясь в защищённой ветке.
-//      → общий файл в main нельзя молча перезаписать; правь в task-ветке.
+// Маппинг хуков V1 → V2:
+//   tool.execute.before → ctx.tool.hook("execute.before", ...)
+//     V1 (input.tool, output.args) → V2 (event.tool, event.input)
+//   $ Bun shell-хелпер → node:child_process (execFile git rev-parse)
+//   directory → ctx.location.directory; client.app.log → console
 //
-// Fail-safe: любая ошибка git-разведки логируется и НЕ блокирует (fail-open),
-// чтобы плагин никогда не сломал легитимную работу из-за сбоя обхода дерева.
-// Исключение: `ALLOW_MAIN=1` в окружении — аварийный обход для осознанных
-// release-действий (как в pre-commit hook).
+// Fail-safe: любая ошибка git-разведки логируется и НЕ блокирует (fail-open).
+// Исключение: `ALLOW_MAIN=1` в окружении — аварийный обход.
 
-import type { Plugin } from "@opencode-ai/plugin"
+import { Plugin } from "@opencode/plugin"
+import { execFile } from "node:child_process"
 
 const PROTECTED_BRANCH_RE = /^(main|master)$/
 const COMMIT_RE = /\bgit\s+commit\b/
@@ -28,90 +24,63 @@ const HOT_FILES = [
   /(^|\/)AGENTS\.md$/,
 ]
 
-async function currentBranch($: any, directory: string): Promise<string | null> {
+async function currentBranch(directory: string): Promise<string | null> {
   try {
-    const res = await $`git rev-parse --abbrev-ref HEAD`
-      .cwd(directory)
-      .nothrow()
-      .quiet()
-    const out = (res.stdout?.toString() || "").trim()
-    return out || null
+    const stdout = await new Promise<string>((resolve, reject) => {
+      execFile(
+        "git",
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        { cwd: directory },
+        (err, out) => (err ? reject(err) : resolve(out)),
+      )
+    })
+    return stdout.trim() || null
   } catch {
     return null
   }
 }
 
-async function isMerge($: any, directory: string): Promise<boolean> {
-  try {
-    const res = await $`git rev-parse -q --verify MERGE_HEAD`
-      .cwd(directory)
-      .nothrow()
-      .quiet()
-    return (res.stdout?.toString() || "").trim().length > 0
-  } catch {
-    return false
-  }
+async function isProtected(directory: string): Promise<boolean> {
+  if (process.env.ALLOW_MAIN === "1") return false
+  const branch = await currentBranch(directory)
+  return branch !== null && PROTECTED_BRANCH_RE.test(branch)
 }
 
-const plugin: Plugin = async ({ client, $, directory }) => {
-  const block = async (msg: string) => {
-    await client.app
-      .log({ body: { service: "main-protector", level: "warn", message: msg } })
-      .catch(() => {})
-    throw new Error("MainProtector: " + msg)
-  }
+export default Plugin.define({
+  id: "main-protector",
+  async setup(ctx) {
+    const directory = ctx.location.directory
 
-  return {
-    "tool.execute.before": async (input: any, output: any) => {
+    await ctx.tool.hook("execute.before", async (event: { tool?: string; input?: unknown }) => {
       try {
-        if (process.env.ALLOW_MAIN === "1") return
+        if (!(await isProtected(directory))) return
 
-        if (input.tool === "bash") {
-          const cmd = output?.args?.command || ""
-          if (!COMMIT_RE.test(cmd)) return
+        const tool = String(event?.tool ?? "").toLowerCase()
+        const args = (event?.input ?? {}) as Record<string, unknown>
 
-          const branch = await currentBranch($, directory)
-          if (!branch || !PROTECTED_BRANCH_RE.test(branch)) return
-          if (await isMerge($, directory)) return
-
-          await block(
-            `git commit в защищённой ветке '${branch}' запрещён. Работай в task/<slug>-ветке; в main — только merge (или ALLOW_MAIN=1 для осознанного release).`
-          )
+        // 1. git commit в защищённой ветке (кроме merge)
+        if (tool === "bash") {
+          const cmd = String(args.command ?? "")
+          if (COMMIT_RE.test(cmd) && !/\bmerge\b/.test(cmd)) {
+            throw new Error("MainProtector: git commit blocked in protected branch (use merge)")
+          }
         }
 
-        if (input.tool === "edit" || input.tool === "write") {
-          const fp =
-            output?.args?.filePath || output?.args?.path || output?.args?.file_path || ""
-          if (typeof fp !== "string" || !fp) return
-
-          const isHot = HOT_FILES.some((re) => re.test(fp))
-          if (!isHot) return
-
-          const branch = await currentBranch($, directory)
-          if (!branch || !PROTECTED_BRANCH_RE.test(branch)) return
-
-          await block(
-            `edit hot-file '${fp}' в защищённой ветке '${branch}' запрещён. Правь в task-ветке, а в main только через merge; для shared-файлов — через peer_lease.`
-          )
+        // 2. edit/write на hot-files
+        if (tool === "edit" || tool === "write") {
+          const filePath = String(args.filePath ?? args.file ?? "")
+          for (const pattern of HOT_FILES) {
+            if (pattern.test(filePath)) {
+              throw new Error(`MainProtector: hot-file ${filePath} is read-only in protected branch`)
+            }
+          }
         }
       } catch (err) {
-        // Не роняем сессию лишним логом, если блок уже брошен — пробрасываем,
-        // иначе (неожиданная ошибка разведки) логируем и пропускаем (fail-open).
         if (err instanceof Error && err.message.startsWith("MainProtector:")) {
           throw err
         }
-        await client.app
-          .log({
-            body: {
-              service: "main-protector",
-              level: "error",
-              message: `guard check failed: ${err}`,
-            },
-          })
-          .catch(() => {})
+        console.error(`[main-protector] guard check failed: ${err}`)
       }
-    },
-  }
-}
-
-export default plugin
+    })
+  },
+})
