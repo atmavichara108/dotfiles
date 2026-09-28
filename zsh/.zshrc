@@ -268,3 +268,6 @@ export HTTP_PROXY="$http_proxy"
 export HTTPS_PROXY="$https_proxy"
 export NO_PROXY="localhost,127.0.0.1,::1,.local"
 export TOR_PROXY="socks5://127.0.0.1:9050"
+
+# opencode
+export PATH=/home/rudra/.opencode/bin:$PATH
