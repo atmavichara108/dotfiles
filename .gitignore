@@ -121,3 +121,7 @@ opencode-global/.config/opencode/bun.lock
 
 # M Code runtime
 mcode/
+
+# session handshake: живые раппорты не коммитятся, только шаблон
+.opencode/memory/session-reports/active/*
+!.opencode/memory/session-reports/active/_template.md
