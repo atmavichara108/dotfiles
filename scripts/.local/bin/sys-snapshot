@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""sys-snapshot — один JSON со состоянием ноутбука вместо 6-10 команд.
+
+Читает: git dotfiles (ветка/статус/лог), демоны (pgrep), память/диск,
+активные handshake. Только stdlib, без сети. Для агентов: один вызов —
+весь контекст.
+"""
+
+import json
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+DOTFILES = Path.home() / "dotfiles"
+DAEMONS = ["flameshot", "dunst", "picom", "copyq", "nm-applet",
+           "xdg-desktop-portal", "qtile", "conky"]
+HANDSHAKE_DIR = DOTFILES / ".opencode/memory/session-reports/active"
+
+
+def run(cmd):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except Exception:
+        return None
+
+
+def main():
+    snap = {"timestamp": datetime.now(timezone.utc).isoformat()}
+    snap["git_branch"] = run(["git", "-C", str(DOTFILES), "branch", "--show-current"])
+    status = run(["git", "-C", str(DOTFILES), "status", "--short"])
+    snap["git_dirty"] = status.splitlines() if status else []
+    log = run(["git", "-C", str(DOTFILES), "log", "--oneline", "-3"])
+    snap["git_log"] = log.splitlines() if log else []
+    daemons = {}
+    for d in DAEMONS:
+        out = run(["pgrep", "-c", "-f", d])
+        daemons[d] = int(out) if (out or "").isdigit() else 0
+    snap["daemons"] = daemons
+    try:
+        mem = {}
+        for line in open("/proc/meminfo"):
+            k, v = line.split(":")
+            if k in ("MemTotal", "MemAvailable"):
+                mem[k] = int(v.split()[0]) // 1024
+        snap["mem_mb"] = mem
+    except Exception:
+        snap["mem_mb"] = None
+    try:
+        du = shutil.disk_usage(str(Path.home()))
+        snap["disk_home_gb"] = {
+            "total": du.total // 2**30,
+            "free": du.free // 2**30,
+        }
+    except Exception:
+        snap["disk_home_gb"] = None
+    try:
+        snap["handshakes"] = sorted(
+            p.name for p in HANDSHAKE_DIR.iterdir()
+            if p.is_file() and p.name != "_template.md"
+        )
+    except Exception:
+        snap["handshakes"] = []
+    print(json.dumps(snap, indent=1, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

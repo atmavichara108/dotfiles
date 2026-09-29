@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""run-verdict — выполнить команду, вывести только вердикт (экономия токенов).
+
+Вместо сырого лога в контекст уходит: exit-код, строки-вердикты по паттернам
+и хвост. Exit-код дочерней команды пробрасывается — годится в гейты.
+
+Использование: run-verdict <команда> [арги...]
+"""
+
+import re
+import subprocess
+import sys
+
+PATTERNS = [
+    r"^OK$", r"^FAILED", r"^ERROR", r"^Ran \d+ test",
+    r"\bpassed\b.*\bfailed\b", r"\b[0-9]+ (passed|failed|ok)\b",
+    r"[Ee]rror:", r"FAIL", r"Screenshot (saved|aborted)",
+    r"screenshot(s)? (ok|fail|not-confirmed|capture)",
+]
+
+TAIL_LINES = 5
+MAX_HITS = 15
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print(__doc__.strip().splitlines()[0])
+        print("Использование: run-verdict <команда> [арги...]")
+        return 0 if len(sys.argv) > 1 else 2
+
+    try:
+        result = subprocess.run(sys.argv[1:], capture_output=True, text=True, timeout=300)
+    except FileNotFoundError:
+        print(f"EXIT=127\nverdict: command not found: {sys.argv[1]}")
+        return 127
+    except subprocess.TimeoutExpired:
+        print("EXIT=124\nverdict: timeout after 300s")
+        return 124
+
+    combined = (result.stdout + "\n" + result.stderr).splitlines()
+    hits = []
+    seen = set()
+    for line in combined:
+        s = line.strip()
+        if not s or s in seen:
+            continue
+        if any(re.search(p, s) for p in PATTERNS):
+            hits.append(s)
+            seen.add(s)
+        if len(hits) >= MAX_HITS:
+            break
+
+    print(f"EXIT={result.returncode}")
+    if hits:
+        print("verdict:")
+        for h in hits:
+            print(f"  {h}")
+    else:
+        print("verdict: (no verdict lines)")
+    if combined:
+        print("tail:")
+        for line in combined[-TAIL_LINES:]:
+            print(f"  {line.rstrip()}")
+    return result.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
