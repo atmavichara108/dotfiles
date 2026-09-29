@@ -37,6 +37,7 @@ def maximize_by_switching_layout(qtile):
 keys = [
     Key([mod], "Return", lazy.spawn(myTerm), desc="Terminal"),
     Key([mod, "shift"], "Return", lazy.spawn("rofi -show drun -show-icons"), desc='Run Launcher'),
+    Key([mod], "o", lazy.spawn("opencode-reload"), desc="Reload opencode backend (kill serve, fresh session picks new config)"),
     Key([mod], "b", lazy.hide_show_bar(position='all'), desc="Toggles the bar to show/hide"),
     Key([mod], "Tab", lazy.next_layout(), desc="Toggle between layouts"),
     Key([mod], "w", lazy.window.kill(), desc="Kill focused window"),
