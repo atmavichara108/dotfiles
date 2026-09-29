@@ -18,6 +18,12 @@ permission:
     "cat*": allow
     "grep*": allow
     "find*": allow
+    "bat*": allow
+    "eza*": allow
+    "rg*": allow
+    "fd*": allow
+    "tokei*": allow
+    "procs*": allow
     "git status*": allow
     "git diff*": allow
     "git log*": allow
