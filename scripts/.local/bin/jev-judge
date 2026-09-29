@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""jev-judge — точечный судья на TypeSafe Jev (System One decision-модель).
+
+Назначение: дешёвый gate для агентских пайплайнов (в духе promo-provider-probe):
+задать typed-вопросы о состоянии, выйти кодом по порогу уверенности.
+
+Эндпоинт по умолчанию — прямой TypeSafe API (POST /v1/systemone).
+Ключ: TYPESAFE_API_KEY из окружения, иначе auth-store (~/.local/share/opencode/auth.json, ключ "typesafe").
+В репо ключей нет — только резолв.
+
+Использование:
+    jev-judge --state "..." --noul "инструкция" [--min-confidence 0.8] [--json] [--dry-run]
+
+Exit codes:
+    0 — все noul >= порога (PASS)
+    1 — хотя бы один noul < порога (REVIEW)
+    2 — ошибка (сеть/auth/формат)
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ENDPOINT = "https://api.typesafe.ai/v1/systemone"
+MODEL = "jev-latest"
+
+EXIT_PASS = 0
+EXIT_REVIEW = 1
+EXIT_ERROR = 2
+
+
+def die(msg, code=EXIT_ERROR):
+    print(f"Error: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def resolve_key():
+    """Ключ из env, иначе из auth-store. Значение никогда не печатается."""
+    key = os.environ.get("TYPESAFE_API_KEY", "")
+    if key:
+        return key
+    try:
+        store = json.load(open(Path.home() / ".local/share/opencode/auth.json"))
+        key = (store.get("typesafe") or {}).get("key", "")
+    except Exception:
+        key = ""
+    if not key:
+        die("no TYPESAFE_API_KEY in env or auth-store['typesafe']")
+    return key
+
+
+def build_payload(state, noules, model):
+    questions = {}
+    for i, instructions in enumerate(noules):
+        questions[f"q{i}"] = {"type": "noul", "instructions": instructions}
+    return {"model": model, "state": state, "questions": questions}
+
+
+def call_api(endpoint, key, payload, timeout):
+    """POST через curl. Тело ответа в error не попадает (секреты/мусор)."""
+    cmd = [
+        "curl", "-sS", "-m", str(timeout), "-X", "POST", endpoint,
+        "-H", "Authorization: Bearer REDACTED",
+        "-H", "Content-Type: application/json",
+        "-d", json.dumps(payload),
+    ]
+    # Подменить заголовок настоящим ключом только в момент вызова.
+    cmd[cmd.index("Authorization: Bearer REDACTED")] = f"Authorization: Bearer {key}"
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 5)
+    except subprocess.TimeoutExpired:
+        die("request timeout")
+    if result.returncode != 0:
+        die("curl failed")
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        die("invalid JSON response")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Jev judge gate (noul порог)")
+    parser.add_argument("--state", required=True, help="Состояние для оценки")
+    parser.add_argument("--noul", action="append", default=[], help="noul-вопрос (можно несколько)")
+    parser.add_argument("--model", default=MODEL)
+    parser.add_argument("--endpoint", default=ENDPOINT)
+    parser.add_argument("--min-confidence", type=float, default=0.8)
+    parser.add_argument("--timeout", type=int, default=30)
+    parser.add_argument("--json", action="store_true", help="Машиночитаемый вывод")
+    parser.add_argument("--dry-run", action="store_true", help="Собрать запрос без сети и ключа")
+    args = parser.parse_args()
+
+    if not args.noul:
+        die("at least one --noul required")
+
+    payload = build_payload(args.state, args.noul, args.model)
+
+    if args.dry_run:
+        print(json.dumps({"endpoint": args.endpoint, "payload": payload}, indent=2, ensure_ascii=False))
+        return
+
+    key = resolve_key()
+    data = call_api(args.endpoint, key, payload, args.timeout)
+
+    answers = data.get("answers", {})
+    verdicts = {}
+    failed = []
+    for qid, ans in answers.items():
+        p = ans.get("noul")
+        verdicts[qid] = p
+        if p is None or p < args.min_confidence:
+            failed.append(qid)
+
+    if args.json:
+        print(json.dumps({"model": data.get("model"), "verdicts": verdicts,
+                          "failed": failed, "usage": data.get("usage")},
+                         indent=2, ensure_ascii=False))
+    else:
+        for qid, p in verdicts.items():
+            mark = "ok" if qid not in failed else "LOW"
+            print(f"{qid}: {p} [{mark}]")
+
+    sys.exit(EXIT_REVIEW if failed else EXIT_PASS)
+
+
+if __name__ == "__main__":
+    main()
