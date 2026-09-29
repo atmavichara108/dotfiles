@@ -104,6 +104,7 @@
     { "action": "shell", "resource": "*", "effect": "allow" }
   ],
   "provider": {
+    // NOTE 2026-09-29: баланс linaliapi исчерпан, агенты переведены на free-модели; блок оставлен — оживёт пополнением.
     "linaliapi": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "LinaliAPI",
@@ -181,6 +182,7 @@
     }
   },
   "providers": {
+    // NOTE 2026-09-29: баланс linaliapi исчерпан, агенты переведены на free-модели; блок оставлен — оживёт пополнением.
     "linaliapi": {
       "package": "aisdk:@ai-sdk/openai-compatible",
       "settings": { "baseURL": "https://api.linaliapi.com/v1" },

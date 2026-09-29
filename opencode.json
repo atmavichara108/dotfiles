@@ -94,7 +94,7 @@
   "agent": {
     "reviewer": {
       "mode": "subagent",
-      "model": "linaliapi/deepseek/deepseek-v4-pro",
+      "model": "amd-radeon/Qwen3.8-Flash-Next",
       "temperature": 0.1,
       "steps": 15,
       "description": "Read-only quality/style review. No edit/commit/push.",
@@ -315,7 +315,7 @@
     },
     "verifier": {
       "mode": "subagent",
-      "model": "linaliapi/z-ai/glm-5.3",
+      "model": "opencode/deepseek-v4-flash-free",
       "temperature": 0.1,
       "steps": 15,
       "description": "Верификатор: проверяет синтаксис, статус сервисов, логи, stow dry-run. Read-only validation, no mutation.",
@@ -362,7 +362,7 @@
     },
     "researcher": {
       "mode": "subagent",
-      "model": "linaliapi/google/gemini-3.8-flash",
+      "model": "amd-radeon/MiMo-V2.6-Flash",
       "temperature": 0.1,
       "steps": 30,
       "description": "Read-only research: repos, artifacts, web. No edit/commit/push.",
@@ -498,7 +498,7 @@
   "agents": {
     "reviewer": {
       "mode": "subagent",
-      "model": "linaliapi/deepseek/deepseek-v4-pro",
+      "model": "amd-radeon/Qwen3.8-Flash-Next",
       "temperature": 0.1,
       "steps": 15,
       "description": "Read-only quality/style review. No edit/commit/push.",
@@ -697,7 +697,7 @@
     },
     "verifier": {
       "mode": "subagent",
-      "model": "linaliapi/z-ai/glm-5.3",
+      "model": "opencode/deepseek-v4-flash-free",
       "temperature": 0.1,
       "steps": 15,
       "description": "Верификатор: проверяет синтаксис, статус сервисов, логи, stow dry-run. Read-only validation, no mutation.",
@@ -741,7 +741,7 @@
     },
     "researcher": {
       "mode": "subagent",
-      "model": "linaliapi/google/gemini-3.8-flash",
+      "model": "amd-radeon/MiMo-V2.6-Flash",
       "temperature": 0.1,
       "steps": 30,
       "description": "Read-only research: repos, artifacts, web. No edit/commit/push.",
