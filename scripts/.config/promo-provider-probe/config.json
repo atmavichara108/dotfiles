@@ -5,6 +5,7 @@
       "proxy": null,
       "auth_source": "auth-store",
       "auth_store_path": "~/.local/share/opencode/auth.json",
+      "balance_total": 295,
       "smoke_chat": false,
       "notify": false
     },
