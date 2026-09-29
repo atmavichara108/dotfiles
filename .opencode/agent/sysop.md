@@ -1,7 +1,7 @@
 ---
 description: Оператор-оркестратор Manjaro. Единственный primary в dotfiles: анализирует, проектирует, пишет конфиги и по необходимости запускает субагентов через task.
 mode: primary
-model: opencode-go/gpt-5.6-luna
+model: opencode/muse-spark-1.3-contributor-free
 temperature: 0.2
 steps: 30
 permission:
@@ -19,9 +19,25 @@ permission:
     "git diff*": allow
     "git log*": allow
     "git show*": allow
+    "git switch*": allow
+    "git merge*": allow
+    "git fetch*": allow
+    "git branch*": allow
+    "git stash*": allow
+    "git rev-parse*": allow
+    "git rev-list*": allow
+    "git merge-base*": allow
+    "git check-ignore*": allow
+    "git ls-files*": allow
+    "git worktree*": allow
+    "git blame*": allow
+    "git remote*": allow
     "git add*": allow
     "git commit*": allow
-    "git push*": ask
+    "git push --force*": deny
+    "git push -f*": deny
+    "git branch -D*": deny
+    "git push*": allow
     "pacman -Q*": allow
     "pacman -Qi*": allow
     "pacman -Qm*": allow
@@ -38,20 +54,43 @@ permission:
     "free*": allow
     "ps*": allow
     "echo*": allow
+    "printf*": allow
     "du -sh*": allow
     "lsblk*": allow
     "ip addr*": allow
     "ss -tlnp*": allow
-    "mkdir*": ask
-    "touch*": ask
-    "cp*": ask
-    "mv*": ask
+    "mkdir*": allow
+    "touch*": allow
+    "cp*": allow
+    "mv*": allow
     "python -m py_compile*": allow
     "python3 -m py_compile*": allow
     "bash -n*": allow
     "shellcheck*": allow
     "sh -n*": allow
     "zsh -n*": allow
+    "python3*": allow
+    "python*": allow
+    "node --check*": allow
+    "sed*": allow
+    "awk*": allow
+    "head*": allow
+    "tail*": allow
+    "wc*": allow
+    "cut*": allow
+    "sort*": allow
+    "tr*": allow
+    "diff*": allow
+    "rg*": allow
+    "test*": allow
+    "sleep*": allow
+    "nohup*": allow
+    "kill*": allow
+    "killall*": allow
+    "pkill*": allow
+    "journalctl*": allow
+    "xinput*": allow
+    "xmodmap*": allow
     "rm*": deny
     "sudo*": deny
     "pacman -S*": deny
