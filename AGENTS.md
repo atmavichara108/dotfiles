@@ -153,7 +153,7 @@ recommendations; acceptance PASS/FAIL — исключительно verifier.
 
 ## Пайплайны (slash-команды)
 
-`/bridge` · `/sysaudit` · `/script` · `/qtile` · `/util` · `/notify` · `/macro` · `/plugin` · `/stow` · `/loop` · `/prompt` · `/flush`
+`/bridge` · `/sysaudit` · `/script` · `/qtile` · `/util` · `/notify` · `/macro` · `/plugin` · `/stow` · `/loop` · `/prompt` · `/flush` · `/ship`
 
 Отдельной slash-команды для `system-ops` нет: маршрут только named task из
 `sysop` (primary) после system-audit и с explicit user approval.
