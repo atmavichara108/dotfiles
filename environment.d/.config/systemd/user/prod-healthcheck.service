@@ -3,4 +3,7 @@ Description=Prod health check — P0 observer of local services
 
 [Service]
 Type=oneshot
+# Опциональный sink секретов P1 (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID).
+# Дефис = не падать, если файла нет (тогда notify-push идёт в локальный notify-send).
+EnvironmentFile=-%h/.config/push/push.env
 ExecStart=%h/.local/bin/prod-healthcheck
