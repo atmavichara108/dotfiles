@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic prod health check (every 2min, 1min after boot)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+Persistent=yes
+
+[Install]
+WantedBy=timers.target

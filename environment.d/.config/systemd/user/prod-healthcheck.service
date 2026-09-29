@@ -1,0 +1,6 @@
+[Unit]
+Description=Prod health check — P0 observer of local services
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/prod-healthcheck
