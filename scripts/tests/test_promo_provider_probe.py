@@ -740,5 +740,44 @@ class TestSecretRedaction(unittest.TestCase):
             os.unlink(config_path.name)
 
 
+class TestProxyWarning(unittest.TestCase):
+    """Тесты: proxy_required warning при настроенном proxy."""
+
+    @patch("subprocess.run")
+    @patch.dict(os.environ, {"PROMO_PROVIDER_TESTPROV_KEY": "test-key"})
+    def test_proxy_warning_present_status_active(self, mock_run):
+        """Proxy настроен → warning proxy_required, статус ACTIVE."""
+        mock_run.side_effect = [
+            MagicMock(stdout='{"data": [{"id": "gpt-4"}]}200', stderr="", returncode=0),
+            MagicMock(stdout='{"balance": 100.0}200', stderr="", returncode=0),
+        ]
+        config_path = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        json.dump({
+            "providers": {
+                "testprov": {
+                    "endpoint": "https://api.test.com/v1",
+                    "proxy": "socks5://127.0.0.1:9050",
+                    "auth_source": "env",
+                    "balance_endpoint": "/balance",
+                    "balance_selector": "balance",
+                    "balance_kind": "referral",
+                    "balance_initial": 100.0,
+                }
+            }
+        }, config_path)
+        config_path.flush()
+        config_path.close()
+
+        try:
+            with patch("sys.argv", ["promo-provider-probe", "testprov", "--config", config_path.name, "--json"]):
+                with patch("sys.stdout") as mock_stdout:
+                    with self.assertRaises(SystemExit) as cm:
+                        probe.main()
+                    self.assertEqual(cm.exception.code, probe.EXIT_ACTIVE)
+                    self.assertIn("proxy_required", str(mock_stdout.write.call_args_list))
+        finally:
+            os.unlink(config_path.name)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
