@@ -274,6 +274,9 @@ export PATH=/home/rudra/.opencode/bin:$PATH
 # websearch в TUI: только при OPENCODE_ENABLE_EXA/PARALLEL (доки tools/);
 # ключ не нужен — backend ходит в свой hosted MCP. Без флага поиск отменён.
 export OPENCODE_ENABLE_EXA=1
+# LSP-инструмент в TUI (экспериментальный, для qtile-dev/python):
+# pyright уже стоит; серверы подбираются движком по языку.
+export OPENCODE_EXPERIMENTAL_LSP_TOOL=true
 
 # Провайдерные ключи для SDK с жёстким именем переменной.
 # @ai-sdk/anthropic (провайдер justwoker) требует именно ANTHROPIC_API_KEY
