@@ -271,6 +271,9 @@ export TOR_PROXY="socks5://127.0.0.1:9050"
 
 # opencode
 export PATH=/home/rudra/.opencode/bin:$PATH
+# websearch в TUI: только при OPENCODE_ENABLE_EXA/PARALLEL (доки tools/);
+# ключ не нужен — backend ходит в свой hosted MCP. Без флага поиск отменён.
+export OPENCODE_ENABLE_EXA=1
 
 # Провайдерные ключи для SDK с жёстким именем переменной.
 # @ai-sdk/anthropic (провайдер justwoker) требует именно ANTHROPIC_API_KEY
