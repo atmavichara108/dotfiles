@@ -320,6 +320,19 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 
 ---
 
+### Flush 2026-09-29: P0 prod-healthcheck + P1 notify-push
+**Контекст:** P0-наблюдатель (таймер, 7 целей) + P1 sink-адаптер Telegram.
+**Решения:** порог 3 провала (тишина при шуме рестартов); секреты только из
+окружения/push.env (дефис в EnvironmentFile — без файла юнит живёт локально);
+переиспользован паттерн proxy-healthcheck (oneshot + timer).
+**Confirmed facts:** живой прогон — все цели ok; fallback notify-send работает;
+застоуено; смержено в main.
+**Open:** включение таймера — за пользователем (`enable --now`); Telegram-токен —
+только руками; прод-URL после критериев (P1+); termproxy-порты плавают.
+**Next focus:** P2 утренний дайджест (нужен spend-учёт telemetry-p0).
+
+---
+
 ### Flush 2026-09-29: разбор дерева + Flameshot Print
 **Контекст:** Точечная сессия: разобрать грязное дерево на task/spec-write-routing и выложить готовое; затем Print перестал запускать Flameshot (хоткей в keys.py на месте, трей-клик работает).
 **Решения:**
