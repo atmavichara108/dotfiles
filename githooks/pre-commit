@@ -20,7 +20,10 @@ die() { echo "❌ $*" >&2; exit 1; }
 git_branch() { git symbolic-ref --short -q HEAD 2>/dev/null || echo "(detached)"; }
 is_merge()   { test -f "$(git rev-parse --git-dir)/MERGE_HEAD"; }
 
-# --- Гейт 1: не коммитить напрямую в main/master -----------------------------
+# --- Гейт 1: коммитить только в task/*-ветку (кроме merge/release) -----------
+# Канон tree-hygiene: одна тематическая задача = одна ветка task/<slug>.
+# Прямой коммит в main/master и в ветки вне task/* запрещён.
+# Исключения: merge (MERGE_HEAD), осознанный release (ALLOW_MAIN=1).
 if is_merge || [ "${ALLOW_MAIN:-0}" = "1" ]; then
   : # merge/release — разрешено
 else
@@ -28,6 +31,12 @@ else
   case "$br" in
     main|master)
       die "Коммит напрямую в '$br' запрещён. Работай в task/<slug>-ветке; в main — только merge (или ALLOW_MAIN=1 для осознанного release)."
+      ;;
+    task/*)
+      : # штатная рабочая ветка
+      ;;
+    *)
+      die "Коммит в ветку '$br' запрещён: канон — task/<slug> (один сюжет = одна ветка). Создай task-ветку через /branch или git switch -c task/<slug>; исключения — merge и ALLOW_MAIN=1."
       ;;
   esac
 fi

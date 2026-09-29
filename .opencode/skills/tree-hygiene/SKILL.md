@@ -9,18 +9,20 @@ description: Чистое рабочее дерево при параллель�
 
 | Слой | Что принуждает |
 |------|----------------|
-| `githooks/pre-commit` | branch gate (нет прямого коммита в main), conflict-маркеры, **zone-mix** (один коммит = одна зона/сюжет) |
+| `githooks/pre-commit` | branch gate (коммит только в `task/*`; main — merge), conflict-маркеры, **zone-mix** (один коммит = одна зона/сюжет) |
 | `plugins/tree-hygiene.ts` | блок `git switch/checkout` при грязном дереве; `git stash push` без `-m` |
 | `plugins/main-protector.ts` | блок коммита в main и правки hot-files в main |
+| `plugins/branch-auto.ts` | авто-создание `task/<slug>` на старте новой сессии от темы запроса |
+| `/branch` (command) | ручное создание `task/<slug>` от `origin/main` под текущую тему |
 
 ## Правила
 
-1. **Старт** — не с `main`: `git switch -c task/<slug>` (от `origin/main`).
+1. **Старт** — не с `main`: `git switch -c task/<slug>` (от `origin/main`). Автоматика: плагин `branch-auto` создаёт ветку на старте новой сессии; вручную — `/branch`.
 2. **Один коммит = один сюжет.** Зоны гейта: `promo-provider | pipboy | opencode | specs-docs | sysconfig | docs | misc`. Смешал зоны в staged → коммит отклонён. Осознанный интеграционный: `MIXED_OK=1 git commit …` — и объясни в сообщении почему.
 3. **До смены ветки / конца сессии дерево чистое:** закоммить свой сюжет или `git stash push -m <slug>`. Без `-m` stash плагин не пропустит.
 4. **В `main` — только merge** (`ALLOW_MAIN=1` только для осознанного release).
 5. **dotfiles — живые stow-симлинки:** НЕ создавай git worktree для этого репо; изоляция = task-ветки в одном checkout.
-6. Обходы исключительные и явные: `TREE_HYGIENE=1`, `ALLOW_MAIN=1`, `MIXED_OK=1` — никогда молча.
+6. Обходы исключительные и явные: `TREE_HYGIENE=1`, `ALLOW_MAIN=1`, `MIXED_OK=1`, `BRANCH_AUTO=0` — никогда молча.
 
 ## Сюжеты (шпаргалка зон)
 
