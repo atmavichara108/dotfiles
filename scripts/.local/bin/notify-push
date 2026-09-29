@@ -1,0 +1,39 @@
+#!/bin/bash
+# notify-push — P1 sink-адаптер: пуш с контекстом.
+#   - Есть TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID в окружении → Telegram Bot API.
+#   - Нет → фолбэк на локальный notify-send.
+# Секреты: только из окружения, никогда из репо/логов. В выводе токен не светится.
+# Использование: notify-push "<title>" "<body>" [urgency]
+#   urgency: critical|normal|low (default normal; critical в Telegram идёт без silent).
+
+set -euo pipefail
+
+TITLE="${1:-notify}"
+BODY="${2:-}"
+URGENCY="${3:-normal}"
+
+tg_send() {
+    local silent="false"
+    [ "$URGENCY" = "critical" ] || silent="true"
+    # ответ API отбрасываем целиком — там echo запроса, без токена, но и без пользы
+    curl -s -o /dev/null --max-time 10 --connect-timeout 5 \
+        --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+        --data-urlencode "text=${TITLE}
+${BODY}" \
+        --data-urlencode "disable_notification=${silent}" \
+        "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" 2>/dev/null
+}
+
+if [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_CHAT_ID:-}" ]; then
+    if tg_send; then
+        exit 0
+    fi
+    echo "notify-push: telegram failed, fallback to local" >&2
+fi
+
+case "$URGENCY" in
+    critical) level="critical" ;;
+    low) level="low" ;;
+    *) level="normal" ;;
+esac
+notify-send -a "notify-push" -u "$level" "$TITLE" "$BODY" 2>/dev/null || true

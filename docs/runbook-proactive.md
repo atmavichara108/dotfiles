@@ -53,3 +53,32 @@ journalctl --user -u prod-healthcheck.service -n 20
 - Балансная — нечего тратить (локальный curl), см. P1 для платных проб.
 - mcode — контур клиент-независим (юнит уровня systemd, не плагин);
   mcode-паритет достигается shared targets.conf (TD-001 отдельно).
+
+## P1 — notify-push (пуш с контекстом)
+
+### Что это
+Sink-адаптер `scripts/.local/bin/notify-push`: есть `TELEGRAM_BOT_TOKEN` +
+`TELEGRAM_CHAT_ID` в окружении → Telegram Bot API, иначе фолбэк на локальный
+`notify-send`. prod-healthcheck зовёт его вместо прямого notify-send.
+Критические алерты идут без silent, восстановления — low.
+
+### Файлы
+- `scripts/.local/bin/notify-push` (100755 в git)
+- `environment.d/.../prod-healthcheck.service` — `EnvironmentFile=-.../push.env`
+  (дефис: без файла юнит не падает)
+
+### Пользование (настройка Telegram — руками, секреты только у тебя)
+```bash
+# 1. Создай бота через @BotFather, узнай chat_id (@userinfobot)
+# 2. Положи секреты (0600, вне репо):
+install -m 600 /dev/null ~/.config/push/push.env
+printf 'TELEGRAM_BOT_TOKEN=...\nTELEGRAM_CHAT_ID=...\n' >> ~/.config/push/push.env
+# 3. Перечитай юнит и проверь тестовым алертом:
+systemctl --user daemon-reload
+notify-push "P1-тест" "проверка пуша" "low"
+```
+
+### Диагностика
+- Пуш не приходит → `journalctl --user -u prod-healthcheck.service` + проверь
+  токен прямым curl (токен в командной строке светить нельзя — только env).
+- Без push.env всё работает локально — это штатный режим, не ошибка.
