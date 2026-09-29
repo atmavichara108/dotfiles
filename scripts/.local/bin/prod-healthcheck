@@ -16,6 +16,8 @@ STATE_DIR="${HOME}/.local/share/prod-healthcheck"
 TARGETS_FILE="${CONFIG_DIR}/targets.conf"
 THRESHOLD=3
 
+NOTIFY="${HOME}/.local/bin/notify-push"
+
 mkdir -p "$STATE_DIR"
 
 if [ ! -f "$TARGETS_FILE" ]; then
@@ -36,14 +38,14 @@ while read -r name url || [ -n "$name" ]; do
 
     if probe "$url"; then
         if [ "$fails" -ge "$THRESHOLD" ]; then
-            notify-send -a "prod-healthcheck" -u normal "✅ ${name}" "восстановился: ${url}" 2>/dev/null || true
+            "$NOTIFY" "✅ ${name}" "восстановился: ${url}" "low" 2>/dev/null || true
         fi
         echo 0 > "$state_file"
     else
         fails=$((fails + 1))
         echo "$fails" > "$state_file"
         if [ "$fails" -eq "$THRESHOLD" ]; then
-            notify-send -a "prod-healthcheck" -u critical "🔴 ${name} down" "${url} — ${THRESHOLD} провала подряд" 2>/dev/null || true
+            "$NOTIFY" "🔴 ${name} down" "${url} — ${THRESHOLD} провала подряд" "critical" 2>/dev/null || true
         fi
     fi
 done < "$TARGETS_FILE"
