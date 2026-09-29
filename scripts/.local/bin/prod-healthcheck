@@ -1,0 +1,49 @@
+#!/bin/bash
+# prod-healthcheck — P0-наблюдатель локальных сервисов.
+# Запускается из systemd-таймера. Тихий при OK, алерт только на переходе в down.
+#
+# Логика (адаптивная):
+#   - Цели читаются из scripts/.config/prod-healthcheck/targets.conf (name + url).
+#   - Порог N=3 подряд провалов гасит ложные алерты при рестартах termproxy.
+#   - Счётчики — в ~/.local/share/prod-healthcheck/<name>.fail (число).
+#   - Алерт через notify-send только на переходе ok→down; восстановление — info.
+#   - Балансная адаптивность: здесь нечего тратить (локальный curl), см. P1.
+
+set -euo pipefail
+
+CONFIG_DIR="${HOME}/.config/prod-healthcheck"
+STATE_DIR="${HOME}/.local/share/prod-healthcheck"
+TARGETS_FILE="${CONFIG_DIR}/targets.conf"
+THRESHOLD=3
+
+mkdir -p "$STATE_DIR"
+
+if [ ! -f "$TARGETS_FILE" ]; then
+    echo "prod-healthcheck: нет $TARGETS_FILE" >&2
+    exit 1
+fi
+
+probe() {
+    curl -s -o /dev/null --max-time 3 --connect-timeout 3 "$1" 2>/dev/null
+}
+
+while read -r name url || [ -n "$name" ]; do
+    case "$name" in ""|\#*) continue ;; esac
+    state_file="${STATE_DIR}/${name}.fail"
+    fails=0
+    [ -f "$state_file" ] && fails="$(cat "$state_file" 2>/dev/null || echo 0)"
+    case "$fails" in ''|*[!0-9]*) fails=0 ;; esac
+
+    if probe "$url"; then
+        if [ "$fails" -ge "$THRESHOLD" ]; then
+            notify-send -a "prod-healthcheck" -u normal "✅ ${name}" "восстановился: ${url}" 2>/dev/null || true
+        fi
+        echo 0 > "$state_file"
+    else
+        fails=$((fails + 1))
+        echo "$fails" > "$state_file"
+        if [ "$fails" -eq "$THRESHOLD" ]; then
+            notify-send -a "prod-healthcheck" -u critical "🔴 ${name} down" "${url} — ${THRESHOLD} провала подряд" 2>/dev/null || true
+        fi
+    fi
+done < "$TARGETS_FILE"
