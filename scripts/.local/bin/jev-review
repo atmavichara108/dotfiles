@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""jev-review — Jev-gate для ревью диффа: approve / request-changes.
+
+Каркас review-триажа поверх jev-judge: состояние = текст диффа (обрезка
+30k), вопрос — choice из двух вердиктов с уверенностью. Живой вызов ждёт
+TYPESAFE_API_KEY; без ключа работает --dry-run.
+
+Использование:
+    git diff main...HEAD > /tmp/opencode/change.diff
+    jev-review --diff /tmp/opencode/change.diff [--json] [--dry-run]
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+ENDPOINT = "https://api.typesafe.ai/v1/systemone"
+MODEL = "jev-latest"
+MAX_STATE_CHARS = 30000
+
+
+def die(msg, code=2):
+    print(f"Error: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def resolve_key():
+    key = os.environ.get("TYPESAFE_API_KEY", "")
+    if key:
+        return key
+    try:
+        store = json.load(open(Path.home() / ".local/share/opencode/auth.json"))
+        key = (store.get("typesafe") or {}).get("key", "")
+    except Exception:
+        key = ""
+    if not key:
+        die("no TYPESAFE_API_KEY in env or auth-store['typesafe']")
+    return key
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Jev review gate for a diff")
+    parser.add_argument("--diff", required=True, help="Путь к файлу диффа")
+    parser.add_argument("--model", default=MODEL)
+    parser.add_argument("--endpoint", default=ENDPOINT)
+    parser.add_argument("--timeout", type=int, default=30)
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    try:
+        state = open(args.diff, encoding="utf-8", errors="replace").read()
+    except OSError as e:
+        die(f"cannot read diff: {e}")
+    if len(state) > MAX_STATE_CHARS:
+        state = state[:MAX_STATE_CHARS] + "\n...[truncated]"
+
+    payload = {
+        "model": args.model,
+        "state": state,
+        "questions": {
+            "verdict": {
+                "type": "choice",
+                "instructions": "Оценить изменение для мержа в main.",
+                "criteria": {
+                    "approve": "Изменение точечное, в scope ветки, без секретов и мусора",
+                    "request_changes": "Есть выход за scope, секреты, мусор или сомнения",
+                },
+            }
+        },
+    }
+
+    if args.dry_run:
+        print(json.dumps({"endpoint": args.endpoint,
+                          "model": payload["model"],
+                          "state_chars": len(state),
+                          "questions": list(payload["questions"])},
+                         indent=2, ensure_ascii=False))
+        return
+
+    key = resolve_key()
+    cmd = ["curl", "-sS", "-m", str(args.timeout), "-X", "POST", args.endpoint,
+           "-H", f"Authorization: Bearer {key}",
+           "-H", "Content-Type: application/json",
+           "-d", json.dumps(payload)]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=args.timeout + 5)
+    except subprocess.TimeoutExpired:
+        die("request timeout")
+    if result.returncode != 0:
+        die("curl failed")
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        die("invalid JSON response")
+
+    ans = (data.get("answers") or {}).get("verdict", {})
+    if args.json:
+        print(json.dumps({"model": data.get("model"), "choice": ans.get("choice"),
+                          "confidence": ans.get("confidence"),
+                          "usage": data.get("usage")}, indent=2, ensure_ascii=False))
+    else:
+        print(f"verdict: {ans.get('choice')} (confidence {ans.get('confidence')})")
+    sys.exit(0 if ans.get("choice") == "approve" else 1)
+
+
+if __name__ == "__main__":
+    main()
