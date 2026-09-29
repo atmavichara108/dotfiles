@@ -329,6 +329,7 @@ append-only, без коммитов. Локальная `/flush` dotfiles со�
 - Неинтерактивный `opencode run` с ask-гейтами требует `--auto` или
   проектных override.
 - Гейт не создаёт automatic router: неопределённый route — UNROUTABLE/вопрос.
+- **Поправка 2026-09-29:** фактический runtime-гейт мягче п.2 выше: `permission.task: "allow"`, `permission.edit.*: "allow"` (ask — только hot-files и необратимые bash). П.2 фиксирует исходный замысел, канон — `opencode.jsonc` + «Границы» глобального `AGENTS.md`. Prompt-контракт (подтверждение scope) действует независимо от гейта.
 
 ---
 
