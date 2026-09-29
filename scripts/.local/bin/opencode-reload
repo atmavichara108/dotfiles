@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# opencode-reload — перезагрузка backend'а OpenCode v2.
+# Проблема: TUI — только клиент, конфиги/команды/плагины держит фоновый
+# `opencode serve --service`. Выход/вход в TUI его не трогает — релоад
+# не происходит. Решение: убить сервис; новая TUI-сессия поднимет свежий
+# с актуальным конфигом.
+# Безопасность: процессы harness-сессий (родитель `opencode -s ses_*`)
+# НЕ трогаем — только пользовательские TUI-бекенды.
+set -u
+
+PATTERN="opencode serve --service"
+killed=0
+skipped=0
+
+for pid in $(pgrep -f "$PATTERN" 2>/dev/null); do
+    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    parent=$(ps -o args= -p "$ppid" 2>/dev/null || true)
+    if [[ "$parent" == *"opencode -s ses_"* ]]; then
+        echo "skip harness-owned backend: pid $pid"
+        skipped=$((skipped + 1))
+        continue
+    fi
+    if kill "$pid" 2>/dev/null; then
+        echo "killed user backend: pid $pid"
+        killed=$((killed + 1))
+    else
+        echo "cannot kill pid $pid" >&2
+    fi
+done
+
+msg="opencode backend reloaded (killed $killed, skipped harness $skipped) — start new TUI session"
+echo "$msg"
+command -v notify-send >/dev/null 2>&1 && notify-send "opencode" "$msg"
