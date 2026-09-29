@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# tmux-open — открыть сохранённую tmux-сессию без создания новых.
+# Логика:
+#   1. Если есть 命名 сессии (pb-*) — показать fzf-выбор, attach к выбранной.
+#   2. Если 命名 сессий нет, но есть цифровые — attach к последней активной.
+#   3. Если сервер пуст — создать сессию (continuum автосейвит каждые 15 мин).
+# Не создаёт новую сессию, если уже есть существующие.
+set -u
+
+NAMED_PREFIX="pb-"
+
+named_sessions() {
+    tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${NAMED_PREFIX}" || true
+}
+
+any_sessions() {
+    tmux list-sessions -F '#{session_name}' 2>/dev/null || true
+}
+
+main() {
+    sessions="$(named_sessions)"
+    if [[ -z "$sessions" ]]; then
+        sessions="$(any_sessions)"
+    fi
+
+    if [[ -z "$sessions" ]]; then
+        # Сервер пуст или не запущен — создаём дефолтную сессию
+        exec tmux new-session -A -s main
+    fi
+
+    count="$(echo "$sessions" | wc -l | tr -d ' ')"
+    if [[ "$count" -eq 1 ]]; then
+        exec tmux attach-session -t "$sessions"
+    fi
+
+    # Несколько сессий — fzf-выбор
+    if command -v fzf >/dev/null 2>&1; then
+        selected="$(echo "$sessions" | fzf --prompt 'tmux session: ' --height 40%)"
+        if [[ -n "$selected" ]]; then
+            exec tmux attach-session -t "$selected"
+        fi
+    else
+        # Без fzf — attach к последней
+        last="$(echo "$sessions" | tail -1)"
+        exec tmux attach-session -t "$last"
+    fi
+}
+
+main
