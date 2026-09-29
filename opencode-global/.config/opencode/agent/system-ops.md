@@ -24,6 +24,10 @@ permission:
     "cat*": allow
     "grep*": allow
     "find*": allow
+    "bat*": allow
+    "eza*": allow
+    "rg*": allow
+    "fd*": allow
     "which*": allow
     "type*": allow
     "file*": allow

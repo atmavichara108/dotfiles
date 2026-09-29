@@ -175,6 +175,7 @@ Coordination Bridge в текущем репозитории; она не фик
 - Коммиты: `feat(<pkg>): ...`, `fix(<pkg>): ...`, `chore: ...`, `docs: ...` (scope = имя пакета).
 - Перед работой читай `.opencode/memory/user-profile.md` (кто такой Макс, стек, предпочтения).
 - ADR-реестр: `docs/decisions.md` и `.opencode/memory/decisions.md`.
+- Читай код через `bat`, листинги — `eza`, поиск — `rg`, файлы — `fd` (голые `cat/ls` — только в пайпах).
 
 ## Стек (кратко)
 

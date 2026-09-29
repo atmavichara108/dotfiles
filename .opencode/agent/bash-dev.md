@@ -14,6 +14,10 @@ permission:
     "cat*": allow
     "grep*": allow
     "find*": allow
+    "bat*": allow
+    "eza*": allow
+    "rg*": allow
+    "fd*": allow
     "git diff*": allow
     "bash -n*": allow
     "shellcheck*": allow

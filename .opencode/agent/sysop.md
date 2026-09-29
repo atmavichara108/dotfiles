@@ -55,6 +55,19 @@ permission:
     "ps*": allow
     "echo*": allow
     "printf*": allow
+    "bat*": allow
+    "eza*": allow
+    "fd*": allow
+    "fzf*": allow
+    "difft*": allow
+    "tokei*": allow
+    "procs*": allow
+    "jq*": allow
+    "yq*": allow
+    "dust*": allow
+    "duf*": allow
+    "btop*": allow
+    "glow*": allow
     "du -sh*": allow
     "lsblk*": allow
     "ip addr*": allow

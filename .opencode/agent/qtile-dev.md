@@ -14,6 +14,10 @@ permission:
     "cat*": allow
     "grep*": allow
     "find*": allow
+    "bat*": allow
+    "eza*": allow
+    "rg*": allow
+    "fd*": allow
     "git diff*": allow
     "python -c*": allow
     "python -m py_compile*": allow
