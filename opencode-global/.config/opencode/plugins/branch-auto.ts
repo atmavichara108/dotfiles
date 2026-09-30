@@ -13,11 +13,16 @@
 // Правила создания:
 //   1. Только в git-репозитории (git rev-parse --show-toplevel успешен).
 //   2. Только если текущая ветка НЕ task/* (уже в рабочей ветке — не дублируем).
-//   3. Только если дерево чистое (git status --porcelain пуст) — иначе не
-//      переключаемся, только предупреждаем (не трогаем чужие правки).
+//   3. Грязное дерево — НЕ повод остаться без ветки: ref `task/<slug>`
+//      создаётся всегда (git branch, без переключения — безопасно), а само
+//      переключение агент делает после штатной гигиены (tree-cop stash-foreign).
+//      Чистое дерево — переключаемся сразу (существующий ref — обычным switch).
 //   4. База: origin/main → fallback main → текущая HEAD.
 //   5. Имя: task/<slug>, slug из темы первого сообщения (кириллица →
 //      транслитерация, мусор вырезается).
+//   6. Намёк на конфликт (unmerged-пути UU/AA/DD/UD/DU, MERGE_HEAD /
+//      CHERRY_PICK_HEAD / REVERT_HEAD) — имя с суффиксом `-conflict`
+//      (task/<slug>-conflict), чтобы конфликтный разбор не пачкал чистые ветки.
 //
 // Обход (осознанный): BRANCH_AUTO=0 в окружении.
 // Fail-open: любая ошибка логируется и НЕ ломает сессию.
@@ -68,6 +73,56 @@ async function isDirty(directory: string): Promise<boolean> {
 async function hasRemoteMain(directory: string): Promise<boolean> {
   try {
     await git(["rev-parse", "--verify", "origin/main"], directory)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// --- намёки на конфликт ------------------------------------------------------
+// Дешёвые и однозначные сигналы (без grep по файлам — медленно и шумно):
+//   - unmerged-пути в porcelain: UU/AA/DD/UD/DU;
+//   - незавершённая операция слияния: MERGE_HEAD / CHERRY_PICK_HEAD / REVERT_HEAD.
+// Маркерам `<<<<<<<` здесь не место: их ищет агент глазами перед работой.
+async function porcelain(directory: string): Promise<string> {
+  try {
+    return await git(["status", "--porcelain"], directory)
+  } catch {
+    return "" // fail-open: разведка не удалась — считаем чисто
+  }
+}
+
+function hasUnmergedPaths(porcelainOut: string): boolean {
+  return porcelainOut.split("\n").some((line) => /^[UAD][UAD] /.test(line))
+}
+
+async function mergeInProgress(directory: string): Promise<boolean> {
+  for (const ref of ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"]) {
+    try {
+      await git(["rev-parse", "--verify", ref], directory)
+      return true
+    } catch {
+      // этого ref нет — проверяем следующий
+    }
+  }
+  return false
+}
+
+async function branchExists(directory: string, name: string): Promise<boolean> {
+  try {
+    await git(["rev-parse", "--verify", `refs/heads/${name}`], directory)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Создать ref ветки БЕЗ переключения (безопасно при грязном дереве).
+// Уже существует — успех, не ошибка.
+async function ensureRef(directory: string, name: string, base: string): Promise<boolean> {
+  try {
+    if (await branchExists(directory, name)) return true
+    await git(["branch", name, base], directory)
     return true
   } catch {
     return false
@@ -125,21 +180,38 @@ export default Plugin.define({
           return
         }
         if (await isDirty(directory)) {
+          // Грязное дерево: ref ветки всё равно создаём (дешёво и безопасно),
+          // а переключение оставляем агенту после штатной гигиены.
+          const slug = slugify(text)
+          const status = await porcelain(directory)
+          const conflict = hasUnmergedPaths(status) || (await mergeInProgress(directory))
+          const branchName = conflict ? `task/${slug}-conflict` : `task/${slug}`
+          const base = (await hasRemoteMain(directory)) ? "origin/main" : "main"
+          const refOk = await ensureRef(directory, branchName, base)
           console.log(
-            `[branch-auto] сессия ${sessionID}: дерево грязное — ветку НЕ создаю, ` +
-            `чтобы не трогать чужие правки. Тема: ${text.slice(0, 80)}`,
+            "[branch-auto] сессия " + sessionID + ": дерево грязное — создана только ref " +
+            branchName + " от " + base + " (" + (refOk ? "ok" : "FAIL") + "; " +
+            (conflict ? "есть намёк на конфликт" : "конфликта не видно") + "). " +
+            "Агент: убери чужое через tree-cop stash-foreign и переключись: git switch " +
+            branchName + ". Тема: " + text.slice(0, 80),
           )
           entry.branchDone = true // повторно не дёргаем
           return
         }
 
         const slug = slugify(text)
-        const branchName = `task/${slug}`
+        const status = await porcelain(directory)
+        const conflict = hasUnmergedPaths(status) || (await mergeInProgress(directory))
+        const branchName = conflict ? `task/${slug}-conflict` : `task/${slug}`
         const base = (await hasRemoteMain(directory))
           ? "origin/main"
           : "main"
 
-        await git(["switch", "-c", branchName, base], directory)
+        if (await branchExists(directory, branchName)) {
+          await git(["switch", branchName], directory)
+        } else {
+          await git(["switch", "-c", branchName, base], directory)
+        }
         console.log(
           `[branch-auto] сессия ${sessionID}: создана ветка ${branchName} от ${base} ` +
           `(тема: ${text.slice(0, 80)})`,

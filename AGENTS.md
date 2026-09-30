@@ -38,6 +38,9 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 4. **В `main` — только merge** — `githooks/pre-commit` + `plugins/main-protector.ts`.
 5. **dotfiles — без git worktree**: stow-симлинки живут в одном checkout; изоляция = task-ветки.
 6. Скилл-памятка: `.opencode/skills/tree-hygiene/SKILL.md`.
+7. **После `/ship` сессия продолжается на новой ветке** (`task/next-<дата>`),
+   не на `main`. **Намёк на конфликт** (unmerged-пути, `MERGE_HEAD`,
+   маркеры `<<<<<<<`) — **новая `task/*`-ветка**, разбор только в ней.
 
 ## Роли агентов и роутинг
 

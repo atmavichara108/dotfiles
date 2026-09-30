@@ -12,7 +12,7 @@ description: Чистое рабочее дерево при параллель�
 | `githooks/pre-commit` | branch gate (коммит только в `task/*`; main — merge), conflict-маркеры, **zone-mix** (один коммит = одна зона/сюжет) |
 | `plugins/tree-hygiene.ts` | блок `git switch/checkout` при грязном дереве; `git stash push` без `-m` |
 | `plugins/main-protector.ts` | блок коммита в main и правки hot-files в main |
-| `plugins/branch-auto.ts` | авто-создание `task/<slug>` на старте новой сессии от темы запроса |
+| `plugins/branch-auto.ts` | авто-создание `task/<slug>` на старте новой сессии от темы запроса; при грязном дереве — только ref + инструкция; намёк на конфликт — суффикс `-conflict` |
 | `/branch` (command) | ручное создание `task/<slug>` от `origin/main` под текущую тему |
 
 ## Правила
@@ -23,6 +23,11 @@ description: Чистое рабочее дерево при параллель�
 4. **В `main` — только merge** (`ALLOW_MAIN=1` только для осознанного release).
 5. **dotfiles — живые stow-симлинки:** НЕ создавай git worktree для этого репо; изоляция = task-ветки в одном checkout.
 6. Обходы исключительные и явные: `TREE_HYGIENE=1`, `ALLOW_MAIN=1`, `MIXED_OK=1`, `BRANCH_AUTO=0` — никогда молча.
+7. **Финиш `/ship` — новая ветка** (`task/next-<дата>` от обновлённого main),
+   не оставаться на `main`. **Намёк на конфликт** (unmerged-пути `UU/AA/DD`,
+   `MERGE_HEAD`/`CHERRY_PICK_HEAD`/`REVERT_HEAD`, маркеры `<<<<<<<`) —
+   **новая `task/*`-ветка** (с суффиксом `-conflict`, если подсказал плагин),
+   разбор только в ней, не в чистой.
 
 ## Сюжеты (шпаргалка зон)
 
