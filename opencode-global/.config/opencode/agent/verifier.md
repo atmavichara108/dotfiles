@@ -13,6 +13,10 @@ permission:
     "python3 -m json.tool*": allow
     "python3 -m py_compile*": allow
     "python3 -c *": allow
+    "bash -n*": allow
+    "shellcheck*": allow
+    "sh -n*": allow
+    "stow -n*": allow
     "node --check*": allow
     "node docs/specs/*": allow
     "node *smoke*": allow

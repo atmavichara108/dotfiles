@@ -26,6 +26,14 @@ permission:
     "git diff*": allow
     "git log*": allow
     "git show*": allow
+    "git blame*": allow
+    "head*": allow
+    "tail*": allow
+    "wc*": allow
+    "jq*": allow
+    "readlink*": allow
+    "realpath*": allow
+    "which*": allow
     "stow -n*": allow
 ---
 

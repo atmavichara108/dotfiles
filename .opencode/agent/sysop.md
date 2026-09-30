@@ -9,7 +9,7 @@ permission:
   external_directory: allow
   edit: allow
   bash:
-    "*": ask
+    "*": allow
     "ls*": allow
     "cat*": allow
     "grep*": allow
@@ -119,6 +119,9 @@ permission:
     "chown*": deny
     "mkfs*": deny
     "mount*": deny
+    "git reset --hard*": ask
+    "git clean*": ask
+    "ssh*": ask
   webfetch: allow
   read: allow
   glob: allow

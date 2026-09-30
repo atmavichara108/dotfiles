@@ -9,7 +9,7 @@ permission:
   external_directory: allow
   edit: allow
   bash:
-    "*": deny
+    "*": allow
     "ls*": allow
     "cat*": allow
     "grep*": allow
@@ -20,6 +20,9 @@ permission:
     "fd*": allow
     "git diff*": allow
     "git status*": allow
+    "git log*": allow
+    "git show*": allow
+    "git add*": allow
     "mkdir*": allow
     "cp*": allow
     "mv*": allow
@@ -28,13 +31,33 @@ permission:
     "chmod +x*": allow
     "touch*": allow
     "echo*": allow
+    "printf*": allow
+    "head*": allow
+    "tail*": allow
+    "wc*": allow
     "which*": allow
+    "readlink*": allow
+    "realpath*": allow
     "rm*": deny
+    "rm -rf*": deny
+    "rm -fr*": deny
     "sudo*": deny
+    "chown*": deny
     "pacman*": deny
     "systemctl*": deny
     "yay*": deny
     "paru*": deny
+    "mkfs*": deny
+    "mount*": deny
+    "shutdown*": deny
+    "reboot*": deny
+    "git push --force*": deny
+    "git push -f*": deny
+    "git branch -D*": deny
+    "git tag -d*": deny
+    "git reset --hard*": ask
+    "git clean*": ask
+    "ssh*": ask
   webfetch: deny
   read: allow
   glob: allow

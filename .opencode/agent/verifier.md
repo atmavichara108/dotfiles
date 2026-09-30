@@ -21,6 +21,16 @@ permission:
     "difft*": allow
     "git diff*": allow
     "git status*": allow
+    "git log*": allow
+    "git show*": allow
+    "head*": allow
+    "tail*": allow
+    "wc*": allow
+    "stat*": allow
+    "jq*": allow
+    "node --check*": allow
+    "readlink*": allow
+    "realpath*": allow
     "bash -n*": allow
     "bash -nv*": allow
     "shellcheck*": allow

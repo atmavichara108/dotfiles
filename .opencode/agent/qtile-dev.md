@@ -9,7 +9,7 @@ permission:
   external_directory: allow
   edit: allow
   bash:
-    "*": deny
+    "*": allow
     "ls*": allow
     "cat*": allow
     "grep*": allow
@@ -18,10 +18,46 @@ permission:
     "eza*": allow
     "rg*": allow
     "fd*": allow
+    "git status*": allow
     "git diff*": allow
+    "git log*": allow
+    "git show*": allow
     "python -c*": allow
     "python -m py_compile*": allow
+    "python*": allow
+    "python3*": allow
+    "mkdir*": allow
+    "touch*": allow
+    "cp*": allow
+    "mv*": allow
+    "echo*": allow
+    "head*": allow
+    "tail*": allow
+    "wc*": allow
+    "which*": allow
     "stow -n qtile": allow
+    "rm -rf*": deny
+    "rm -fr*": deny
+    "rm*": ask
+    "sudo*": deny
+    "chown*": deny
+    "chmod*": deny
+    "pacman -S*": deny
+    "pacman -R*": deny
+    "yay*": deny
+    "paru*": deny
+    "systemctl*": deny
+    "mkfs*": deny
+    "mount*": deny
+    "shutdown*": deny
+    "reboot*": deny
+    "git push --force*": deny
+    "git push -f*": deny
+    "git branch -D*": deny
+    "git tag -d*": deny
+    "git reset --hard*": ask
+    "git clean*": ask
+    "ssh*": ask
   webfetch: allow
   read: allow
   glob: allow
