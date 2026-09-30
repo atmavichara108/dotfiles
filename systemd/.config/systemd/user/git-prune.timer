@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly prune of merged task branches
+
+[Timer]
+OnCalendar=weekly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

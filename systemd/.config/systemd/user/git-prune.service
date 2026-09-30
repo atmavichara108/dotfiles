@@ -1,0 +1,6 @@
+[Unit]
+Description=Prune merged task branches (dotfiles + Vault)
+
+[Service]
+Type=oneshot
+ExecStart=%h/dotfiles/scripts/git-prune-branches.sh
