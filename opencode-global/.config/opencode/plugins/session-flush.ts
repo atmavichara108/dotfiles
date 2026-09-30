@@ -10,7 +10,7 @@
 //                  (отдельного хука session.idle в V2 нет)
 
 import { Plugin } from "@opencode/plugin"
-import { appendFile, mkdir } from "fs/promises"
+import { appendFile, mkdir, stat } from "fs/promises"
 import { join } from "path"
 
 export default Plugin.define({
@@ -28,6 +28,16 @@ export default Plugin.define({
 
       const logDir = join(directory, "04-Memory", "session-log")
       const logPath = join(logDir, `${dateStr}.md`)
+
+      // Только туда, где 04-Memory уже есть (волт-модель). В чужих проектах
+      // ничего не создаём — иначе плодим мусорные каталоги (см. Memory Contract).
+      try {
+        await stat(logDir)
+      } catch {
+        console.log(`[session-flush] skip: no 04-Memory in ${directory}`)
+        editedFiles.clear()
+        return
+      }
 
       const fileList = Array.from(editedFiles)
         .map((f) => `- ${f}`)
