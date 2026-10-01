@@ -129,6 +129,20 @@ async function ensureRef(directory: string, name: string, base: string): Promise
   }
 }
 
+// --- реестр владения веткой (единая истина обоих backend'ов) ------------------
+// git-config чекаута виден всем: opencode, mcode, человеку в терминале.
+// Атомарно средствами git, мусора в дереве нет, TTL — 24ч (как heartbeat ADR-014).
+// Ключи: branch.<name>.owner = sessionID, branch.<name>.claimedAt = epoch.
+async function claimBranch(directory: string, name: string, sessionID: string): Promise<void> {
+  try {
+    if (!/^[A-Za-z0-9_./-]+$/.test(name)) return
+    await git(["config", `branch.${name}.owner`, sessionID], directory)
+    await git(["config", `branch.${name}.claimedAt`, String(Math.floor(Date.now() / 1000))], directory)
+  } catch {
+    // fail-open: реестр — помощь, не гейт
+  }
+}
+
 // --- slug из темы -----------------------------------------------------------
 const TRANSLIT: Record<string, string> = {
   а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z",
@@ -188,6 +202,7 @@ export default Plugin.define({
           const branchName = conflict ? `task/${slug}-conflict` : `task/${slug}`
           const base = (await hasRemoteMain(directory)) ? "origin/main" : "main"
           const refOk = await ensureRef(directory, branchName, base)
+          await claimBranch(directory, branchName, sessionID)
           console.log(
             "[branch-auto] сессия " + sessionID + ": дерево грязное — создана только ref " +
             branchName + " от " + base + " (" + (refOk ? "ok" : "FAIL") + "; " +
@@ -199,6 +214,9 @@ export default Plugin.define({
           return
         }
 
+        // Чистое дерево: тоже только ref, БЕЗ переключения. Общий checkout —
+        // автопереключение двигает HEAD всех параллельных сессий (все «переходят»
+        // в чужую ветку). Переключается агент осознанно, после сверки со своим handshake.
         const slug = slugify(text)
         const status = await porcelain(directory)
         const conflict = hasUnmergedPaths(status) || (await mergeInProgress(directory))
@@ -207,13 +225,13 @@ export default Plugin.define({
           ? "origin/main"
           : "main"
 
-        if (await branchExists(directory, branchName)) {
-          await git(["switch", branchName], directory)
-        } else {
-          await git(["switch", "-c", branchName, base], directory)
-        }
+        const refOk = await ensureRef(directory, branchName, base)
+        await claimBranch(directory, branchName, sessionID)
         console.log(
-          `[branch-auto] сессия ${sessionID}: создана ветка ${branchName} от ${base} ` +
+          `[branch-auto] сессия ${sessionID}: создана ref ${branchName} от ${base} ` +
+          `(${refOk ? "ok" : "FAIL"}; ` +
+          `${conflict ? "есть намёк на конфликт" : "конфликта не видно"}). ` +
+          `Агент: переключись сам после сверки со своим handshake: git switch ${branchName}. ` +
           `(тема: ${text.slice(0, 80)})`,
         )
         entry.branchDone = true
