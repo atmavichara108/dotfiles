@@ -57,7 +57,7 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 | **bash-dev** | subagent | bash-скрипты, автоматизация | `opencode-go/qwen3.7-plus` · Coding |
 | **util-dev** | subagent | утилиты (макросы, нотификации, rofi) | `opencode-go/qwen3.7-plus` · Coding |
 | **stow-ops** | subagent | stow-операции, реструктуризация, миграция, дрейф | `opencode-go/qwen3.7-plus` · Coding |
-| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `opencode/deepseek-v4-flash-free` · Free |
+| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `opencode/muse-spark-1.3-contributor-free` · Free |
 | **system-audit** | subagent (global) | read-only аудит системы/экосистемы (ранее глобальный `sysop`) | `opencode-go/glm-5.3-flash` · Go |
 | **system-ops** | subagent (global) | approval-gated high-risk apply planning | `opencode-go/gpt-5.6-luna` · Strategic |
 | **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `linaliapi/deepseek/deepseek-v4-pro` · Go |
