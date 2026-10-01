@@ -389,3 +389,22 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 **Confirmed facts:** демон и политика закоммичены по зонам; smoke ок; Волт-правило запушено.
 **Open:** дыры allow-базы; pop двух stash; qtile-узел; включение таймера.
 **Next focus:** /ship ветки task/next (merge → push → новая ветка).
+
+---
+
+### Ship 2026-10-01: ship-memory в main (tree-cop, владение веткой, память)
+**Контекст:** Ветка task/ship-memory: tree-cop в mainline + точечный untracked, владение веткой (тихий branch-auto, гейт чужой ветки, claim-gate), установщик хуков, ADR-019, lane-правило, fallback субагента. Выкладка по аппруву при STOP koпа (.mcode чужой весь путь).
+**Решения:**
+- tree-cop: 4 файла из b43fded + split_stashable (симлинки/каталоги не трогаем), 18 тестов зелено, smoke в клоне (чужое засташилось, ссылка-ловушка пропущена, pop вернул), путь запуска абсолютный через python3.
+- Владение: git-config реестр (виден всем backend'ам), sessionID в tool.execute.before подтверждён типами SDK — замок настоящий; pre-commit гейт 4 матрицей 4/4.
+- Fallback (глобальный контракт): model unavailable → своя модель + рестарт, max 2, без тихой подмены.
+- mcode-разведка: `~/.config/mcode` → тот же каталог (глобали общие); факт-стор mcode — производный кэш, истина в project-markdown + волт; в AndroidOS хука нет (установщик доберёт).
+**Lessons:**
+- Клон берёт HEAD, не worktree — свежие правки в песочницу копией файла.
+- update-index --chmod для новых файлов нужен --add; amend бьёт в HEAD — проверять перед ним лог.
+- amend не в тот коммит чинится через reset --soft + честный fixup, не перезаписью истории.
+- `.local/bin/` — единственное место скриптов в пакете scripts (корень пакета стовится в $HOME — мусор).
+- agnt chmod запрещён primary: +x через stow-ops (у него `chmod +x` allow) — залуженный фикс прав.
+**Confirmed facts:** 6+3 коммита зонно-чистые (гейт zone-mix ловил дважды по делу); stow обоих пакетов живьём ок; мусор ~/install-githooks.sh убран.
+**Open:** verifier model down (проверки вручную); TS-плагины — смотреть логи после рестарта backend; грузит ли mcode глобальные плагины — эксперимент открыт; pop чужих stash (0c8cdf0-контекст) — за владельцами.
+**Next focus:** рестарт backend → проверка логов плагинов → /ship следующих веток по новым гейтам.
