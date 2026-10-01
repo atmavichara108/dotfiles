@@ -121,6 +121,8 @@ opencode-global/.config/opencode/bun.lock
 
 # M Code runtime
 mcode/
+# .mcode — рантайм-папка M Code; симлинк на канон .opencode (см. AGENTS.md)
+.mcode
 
 # session handshake: живые раппорты не коммитятся, только шаблон
 .opencode/memory/session-reports/active/*

@@ -110,7 +110,12 @@ async function isDirty(directory: string): Promise<boolean> {
         (err, out) => (err ? reject(err) : resolve(out)),
       )
     })
-    return stdout.trim().length > 0
+    // Грязное = только tracked-изменения (M/A/D/R…): они ломают switch.
+    // Untracked (??) switch не блокируют механически (git сам упрётся, если
+    // checkout их перезапишет) — иначе чужой .mcode вечно держит всех.
+    return stdout
+      .split("\n")
+      .some((line) => line.length > 0 && !line.startsWith("??"))
   } catch {
     return false // fail-open
   }

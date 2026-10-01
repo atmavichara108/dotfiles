@@ -1,7 +1,7 @@
 ---
 description: Стратег dotfiles. Анализирует систему, проектирует решения, оформляет ADR. Read-only, не пишет код. Запускается primary sysop через task.
 mode: subagent
-model: amd-radeon/Qwen3.8-27B
+model: justwoker/claude-opus-4-8#max
 temperature: 0.2
 steps: 20
 permission:

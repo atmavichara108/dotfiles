@@ -1,7 +1,7 @@
 ---
 description: Strict acceptance verifier. Checks work against DoD. Returns PASS/FAIL, never edits.
 mode: subagent
-model: anymodel/cx/gpt-5.6-sol
+model: opencode/muse-spark-1.3-contributor-free
 temperature: 0.1
 steps: 12
 permission:
