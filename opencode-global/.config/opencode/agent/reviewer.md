@@ -1,7 +1,7 @@
 ---
 description: "Read-only quality, style and domain reviewer for dotfiles"
 mode: subagent
-model: anymodel/cx/gpt-5.6-sol
+model: justwoker/claude-opus-4-8#max
 temperature: 0.1
 steps: 15
 permission:

@@ -1,7 +1,7 @@
 ---
 description: Meta-infra editor. Правит агентную инфраструктуру OpenCode из любого проекта. НЕ трогает код приложений.
 mode: subagent
-model: anymodel/cx/gpt-5.6-sol
+model: justwoker/claude-opus-4-8#max
 temperature: 0.1
 steps: 20
 permission:

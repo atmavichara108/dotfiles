@@ -1,7 +1,7 @@
 ---
 description: "system-ops: approval-gated high-risk host apply planner"
 mode: subagent
-model: anymodel/cx/gpt-5.6-sol
+model: justwoker/claude-opus-4-8#max
 temperature: 0.1
 steps: 25
 permission:
