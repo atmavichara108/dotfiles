@@ -172,6 +172,24 @@
         "claude-opus-4-8": { "name": "Claude Opus 4.8", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
     },
+    "local-deepseek": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "DeepSeek (local bridge)",
+      "options": { "baseURL": "http://127.0.0.1:8000/v1", "apiKey": "unused" },
+      "models": {
+        "deepseek-chat":   { "name": "DeepSeek Chat (local bridge)",   "attachment": false, "reasoning": false, "tool_call": true, "temperature": true },
+        "deepseek-expert": { "name": "DeepSeek Expert (local bridge)", "attachment": false, "reasoning": false, "tool_call": true, "temperature": true }
+      }
+    },
+    "modelhub": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "ModelHub",
+      "options": { "baseURL": "https://modelhub.134.209.223.63.sslip.io/v1" },
+      "models": {
+        "gemini-3.1-flash-lite": { "name": "Gemini 3.1 Flash Lite", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "codestral-latest":      { "name": "Codestral Latest",      "attachment": true, "reasoning": false, "tool_call": true, "temperature": true }
+      }
+    },
     "vercel": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Vercel AI Gateway",
@@ -201,7 +219,11 @@
       "models": {
         "DeepSeek-V4-Flash": { "name": "DeepSeek V4 Flash", "attachment": false, "reasoning": false, "tool_call": true, "temperature": true },
         "Qwen3.8-Flash-Next": { "name": "Qwen 3.8 Flash Next (Vision)", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "MiMo-V2.6-Flash": { "name": "MiMo V2.6 Flash (Vision)", "attachment": true, "reasoning": false, "tool_call": true, "temperature": true }
+        "MiMo-V2.6-Flash": { "name": "MiMo V2.6 Flash (Vision)", "attachment": true, "reasoning": false, "tool_call": true, "temperature": true },
+        "DeepSeek-V4.1-Flash": { "name": "DeepSeek V4.1 Flash (1M, Vision)", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "DeepSeek-V4-Flash-Vision-Exp": { "name": "DeepSeek V4 Flash Vision (Exp)", "attachment": true, "reasoning": false, "tool_call": true, "temperature": true },
+        "GLM-5.3-Flash": { "name": "GLM 5.3 Flash (256K)", "attachment": false, "reasoning": true, "tool_call": true, "temperature": true },
+        "Qwen3.8-27B": { "name": "Qwen 3.8 27B (Vision, 256K)", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
     },
     "anymodel": {
@@ -237,6 +259,22 @@
       "settings": { "baseURL": "https://api.justwoker.icu/v1" },
       "models": {
         "claude-opus-4-8": { "name": "Claude Opus 4.8", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
+      }
+    },
+    "local-deepseek": {
+      "package": "aisdk:@ai-sdk/openai-compatible",
+      "settings": { "baseURL": "http://127.0.0.1:8000/v1" },
+      "models": {
+        "deepseek-chat":   { "name": "DeepSeek Chat (local bridge)",   "attachment": false, "reasoning": false, "tool_call": true, "temperature": true },
+        "deepseek-expert": { "name": "DeepSeek Expert (local bridge)", "attachment": false, "reasoning": false, "tool_call": true, "temperature": true }
+      }
+    },
+    "modelhub": {
+      "package": "aisdk:@ai-sdk/openai-compatible",
+      "settings": { "baseURL": "https://modelhub.134.209.223.63.sslip.io/v1" },
+      "models": {
+        "gemini-3.1-flash-lite": { "name": "Gemini 3.1 Flash Lite", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+        "codestral-latest":      { "name": "Codestral Latest",      "attachment": true, "reasoning": false, "tool_call": true, "temperature": true }
       }
     },
     "vercel": {
