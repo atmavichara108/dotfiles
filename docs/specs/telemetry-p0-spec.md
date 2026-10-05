@@ -4,9 +4,17 @@ title: T-124 Telemetry P0 (ECO-002) Specification & Design
 description: Архитектура и спецификация custom tools token-budget и audit-log (metadata-only, без содержимого промптов) для контроля токенов и аудит-лога.
 timestamp: 2026-09-23
 tags: [telemetry, eco-002, t-124, specs]
+status: done
 ---
 
 # T-124 Telemetry P0 (ECO-002) Спецификация
+
+> **Статус: DONE (2026-10-05).** Реализовано как глобальный V2-плагин
+> `opencode-global/.config/opencode/plugins/telemetry.ts` + `lib/telemetry-helpers.*`
+> (инструменты `.opencode/tools/` из §2 — V1-конвенция, в V2 заменено на
+> `ctx.tool.transform`; approved дельта). 48/48 оффлайн-тестов, verifier PASS
+> 9/9 (ветка task/spec-telemetry-p0). Инструменты живые: audit-log пишет
+> metadata-only в vault control-plane.
 
 > Спецификация разработана в рамках задачи **T-124** (приоритет P1). Цель — реализовать лёгкие custom tools для сбора телеметрии токенов и аудит-лога с соблюдением требований конфиденциальности ( metadata-only, без логирования текста промптов/ответов).
 

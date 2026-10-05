@@ -4,7 +4,7 @@ title: M Code + OpenCode — единый SSOT провайдеров (dotfiles)
 description: Execution spec для dotfiles-агента (sysop): починка SSOT-рассинхрона провайдеров между M Code (Desktop) и OpenCode TUI. Создать mcode.jsonc в dotfiles (8 провайдеров), добавить local-deepseek + modelhub в opencode.jsonc, выровнять providers.amd-radeon до 7 моделей. Scope — только dotfiles конфиги.
 tags: [spec, dotfiles, mcode, opencode, provider, ssot, dual-sdk]
 timestamp: 2026-10-01
-status: draft
+status: done
 ---
 
 # Spec: M Code + OpenCode — единый SSOT провайдеров (dotfiles)
