@@ -9,7 +9,26 @@ permission:
   task: deny
   webfetch: deny
   bash:
-    "*": deny
+    "*": ask
+    "sudo *": deny
+    "chown *": deny
+    "chmod *": deny
+    "mkfs*": deny
+    "shutdown*": deny
+    "reboot*": deny
+    "systemctl stop*": deny
+    "systemctl disable*": deny
+    "systemctl mask*": deny
+    "git push --force*": deny
+    "git push -f*": deny
+    "git branch -D*": deny
+    "git tag -d*": deny
+    "git reset --hard*": ask
+    "git clean*": ask
+    "rm -rf*": deny
+    "rm -fr*": deny
+    "rm*": deny
+    "ssh*": ask
     "python3 -m json.tool*": allow
     "python3 -m py_compile*": allow
     "python3 -c *": allow
