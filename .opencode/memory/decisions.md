@@ -508,3 +508,25 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 - `meta` не может править агентские hot-files (edit denied на себе); обслуживание verifier-конфигов делает primary напрямую.
 **Open:** M Code Desktop перезапуск+проверка провайдеров (spec-1, GUI — за Максом); P1-миноры телеметрии выше; `/ship` двух веток.
 **Next focus:** после ship — прогон P1-миноров по настроению; следить за стабильностью nvidia-провайдера (504).
+
+
+### Dream 2026-10-05: фикс bash-прав агентов — база deny→ask (снятие «Permission denied: shell»)
+**Контекст:** Системная жалоба: verifier (и замеченный meta) в обычной работе ловят `Permission denied: shell` — пайплайн sysop→subagent→verifier встаёт. «Так не должно быть, это выстрел себе в ногу».
+**Решения:**
+- Корень: по семантике OpenCode «last matching rule wins» база bash `"*": deny` + allowlist молча блокировала любую команду вне списка. Фронтматтер-ключ `bash:` корректно мапится на action `shell` (в бинаре v2.0.19 есть `"bash")return"shell"`), т.е. маппинг не сломан — сломан паттерн deny-базы.
+- Фикс: у verifier (локальный + глобальный) и у read-only агентов (system-audit, system-ops, researcher, reviewer) база `"*": deny` → `"*": ask`; deny сохранён только для разрушительного (sudo/chmod/chown/mkfs/systemctl stop|disable|mask/git push --force|-f/git branch -D/git tag -d/rm -rf/rm/pacman -S|-R/yay/paru), ask — для необратимого (git reset --hard, git clean, ssh). meta уже был на `"*": allow` — не тронут. read-only семантика (edit:deny) не тронута.
+- system-ops сохранил свой собственный богатый deny-набор (только база 4 строки заменена).
+**Reusable patterns:**
+- «Разрешения читаются на старте сессии» — правки permission-блоков эффекта не дают без рестарта сессии/TUI (подтверждено историей: 3 прошлых раза «ничего не менялось»).
+- Незакоммиченные правки агентских файлов гибнут при рестарте сессии: внесли правку — СРАЗУ коммить в task-ветку, иначе следующий рестарт (system-reminder) их откатит. Коммит verifier выжил, незакоммиченные read-only правки дважды терялись.
+- `~/.config/opencode/agent` — симлинк на `dotfiles/opencode-global/.config/opencode/agent` (inode совпадают): правишь источник в dotfiles, но помни про симлинк.
+**Lessons:**
+- grep `"*"` в agent-файлах цепляет description-строку (там тоже `"*"` внутри кавычек) — использовать якорь `^  bash:`/`    "*"`, не голый `"*"`.
+- YAML-валидация frontmatter падает на кириллическом description с двоеточиями — отбрасывать строку description перед yaml.safe_load.
+- Чужие allowlist-добавки (node/deno/check-ignore от telemetry-P0) при rebase не конфликтуют с моей заменой базы: разные строки, rebase чисто лёг.
+**Confirmed facts:**
+- Коммиты: `4c7d132` (verifier), `c13ecbf` (read-only агенты); после rebase на актуальный main (ушёл вперёд на 5 за telemetry-P0/mcode-ssot).
+- Все 6 агентов (verifier×2, system-audit, system-ops, researcher, reviewer) — база bash `ask` + deny разрушительного; meta — `allow`.
+- Основная боль (verifier — критичный acceptance-гейт) закрыта; meta уже был прав.
+**Open:** рестарт сессии/TUI для подхвата прав (за Максом); push/merge ветки по /ship; при желании — живой прогон verifier для подтверждения, что доступ вернулся.
+**Next focus:** /ship ветки (merge → push → новая task/*-ветка).
