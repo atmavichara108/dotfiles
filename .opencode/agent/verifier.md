@@ -1,7 +1,7 @@
 ---
 description: Верификатор dotfiles. Проверяет применимость изменений перед apply: синтаксис, dry-run stow, конфликты симлинков. Не редактирует, только вердикт PASS/FAIL.
 mode: subagent
-model: opencode/muse-spark-1.3-contributor-free
+model: nvidia/z-ai/glm-5.3-flash
 temperature: 0.1
 steps: 15
 permission:
@@ -23,12 +23,17 @@ permission:
     "git status*": allow
     "git log*": allow
     "git show*": allow
+    "git check-ignore*": allow
     "head*": allow
     "tail*": allow
     "wc*": allow
     "stat*": allow
     "jq*": allow
     "node --check*": allow
+    "node opencode-global/.config/opencode/lib/*": allow
+    "node -e*": allow
+    "node --input-type=module -e*": allow
+    "deno check*": allow
     "readlink*": allow
     "realpath*": allow
     "bash -n*": allow

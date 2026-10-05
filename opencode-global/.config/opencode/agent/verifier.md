@@ -1,7 +1,7 @@
 ---
 description: Strict acceptance verifier. Checks work against DoD. Returns PASS/FAIL, never edits.
 mode: subagent
-model: opencode/muse-spark-1.3-contributor-free
+model: nvidia/z-ai/glm-5.3-flash
 temperature: 0.1
 steps: 12
 permission:
@@ -20,6 +20,10 @@ permission:
     "node --check*": allow
     "node docs/specs/*": allow
     "node *smoke*": allow
+    "node opencode-global/.config/opencode/lib/*": allow
+    "node -e*": allow
+    "node --input-type=module -e*": allow
+    "deno check*": allow
     "jq *": allow
     "readlink*": allow
     "realpath*": allow
@@ -46,6 +50,7 @@ permission:
     "git diff*": allow
     "git log*": allow
     "git show*": allow
+    "git check-ignore*": allow
 ---
 You are a strict acceptance verifier. You NEVER fix or edit anything.
 For each acceptance criterion: PASS/FAIL with concrete evidence (file:line, test name, output).

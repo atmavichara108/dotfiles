@@ -1,5 +1,7 @@
 node_modules
 package.json
+# enabler для offline-тестов telemetry: plain-node требует type:module
+!lib/package.json
 bun.lock
 cli.json
 service.json
