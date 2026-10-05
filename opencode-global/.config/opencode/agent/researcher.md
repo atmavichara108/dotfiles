@@ -13,7 +13,30 @@ permission:
   webfetch: allow
   websearch: allow
   bash:
-    "*": deny
+    "*": ask
+    "sudo *": deny
+    "chown *": deny
+    "chmod *": deny
+    "mkfs*": deny
+    "shutdown*": deny
+    "reboot*": deny
+    "systemctl stop*": deny
+    "systemctl disable*": deny
+    "systemctl mask*": deny
+    "git push --force*": deny
+    "git push -f*": deny
+    "git branch -D*": deny
+    "git tag -d*": deny
+    "git reset --hard*": ask
+    "git clean*": ask
+    "rm -rf*": deny
+    "rm -fr*": deny
+    "rm*": deny
+    "ssh*": ask
+    "pacman -S*": deny
+    "pacman -R*": deny
+    "yay *": deny
+    "paru *": deny
     "ls*": allow
     "cat*": allow
     "grep*": allow

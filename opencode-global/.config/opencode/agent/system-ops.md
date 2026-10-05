@@ -19,7 +19,7 @@ permission:
   grep: allow
   webfetch: deny
   bash:
-    "*": deny
+    "*": ask
     "ls*": allow
     "cat*": allow
     "grep*": allow
