@@ -489,3 +489,22 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 **Open:** жалоба провайдеру (текст диагноза готов); тост в открытых окнах Vault исчезнет после рестарта сессии; `749dd16` не выложен; чужой `zsh/.zshrc` в дереве не тронут (stash-foreign только если помешает); этап 3 (симлинк `.mcode` в остальных проектах); live hook-fire остальных плагинов после рестартов.
 **Next focus:** `/ship` ветки `task/next-20261001-1554` (префлайт tree-cop → merge → push → новая `task/*`-ветка).
 
+
+### Dream 2026-10-05: T-124 telemetry P0 + ложные падения плагина
+**Контекст:** Исполнение двух execution-spec (mcode-ssot, telemetry-p0). Жалоба Макса «плагин падает» на фоне 50 падений telemetry.ts в логе.
+**Решения:**
+- T-124 реализован V2-плагином (`ctx.tool.transform`, `options.codemode:false`) вместо V1 `.opencode/tools/` из §2 спеки — дельта approved Максом; ассет-логика в `lib/telemetry-helpers.*` (+48 оффлайн-тестов).
+- Коммиты: `bb85f0f` (feat, плагины+тулы+verifier allowlist), `1c24bcf` (docs, спеки→done), `2a55dac` (mcode-ssot); verifier-конфиги: allowlist node/deno + модель nvidia/z-ai/glm-5.3-flash (по указанию Макса; сегодня nvidia отдавала 504, финальный прогон — на модели primary по правилу повтора).
+**Reusable patterns:**
+- Диагностика «плагин падает»: (1) grep `failed to load plugin` с разбивкой по target+cause+run; (2) `bun -e import(...)` плагина из CLI (реальный/симлинк/сырой путь) — если CLI грузит, а сервис нет: виноват сервис-процесс; (3) `ps -o lstart` сервиса — падает с момента создания файла mid-write и держится в in-memory кэше СТАРОГО процесса; новый процесс грузит чисто (текущий ран 9feea0a6: 0 падений при 50 исторических от run=099871f5).
+- Verifier-диспатч: в промпте давать ДОСЛОВНЫЙ список разрешённых команд из его allowlist + запрет на зонды (`echo`/`git branch` вне списка → отказ, субагент объявляет «shell заблокирован» ложно); CANON паттернов секретов — цитировать из файла спеки, иллюстративные ghp_/AKIA в промпте = ловушка для вердикта.
+- Честный FAIL verifier'а ценнее PASS: первый прогон вскрыл реальную дыру content-gate (ключ `data` → промпт в details переживал фильтр) — закрыто gate+тестом.
+**Lessons:**
+- «Не грузится в сервисе» ≠ «битый файл»: bun-CLI грузил плагин любым путём; чинить файл было бы ошибкой — лечится только сменой процесса сервиса.
+- Реестр minor P0-telemetry: unicode homoglyph evasion; prose-формы `secret=`/access_token=` вне 5 канонических паттернов; TOCTOU на newline-чеке; косметика окна 1969 на пустом логе (закрыта: `window: n/a (no records)`).
+**Confirmed facts:**
+- Сервис opencode — bun-standalone v1.4.2; таймстампы лога в UTC (локаль +3) — иначе «нет записей сегодня» вводит в заблуждение.
+- `~/.cache/opencode` не существует; кэш пакетов `~/.local/share/opencode/packages` пуст; live-запись audit-log пишется в vault `control-plane/audit-log.jsonl` (env `AUDIT_LOG_PATH`/`TOKEN_BUDGET_PATH`).
+- `meta` не может править агентские hot-files (edit denied на себе); обслуживание verifier-конфигов делает primary напрямую.
+**Open:** M Code Desktop перезапуск+проверка провайдеров (spec-1, GUI — за Максом); P1-миноры телеметрии выше; `/ship` двух веток.
+**Next focus:** после ship — прогон P1-миноров по настроению; следить за стабильностью nvidia-провайдера (504).
