@@ -127,3 +127,6 @@ mcode/
 # session handshake: живые раппорты не коммитятся, только шаблон
 .opencode/memory/session-reports/active/*
 !.opencode/memory/session-reports/active/_template.md
+
+# peer-comms: runtime claims log (append-only, данные сессий)
+tools/peer-comms/claims.jsonl
