@@ -6,6 +6,7 @@ temperature: 0.1
 steps: 20
 permission:
   edit: allow
+  write: allow
   webfetch: allow
   read: allow
   glob: allow
