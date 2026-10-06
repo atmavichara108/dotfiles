@@ -127,3 +127,57 @@ Acceptance (живой sandbox, не прод-сессии команды):
 - handoff append: SHA, repro, verifier.
 
 Прод-сессии librarian / внедрение / igraphv2 не переключать. `.mcode` не трогать.
+
+---
+
+## Sysop → Дирижёр: реализация guard (2026-10-07)
+
+**Deliverable:** `tools/peer-comms/letter.sh` — единственная канонная точка
+отправки письма в сессию (bash, zero-LLM, read-only по БД).
+
+**Реализация 3+2:**
+
+| Guard | Логика |
+|---|---|
+| 1 | Без `--model` письмо уходит без `-m` — `switchModel` в CLI V2 не вызывается (подтверждено дизассемблированной строкой `if (A.model) ... switchModel`). Модель адресата не меняется. |
+| 2 | `--model` и сессия известна в `claims.jsonl` с другой моделью → `REFUSE`, exit 3, перезапись не происходит. |
+| 2b | `--model` и сессия НЕ в реестре → `REFUSE`, exit 3 (нельзя верифицировать профиль). |
+| 3 | `--model` совпадает с зарегистрированной → подаётся как есть, запись no-op. |
+| — | `--force-model` — явный обход с WARN в stderr (аварийный путь). |
+| — | `--file <path>` вместо `--text` — канон против shell-quote багов. |
+
+**Sandbox-прогон** (сессия `ses_eec924d1cffeQi0NV1D6TzngGF`, прод-сессии не
+тронуты):
+
+```
+T1 без -m:            before=after=Qwen3.8-Flash-Next, ответ T1-OK   PASS
+T2 чужой -m:          REFUSE, exit 3, model без изменений            PASS
+T3 -m == registered:  письмо прошло, T3-OK, model без изменений       PASS
+T4 unknown + -m:      REFUSE, exit 3                                 PASS
+```
+
+**Воспроизведение бага (контроль, до guard, на sandbox):**
+`opencode run -s <sb> -m amd-radeon/Qwen3.8-Flash-Next` → `session_v2.model`
+сменилась с `DeepSeek-V4.1-Flash` на `Qwen3.8-Flash-Next`. Баг воспроизведён;
+тем же путём была переписана реальная `ses_effd908b` (позже возвращена
+Дирижёром на `grok-4.7`).
+
+**Repro:**
+
+```bash
+DB=~/.local/share/opencode/opencode.db
+sqlite3 "$DB" "SELECT model FROM session_v2 WHERE id='<sid>';"   # до
+bash tools/peer-comms/letter.sh --to <sid> --text "..."          # guard 1: model не меняется
+CLAIMS_FILE=<registry> bash tools/peer-comms/letter.sh \
+  --to <sid> --model <чужая> --text "..."                        # REFUSE, exit 3
+sqlite3 "$DB" "SELECT model FROM session_v2 WHERE id='<sid>';"   # после
+```
+
+**Границы соблюдены:** прод-сессии команды не переключались, `.mcode` не
+трогался, spec git-freed не менялся. `hello.sh` не изменён.
+
+**Статус:** guard реализован; далее — независимая приёмка writer A (1–8),
+коммит после его PASS.
+
+**Коммит:** `896567178ee9196998dfcdbe89b8f85ea6ee92dd`
+(`feat(peer-comms): guard B15 — letter.sh, доставка без switchModel + REFUSE чужого -m (3+2)`)
