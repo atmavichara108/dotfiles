@@ -1,0 +1,146 @@
+{
+  "name": "maya-lint-dictionary",
+  "version": 2,
+  "updated": "2026-10-06",
+  "kind": "source-of-truth",
+  "governor": "librarian",
+  "write-policy": "аппенд-инкременты с provenance; ручные мутации запрещены; правит только librarian",
+  "provenance": [
+    {
+      "source": "PAE Phase 1 report S5.2 (06-Audits/2026-10-05-pae-phase1-readiness-audit.md)",
+      "observed_at": "2026-10-05"
+    },
+    {
+      "source": "peer-consent protocol 5 gейтов (stream-intent-036)",
+      "observed_at": "2026-10-06"
+    },
+    {
+      "source": "green-light Рудры через peer-comms, транслирован старшим",
+      "observed_at": "2026-10-06"
+    },
+    {
+      "source": "whitelist инкремент: self-check спеки (5 фраз × сам spec-файл)",
+      "observed_at": "2026-10-06"
+    }
+  ],
+  "rule-1-phrase-only": "только фразы и составные термы; одиночные интерпретативные слова (maya, майя, terrain, kaiju-подобные) запрещены — false positives на обычных словах",
+  "terms": [
+    {
+      "phrase": "Вельзевул",
+      "external": "coordinating agent",
+      "scope": "any"
+    },
+    {
+      "phrase": "Великий мудрец",
+      "external": "coordinating agent / senior agent",
+      "scope": "any"
+    },
+    {
+      "phrase": "Allis Maya",
+      "external": "world-simulator",
+      "scope": "any"
+    },
+    {
+      "phrase": "Голос Мира",
+      "external": "notification channel",
+      "scope": "any"
+    },
+    {
+      "phrase": "Обжорство",
+      "external": "feature-mining",
+      "scope": "any"
+    },
+    {
+      "phrase": "Harvest Festival",
+      "external": "safe-mode migration",
+      "scope": "any"
+    },
+    {
+      "phrase": "Harvest",
+      "external": "safe-mode migration",
+      "scope": "report-only-until-gate"
+    },
+    {
+      "phrase": "Эко-Линия",
+      "external": "community track",
+      "scope": "any"
+    },
+    {
+      "phrase": "Pip-Boy",
+      "external": "dashboard",
+      "scope": "any"
+    },
+    {
+      "phrase": "Вельдора",
+      "external": "M Code",
+      "scope": "any"
+    },
+    {
+      "phrase": "Великие слуги",
+      "external": "agent fleet",
+      "scope": "any"
+    },
+    {
+      "phrase": "Свита",
+      "external": "agent fleet",
+      "scope": "report-only-until-gate"
+    },
+    {
+      "phrase": "Бестиарий",
+      "external": "catalog",
+      "scope": "any"
+    },
+    {
+      "phrase": "Хроники",
+      "external": "changelog",
+      "scope": "report-only-until-gate"
+    },
+    {
+      "phrase": "Именование = канонизация",
+      "external": "acceptance gate (raw to canon)",
+      "scope": "any"
+    }
+  ],
+  "excluded-by-rule": [
+    "Майя",
+    "maya",
+    "вельзе-фрагменты одиночные"
+  ],
+  "whitelist": [
+    {
+      "path": "/home/rudra/dotfiles/docs/specs/maya-lint-v2.md",
+      "phrase": "Вельзевул",
+      "reason": "спека Maya-lint v2 — документация словаря, канонирует термины",
+      "owner": "librarian",
+      "added": "2026-10-06"
+    },
+    {
+      "path": "/home/rudra/dotfiles/docs/specs/maya-lint-v2.md",
+      "phrase": "Великий мудрец",
+      "reason": "спека Maya-lint v2 — документация словаря, канонирует термины",
+      "owner": "librarian",
+      "added": "2026-10-06"
+    },
+    {
+      "path": "/home/rudra/dotfiles/docs/specs/maya-lint-v2.md",
+      "phrase": "Allis Maya",
+      "reason": "спека Maya-lint v2 — документация словаря, канонирует термины",
+      "owner": "librarian",
+      "added": "2026-10-06"
+    },
+    {
+      "path": "/home/rudra/dotfiles/docs/specs/maya-lint-v2.md",
+      "phrase": "Голос Мира",
+      "reason": "спека Maya-lint v2 — документация словаря, канонирует термины",
+      "owner": "librarian",
+      "added": "2026-10-06"
+    },
+    {
+      "path": "/home/rudra/dotfiles/docs/specs/maya-lint-v2.md",
+      "phrase": "Pip-Boy",
+      "reason": "спека Maya-lint v2 — документация словаря, канонирует термины",
+      "owner": "librarian",
+      "added": "2026-10-06"
+    }
+  ]
+}
