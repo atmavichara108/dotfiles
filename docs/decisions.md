@@ -630,3 +630,25 @@ autostash не умеет прятать правки за ссылкой («bey
 Следствие: тихий branch-auto и sessionID-замок действуют в backend opencode;
 универсальным для обоих SDK остаётся git-уровень — pre-commit гейт 4
 (срабатывает из любого коммиттера) + lane-пакты в AGENTS.md проектов.
+
+---
+
+### ADR-020: Append-only peer handshake в Bash + jq
+**Дата:** 2026-10-06
+**Контекст:** Параллельным сессиям нужен минимальный офлайн-протокол hello/ack/bye
+без сетевого сервиса, LLM и зависимости от OpenCode plugin API.
+**Решение:** Канонический entrypoint — `tools/peer-comms/hello.sh` с JSONL claims-журналом,
+TTL 30 минут и вычисляемым active-состоянием. Поддержаны `hello`, `ack`, `ping` и `bye`;
+путь claims задаётся через `CLAIMS_FILE`, по умолчанию рядом со скриптом. Утилита
+использует только Bash, jq и стандартные системные команды; malformed-строки
+пропускаются при чтении, старые строки не переписываются. `ack` принимает
+`--session <recipient> --from <sender>` с опциональными `--role/--model/--scope`,
+пишет op=ack с полями session/from/ts; ping показывает ack как active (не inactive),
+отображает `ack from: <sender>`. `smoke.sh` покрывает active/inactive/stale/unknown
+lifecycle плюс handshake A↔B с ack и проверку, что bye переопределяет ack.
+tools/peer-comms не является stow-пакетом; stow.sh содержит dry-run sync entrypoint
+для проверки исполнимости и синтаксиса canonical tools.
+**Последствия:** Журнал не требует очистки и не является источником секретов;
+просроченные claims автоматически неактивны, а live two-party smoke остаётся
+отдельным verifier-гейтом. Альтернативный Python-дубликат убран в именованный
+stash после разрешения ownership в пользу активной task-ветки.
