@@ -33,7 +33,7 @@ for (const doc of documents) {
     // phrase-only: регистронезависимый поиск составного терма
     const re = new RegExp(term.phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
     for (const m of doc.text.matchAll(re)) {
-      if (whitelist.some((w) => w.path === doc.label && term.phrase === w.phrase)) continue;
+      if (whitelist.some((w) => w.path === doc.label && term.phrase === w.phrase && (!w.fragments || w.fragments.some((f) => doc.text.toLowerCase().includes(f.toLowerCase()))))) continue;
       hits.push({ document: doc.label, phrase: term.phrase, external: term.external });
     }
   }

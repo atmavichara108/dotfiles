@@ -108,6 +108,27 @@
   ],
   "whitelist": [
     {
+      "path": "/home/rudra/Projects/AndroidOS::git-log",
+      "phrase": "Pip-Boy",
+      "fragments": [
+        "for Pip-Boy is Russian punctuation restoration",
+        "Peer session work included: Studio sync"
+      ],
+      "reason": "historical commit messages referencing dashboard name",
+      "owner": "librarian",
+      "added": "2026-10-07"
+    },
+    {
+      "path": "/home/rudra/dotfiles::git-log",
+      "phrase": "Pip-Boy",
+      "fragments": [
+        "command/agents.md: /agents"
+      ],
+      "reason": "historical commit messages referencing dashboard name",
+      "owner": "librarian",
+      "added": "2026-10-07"
+    },
+    {
       "path": "/home/rudra/dotfiles/docs/specs/maya-lint-v2.md",
       "phrase": "Вельзевул",
       "reason": "спека Maya-lint v2 — документация словаря, канонирует термины",
