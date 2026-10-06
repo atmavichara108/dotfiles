@@ -24,7 +24,7 @@
 // Fail-safe: отсутствующие/битые файлы стораджей не роняют сбор —
 // collectKnownSecrets() возвращает [] без throw.
 
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync, statSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 
@@ -133,6 +133,95 @@ export function redactExact(text, secrets) {
   return out
 }
 
+// --- Cache-invalidation helpers (mtime+size snapshot) -----------------------
+//
+// Чтобы плагин не пересобирал секреты на каждом turn, но и не носил
+// устаревший набор после ротации пароля, держим снимок mtime+size по
+// каждому source-файлу. Пересбор запускается, когда (a) прошёл хотя бы
+// minIntervalMs с последней проверки И (b) снимок изменился.
+// Ошибки stat не роняют — проблемный путь считается "непрочитанным",
+// что триггерит пересбор (fail-safe в сторону более частых чтений).
+
+function statEntry(path) {
+  try {
+    const st = statSync(path)
+    return { mtimeMs: Number(st.mtimeMs) || 0, size: Number(st.size) || 0 }
+  } catch {
+    return null
+  }
+}
+
+function buildSnapshot(paths) {
+  const m = new Map()
+  for (const p of paths) m.set(p, statEntry(p))
+  return m
+}
+
+function snapshotEqual(a, b) {
+  if (a.size !== b.size) return false
+  for (const [k, va] of a) {
+    const vb = b.get(k)
+    if (va === null && vb === null) continue
+    if (va === null || vb === null) return false
+    if (va.mtimeMs !== vb.mtimeMs || va.size !== vb.size) return false
+  }
+  return true
+}
+
+// Резолвит те же пути, что будет читать collectKnownSecrets — чтобы
+// плагин мог строить снимок без дублирования логики.
+export function resolveSecretPaths(opts = {}) {
+  const pathsOverride = parsePathsEnv(process.env.SECRET_GUARD_PATHS)
+  if (Array.isArray(opts.paths) && opts.paths.length > 0) {
+    return opts.paths.filter((p) => typeof p === "string" && p.length > 0)
+  }
+  if (pathsOverride !== null) return pathsOverride.map((s) => s.path)
+  return DEFAULT_PATHS.map((s) => s.path)
+}
+
+// Stateful collector: кэширует последний набор секретов и перечитывает
+// стораджи только когда (a) прошёл minIntervalMs с последней проверки
+// и (b) mtime/size какого-то источника изменились. Ошибки не бросаются,
+// возвращается предыдущий кэш (или []).
+export function createSecretsCollector(opts = {}) {
+  const minIntervalMs =
+    Number.isFinite(opts.minIntervalMs) && opts.minIntervalMs >= 0
+      ? opts.minIntervalMs
+      : 5000
+  const collectOpts = { paths: opts.paths, minLength: opts.minLength }
+  const paths = resolveSecretPaths(collectOpts)
+  let cachedSecrets = null
+  let cachedSnapshot = null
+  let lastCheckTs = 0
+
+  function refresh() {
+    const now = Date.now()
+    if (cachedSecrets !== null && now - lastCheckTs < minIntervalMs) {
+      return cachedSecrets
+    }
+    lastCheckTs = now
+    const snap = buildSnapshot(paths)
+    if (cachedSnapshot !== null && snapshotEqual(cachedSnapshot, snap)) {
+      return cachedSecrets ?? []
+    }
+    cachedSnapshot = snap
+    try {
+      cachedSecrets = collectKnownSecrets(collectOpts)
+    } catch {
+      cachedSecrets = []
+    }
+    return cachedSecrets ?? []
+  }
+
+  return {
+    getSecrets: refresh,
+    invalidate() {
+      cachedSnapshot = null
+      lastCheckTs = 0
+    },
+  }
+}
+
 // Auto-discovery guard (конвенция lib/): callable default без побочных
 // эффектов, чтобы каталог lib/ мог грузиться как pseudo-plugin.
 export default Object.assign(async () => ({}), {
@@ -140,4 +229,6 @@ export default Object.assign(async () => ({}), {
   DEFAULT_MIN_LENGTH,
   collectKnownSecrets,
   redactExact,
+  resolveSecretPaths,
+  createSecretsCollector,
 })

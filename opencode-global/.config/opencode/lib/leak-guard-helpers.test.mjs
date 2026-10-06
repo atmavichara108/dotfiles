@@ -13,10 +13,21 @@
 // та же конвенция, что у остальных модулей lib/.
 
 import assert from "node:assert/strict"
-import { existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  rmSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { collectKnownSecrets, redactExact } from "./leak-guard-helpers.js"
+import {
+  collectKnownSecrets,
+  createSecretsCollector,
+  redactExact,
+} from "./leak-guard-helpers.js"
 
 const isMain = (() => {
   if (!process.argv[1]) return false
@@ -225,6 +236,81 @@ test("redactExact: non-string input → returned as-is", () => {
   assert.equal(redactExact("", ["x"]), "")
   assert.equal(redactExact(null, ["x"]), null)
   assert.equal(redactExact(undefined, ["x"]), undefined)
+})
+
+// --- 3. Rotation / cache invalidation (createSecretsCollector) --------------
+//
+// Проверяем, что collector инвалидирует кэш при изменении mtime/size
+// исходных файлов (ротация пароля). Чтобы не зависеть от wall-clock и
+// granularity ФС, используем minIntervalMs: 0 и utimesSync для явного
+// сдвига mtime fixture.
+
+test("collector: rebuilds secret set after source file rotation", () => {
+  const p = writeFixture("rotate-1.json", { password: "OLD_FAKE_PASSWORD_00001" })
+  const collector = createSecretsCollector({ paths: [p], minIntervalMs: 0 })
+  const first = collector.getSecrets()
+  assert.ok(first.includes("OLD_FAKE_PASSWORD_00001"))
+
+  // Overwrite with a different secret and bump mtime to the future so
+  // any FS timestamp granularity is covered.
+  const newSecret = "NEW_FAKE_PASSWORD_00002"
+  writeFileSync(p, JSON.stringify({ password: newSecret }), "utf8")
+  const future = Date.now() / 1000 + 60
+  utimesSync(p, future, future)
+
+  const second = collector.getSecrets()
+  assert.ok(second.includes(newSecret), "new secret must be present after rotation")
+  assert.ok(
+    !second.includes("OLD_FAKE_PASSWORD_00001"),
+    "old secret must disappear after rotation",
+  )
+})
+
+test("collector: redacts new secret after rotation (end-to-end)", () => {
+  const p = writeFixture("rotate-redact.json", { password: "FAKE_ROTATE_OLD_0001" })
+  const collector = createSecretsCollector({ paths: [p], minIntervalMs: 0 })
+  collector.getSecrets()
+
+  const newSecret = "FAKE_ROTATE_NEW_00002"
+  writeFileSync(p, JSON.stringify({ password: newSecret }), "utf8")
+  const future = Date.now() / 1000 + 60
+  utimesSync(p, future, future)
+
+  const secrets = collector.getSecrets()
+  const out = redactExact(`used ${newSecret} here`, secrets)
+  assert.equal(out, "used [REDACTED] here")
+})
+
+test("collector: respects minIntervalMs debounce (no re-read within window)", () => {
+  const p = writeFixture("debounce.json", { password: "FAKE_DEBOUNCE_FIRST_01" })
+  const collector = createSecretsCollector({ paths: [p], minIntervalMs: 60_000 })
+
+  const first = collector.getSecrets()
+  assert.ok(first.includes("FAKE_DEBOUNCE_FIRST_01"))
+
+  // Rewrite + bump mtime; within the 60s window the collector must
+  // return the cached set and NOT pick up the new secret.
+  writeFileSync(p, JSON.stringify({ password: "FAKE_DEBOUNCE_SECOND_2" }), "utf8")
+  const future = Date.now() / 1000 + 60
+  utimesSync(p, future, future)
+
+  const second = collector.getSecrets()
+  assert.ok(second.includes("FAKE_DEBOUNCE_FIRST_01"))
+  assert.ok(!second.includes("FAKE_DEBOUNCE_SECOND_2"))
+})
+
+test("collector: invalidate() forces re-read regardless of interval", () => {
+  const p = writeFixture("invalidate.json", { password: "FAKE_BEFORE_INVALIDATE_1" })
+  const collector = createSecretsCollector({ paths: [p], minIntervalMs: 60_000 })
+  assert.ok(collector.getSecrets().includes("FAKE_BEFORE_INVALIDATE_1"))
+
+  writeFileSync(p, JSON.stringify({ password: "FAKE_AFTER_INVALIDATE_01" }), "utf8")
+  const future = Date.now() / 1000 + 60
+  utimesSync(p, future, future)
+
+  collector.invalidate()
+  const refreshed = collector.getSecrets()
+  assert.ok(refreshed.includes("FAKE_AFTER_INVALIDATE_01"))
 })
 
 // --- runner ------------------------------------------------------------------

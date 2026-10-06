@@ -3,12 +3,21 @@
 // messages before they reach the model. V2-native Plugin.define, pattern
 // follows input-security.ts (same context hook, same content walker).
 //
-// Secret collection (lazy, cached per session):
-//   collectKnownSecrets() reads OpenCode storages
+// Secret collection (cache with mtime/size invalidation):
+//   createSecretsCollector() reads OpenCode storages via helpers
 //     ~/.config/opencode/service.json    — поле "password"
 //     ~/.local/share/opencode/auth.json  — все строковые значения
 //     ~/.local/state/opencode/service.json — поле "password"
 //   and filters by SECRET_GUARD_MIN_LENGTH (default 12).
+//
+// Cache policy:
+//   - Snapshot of mtime+size for each source file.
+//   - Re-read at most once per 5 seconds (debounce).
+//   - If any source file's mtime or size changed since last read,
+//     the secret set is rebuilt. This covers password rotation via
+//     `opencode service set password ...` without a backend restart.
+//   - Read errors are swallowed (fail-safe): the previous cache is
+//     retained, no turn is killed.
 //
 // Hook:
 //   ctx.session.hook("context", ...) — тот же паттерн, что input-security:
@@ -23,7 +32,7 @@
 // turn не роняется. Отсутствие стораджей → [] → no-op.
 
 import { Plugin } from "@opencode/plugin"
-import { collectKnownSecrets, redactExact } from "../lib/leak-guard-helpers.js"
+import { createSecretsCollector, redactExact } from "../lib/leak-guard-helpers.js"
 
 const redactContent = (content: any[] | undefined, secrets: string[]): void => {
   if (!Array.isArray(content)) return
@@ -47,26 +56,17 @@ const redactContent = (content: any[] | undefined, secrets: string[]): void => {
 export default Plugin.define({
   id: "leak-guard",
   async setup(ctx) {
-    // Lazy + cached: секреты собираются один раз при первом hook-вызове.
-    // Это позволяет не читать стораджи при старте плагина, если хук не
-    // срабатывает, и кэшировать результат в рамках сессии.
-    let cachedSecrets: string[] | null = null
-    const getSecrets = (): string[] => {
-      if (cachedSecrets !== null) return cachedSecrets
-      try {
-        cachedSecrets = collectKnownSecrets()
-      } catch {
-        cachedSecrets = []
-      }
-      return cachedSecrets
-    }
+    // Cache with mtime/size invalidation; rebuilds when source files
+    // change (e.g. after password rotation) no more often than once
+    // per 5 seconds. Errors stay inside the collector (fail-safe).
+    const collector = createSecretsCollector()
 
     try {
       // V2 context hook — messages, уходящие модели (включая tool-result).
       // Паттерн идентичен input-security.ts.
       await ctx.session.hook("context", (event: { messages?: Array<{ content?: any[] }> }) => {
         try {
-          const secrets = getSecrets()
+          const secrets = collector.getSecrets()
           if (secrets.length === 0) return
           for (const entry of event?.messages ?? []) {
             redactContent(entry?.content, secrets)
