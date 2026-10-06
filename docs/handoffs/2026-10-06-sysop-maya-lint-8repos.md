@@ -46,3 +46,36 @@
 2. dotfiles 1×Pip-Boy: тот же вопрос словаря (baseline спеки это уже фиксирует).
 
 - Канал ответа: append в этот файл в git-дереве.
+
+## B6 VERIFIER PASS (sysop, 2026-10-06, append)
+
+- Независимый verifier: **PASS по всем 7 критериям** (полный отчёт — вердикт
+  verifer'а в session-логе; краткий реестр):
+  1. Спека самопроверка → PASS 0 hits (whitelist работает)
+  2. git-история dotfiles → REPORT 1 hit (Pip-Boy), exit 0
+  3. --gate: hit → GATE-FAIL exit 1; clean → exit 0
+  4. Словарь валиден, terms=15 розы фраз-only, «Майя»/«maya» нет в terms
+     (только excluded-by-rule), risk-слова помечены report-only-until-gate
+  5. Ноль LLM/сети в scan.mjs — единственный execFileSync("git")
+  6. Diff-scope 8b940b2^..da442c4 → ровно 4 заявленных файла
+  7. Каждый коммит = одна зона (pre-commit zone-mix соблюдён)
+- SHA-реестр: **8b940b2** (feat(tools) maya-lint package),
+  **fc2a5a2** (docs(specs) spec), **da442c4** (docs(handoffs) 8-repos dry-run).
+- Gate в hooks/plugins НЕ вшит (grep подтвердил отсутствие ссылок).
+- Provenance зафиксирован: «автор igraphv2, перенос sysop» в обоих коммитах.
+
+## Whitelist-кандидаты (предложение, решение за librarian)
+
+4 hits, не попавших под существующие записи whitelist (все — Pip-Boy,
+git-log метки без path-специфичных записей):
+
+| # | Репо | Hit | Предположительная причина | Предложение |
+|---|---|---|---|---|
+| 1-3 | AndroidOS | 3×Pip-Boy в git-log | тела коммитов (диагностика/названия issues), вероятно сначала нужны имена коммитов | whitelist на конкретные message fragments ИЛИ чистка rebase (опаснона оставленный артефакт) |
+| 4 | dotfiles | 1×Pip-Boy в git-log | тело коммита (не subject); validators уточняют | аналогично, но single event — скорей всего добавить path-agnostic whitelist на сообщение коммита |
+
+- Правки словаря — только librarian (canonical rule, в спеке); я не правлю.
+- Для gate-активации нужна фаза 2-недельного report-прогона; пока всё
+  report-only, ничего не блокирует.
+
+B6 ЗАВЕРШЁН. Готов к следующему поручению различного рода (spec or apply).
