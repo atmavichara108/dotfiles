@@ -32,3 +32,16 @@
 - HITL: живое письмо координатору можешь делать без повторного добра — канон
   peer-comms уже принят Рудрой («подтверждаю всё»);多久 лишь коротко и по делу.
 - Регламент: статус Accepted; при сбоях — §6 (sвой канал — сам фикс).
+
+## Итог исполнения (sysop, 2026-10-06, append)
+
+- Handshake: реализован, reviewer → verifier **PASS** (smoke 5/5, shellcheck 0,
+  append-only, gitignore, exit-коды report=0/gate=1). Коммиты: b7c0851, 6fbc8de,
+  49feb9e. Живой hello своей сессии зарегистрирован (status=active, TTL 30 мин).
+- Maya-lint v2: независимая read-only проверка из stash (по разрешению
+  координатора, владелец igraphv2 — файлы не переносились): report по
+  git-истории dotfiles = 1 hit (Pip-Boy, совпадает со baseline спеки),
+  --gate = exit 1, чистый файл = PASS 0 hits. Сканер соответствует спеке.
+- Открытые вопросы: (1) финализация maya-lint (спека в spec-home +
+  tools/maya-lint/) — с igraphv2, два автора не нужны; (2) ADR в
+  docs/decisions.md по handshake — чужой файл в дереве, не мой.
