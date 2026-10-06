@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenCode v2 serve — managed API endpoint
+Documentation=https://opencode.ai
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.opencode/bin/opencode serve --service --hostname 127.0.0.1 --port 49374
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,246 @@
+#!/bin/bash
+# opencode-bridge — тонкий wrapper для M Code ↔ OpenCode контракта (T-156)
+# Использование:
+#   opencode-bridge prompt <session-id> <text>  — отправить запрос в сессию
+#   opencode-bridge read <session-id>           — прочитать сообщения сессии
+#   opencode-bridge handoff read [path]         — прочитать git-tree handoff артефакт
+#   opencode-bridge handoff write <path>        — записать handoff артефакт (stdin → файл)
+#
+# Токен читается из ~/.config/opencode/service.json (поле password)
+# и передаётся через HTTP Basic auth (username: opencode).
+# Никогда не логируется и не выводится.
+# Handoff ограничен git-деревом репозитория, live push не реализуется.
+
+set -euo pipefail
+
+# Константы
+readonly OPENCODE_ENDPOINT="${OPENCODE_ENDPOINT:-http://127.0.0.1:49374}"
+readonly SERVICE_JSON="${HOME}/.config/opencode/service.json"
+readonly HANDOFF_DIR="${DOTFILES_ROOT:-${HOME}/dotfiles}/.opencode/handoff"
+readonly DEFAULT_HANDOFF="${HANDOFF_DIR}/mcode-bridge.json"
+
+# Утилиты
+log() { echo "[$(date +%H:%M:%S)] $*"; }
+die() { echo "Error: $*" >&2; exit 1; }
+
+repo_root() {
+    git -C "${HANDOFF_DIR%/*/*}" rev-parse --show-toplevel 2>/dev/null \
+        || die "not in git repository"
+}
+
+# Resolve path inside repo with symlink-aware realpath.
+# For existing paths (read, or write with existing target): uses `realpath`
+# which fully resolves all symlinks and requires all components to exist.
+# For non-existing paths (write with new target): uses `realpath -m` which
+# resolves existing symlinks but doesn't require all components to exist.
+# Boundary check: resolved path must be strictly under root/ (slash boundary).
+repo_path() {
+    local path="$1"
+    local root
+    root=$(repo_root)
+
+    local abs_path
+    if [[ -e "${path}" || -L "${path}" ]]; then
+        # Path exists (file, dir, or symlink) — fully resolve all symlinks
+        abs_path=$(realpath -- "${path}") || die "cannot resolve path: ${path}"
+    else
+        # Path doesn't exist yet (write case) — resolve existing ancestors
+        abs_path=$(realpath -m -- "${path}")
+    fi
+
+    # Strict slash-boundary check: must be under root/ (not equal to root)
+    if [[ "${abs_path}" != "${root}/"* ]]; then
+        die "handoff path outside git repository: ${abs_path}"
+    fi
+
+    printf '%s' "${abs_path}"
+}
+
+valid_session_id() {
+    [[ "$1" =~ ^[A-Za-z0-9_-]+$ ]]
+}
+
+usage() {
+    cat <<EOF
+Usage:
+  $(basename "$0") prompt <session-id> <text>
+  $(basename "$0") read <session-id>
+  $(basename "$0") handoff read [path]
+  $(basename "$0") handoff write <path>
+
+Commands:
+  prompt <session-id> <text>  — POST /api/session/{id}/prompt с JSON {"text": "..."}
+  read <session-id>           — GET /api/session/{id}/message
+  handoff read [path]         — прочитать handoff артефакт (default: .opencode/handoff/mcode-bridge.json)
+  handoff write <path>        — записать stdin в handoff артефакт (git-tree only, no push)
+
+Environment:
+  OPENCODE_ENDPOINT           — override endpoint (default: http://127.0.0.1:49374)
+  OPENCODE_SERVICE_USER       — override Basic auth username (default: opencode)
+  DOTFILES_ROOT               — override dotfiles repo root (default: ~/dotfiles)
+
+EOF
+    exit 1
+}
+
+# Чтение токена из service.json (поле password), без логирования
+read_token() {
+    if [[ ! -f "${SERVICE_JSON}" ]]; then
+        die "service.json not found: ${SERVICE_JSON}"
+    fi
+    local token
+    token=$(jq -r '.password // empty' "${SERVICE_JSON}" 2>/dev/null) || true
+    if [[ -z "${token}" ]]; then
+        die "no password field in ${SERVICE_JSON}"
+    fi
+    printf '%s' "${token}"
+}
+
+# HTTP запрос с авторизацией Basic (token не выводится, не логируется)
+http_request() {
+    local method="$1"
+    local endpoint="$2"
+    shift 2
+
+    local user="${OPENCODE_SERVICE_USER:-opencode}"
+    local token
+    token=$(read_token)
+
+    # base64-строку храним только в локальной переменной, не выводим
+    local basic_creds
+    basic_creds=$(printf '%s:%s' "${user}" "${token}" | base64 -w0)
+
+    local http_code body
+    local tmpfile
+    tmpfile=$(mktemp)
+    # shellcheck disable=SC2064 # intentional: trap must capture current tmpfile value
+    trap "rm -f '${tmpfile}'" RETURN
+
+    http_code=$(curl --silent --show-error \
+        -o "${tmpfile}" \
+        -w "%{http_code}" \
+        -X "${method}" \
+        -H "Authorization: Basic ${basic_creds}" \
+        -H "Content-Type: application/json" \
+        "${OPENCODE_ENDPOINT}${endpoint}" \
+        "$@") || { rm -f "${tmpfile}"; die "curl failed for ${endpoint}"; }
+
+    body=$(cat "${tmpfile}")
+    rm -f "${tmpfile}"
+
+    case "${http_code}" in
+        2[0-9][0-9])
+            printf '%s' "${body}"
+            ;;
+        401)
+            die "authentication failed (HTTP 401) for ${endpoint}; check service.json and OPENCODE_SERVICE_USER"
+            ;;
+        *)
+            die "HTTP ${http_code} for ${endpoint}"
+            ;;
+    esac
+}
+
+# Команда: prompt
+cmd_prompt() {
+    local session_id="${1:-}"
+    local text="${2:-}"
+
+    if [[ -z "${session_id}" || -z "${text}" ]]; then
+        die "usage: $(basename "$0") prompt <session-id> <text>"
+    fi
+    valid_session_id "${session_id}" || die "invalid session-id"
+
+    local response
+    response=$(http_request POST "/api/session/${session_id}/prompt" \
+        --data "$(jq -n --arg text "${text}" '{text: $text}')") || die "prompt request failed"
+
+    echo "${response}"
+}
+
+# Команда: read
+cmd_read() {
+    local session_id="${1:-}"
+
+    if [[ -z "${session_id}" ]]; then
+        die "usage: $(basename "$0") read <session-id>"
+    fi
+    valid_session_id "${session_id}" || die "invalid session-id"
+
+    local response
+    response=$(http_request GET "/api/session/${session_id}/message") || die "read request failed"
+
+    echo "${response}"
+}
+
+# Команда: handoff
+cmd_handoff() {
+    local action="${1:-}"
+    shift || true
+
+    case "${action}" in
+        read)
+            local path
+            path=$(repo_path "${1:-${DEFAULT_HANDOFF}}")
+            if [[ ! -f "${path}" ]]; then
+                die "handoff file not found: ${path}"
+            fi
+            cat "${path}"
+            ;;
+        write)
+            local path="${1:-}"
+            if [[ -z "${path}" ]]; then
+                die "usage: $(basename "$0") handoff write <path>"
+            fi
+            # Reject existing final symlink to prevent writing through it
+            if [[ -L "${path}" ]]; then
+                die "handoff write: target is an existing symlink, refusing: ${path}"
+            fi
+            # Resolve path (resolves existing parent symlinks) and verify repo boundary
+            local abs_path
+            abs_path=$(repo_path "${path}")
+            # Defense-in-depth: verify resolved parent realpath is inside repo
+            local parent resolved_parent root
+            parent=$(dirname -- "${abs_path}")
+            if [[ -d "${parent}" ]]; then
+                resolved_parent=$(realpath -- "${parent}")
+                root=$(repo_root)
+                if [[ "${resolved_parent}" != "${root}/"* && "${resolved_parent}" != "${root}" ]]; then
+                    die "handoff write: parent directory outside repository: ${resolved_parent}"
+                fi
+            fi
+            mkdir -p "${parent}"
+            cat > "${abs_path}"
+            log "handoff written to ${abs_path}"
+            ;;
+        *)
+            die "unknown handoff action: ${action} (expected read|write)"
+            ;;
+    esac
+}
+
+# Main
+main() {
+    local cmd="${1:-}"
+    shift || true
+
+    case "${cmd}" in
+        prompt)
+            cmd_prompt "$@"
+            ;;
+        read)
+            cmd_read "$@"
+            ;;
+        handoff)
+            cmd_handoff "$@"
+            ;;
+        -h|--help|help)
+            usage
+            ;;
+        *)
+            die "unknown command: ${cmd} (expected prompt|read|handoff)"
+            ;;
+    esac
+}
+
+main "$@"
