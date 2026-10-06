@@ -9,6 +9,43 @@ BLUE='\033[0;34m'
 
 echo -e "${BLUE}🔗 Stowing dotfiles from $DOTFILES_DIR${NC}\n"
 
+# --- Repo-local tools verification (dry-run sync entrypoint) ---
+# tools/peer-comms is NOT stowed; verify presence, exec bits and syntax before stow.
+verify_tools() {
+  local tools_ok=0
+  local tools_fail=0
+
+  echo -e "${BLUE}🔍 Verifying canonical tools (dry-run)...${NC}"
+
+  for script in tools/peer-comms/hello.sh tools/peer-comms/smoke.sh; do
+    if [[ -f "${script}" ]] && [[ -x "${script}" ]]; then
+      echo -e "  ${GREEN}✓${NC} ${script} present and executable"
+      (( ++tools_ok ))
+    else
+      echo -e "  ${RED}✗${NC} ${script} missing or not executable"
+      (( ++tools_fail ))
+    fi
+  done
+
+  for script in tools/peer-comms/hello.sh tools/peer-comms/smoke.sh; do
+    if bash -n "${script}" 2>/dev/null; then
+      echo -e "  ${GREEN}✓${NC} ${script} syntax OK"
+      (( ++tools_ok ))
+    else
+      echo -e "  ${RED}✗${NC} ${script} syntax error"
+      (( ++tools_fail ))
+    fi
+  done
+
+  echo -e "${BLUE}Tools dry-run:${NC} ${GREEN}${tools_ok} checks passed${NC}"
+  if (( tools_fail > 0 )); then
+    echo -e "${RED}⚠ ${tools_fail} checks failed${NC}"
+    return 1
+  fi
+}
+
+verify_tools || exit 1
+
 packages=(
   "zsh" "p10k" "tmux" "alacritty"
   "nvim"

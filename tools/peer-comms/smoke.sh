@@ -1,6 +1,6 @@
 #!/bin/bash
 # Smoke test for peer-comms handshake.
-# Creates a temporary claims file, exercises hello/ping/bye, checks TTL staleness.
+# Creates a temporary claims file, exercises hello/ack/ping/bye, checks TTL staleness.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,6 +64,40 @@ echo ""
 echo "--- Test 4: unknown session → unknown ---"
 out="$("${HELLO}" ping ZZZ)"
 assert "ping unknown shows unknown" "unknown" "${out}"
+echo ""
+
+# --- Test 5: full handshake hello A → hello B → ack B from A → ping B ---
+echo "--- Test 5: handshake A↔B → ack refreshes B ---"
+"${HELLO}" hello --session A --role builder --model qwen3.7-plus --scope "tools/peer-comms"
+"${HELLO}" hello --session B --role verifier --model muse-spark --scope "tools/peer-comms"
+"${HELLO}" ack --session B --from A --role builder --model qwen3.7-plus
+out="$("${HELLO}" ping B)"
+assert "ping B shows active after ack" "active" "${out}"
+assert "ping B shows ack from A" "ack from: A" "${out}"
+echo ""
+
+# --- Test 6: ack alone keeps session active ---
+echo "--- Test 6: ack without bye keeps session active ---"
+"${HELLO}" hello --session C --role sysop --model gpt-5.6-luna --scope test
+"${HELLO}" ack --session C --from A
+out="$("${HELLO}" ping C)"
+assert "ping C active after ack" "active" "${out}"
+if [[ "${out}" == *"inactive"* ]]; then
+  echo "  FAIL: ack should not cause inactive status"
+  (( ++fail ))
+else
+  echo "  PASS: ack does not cause inactive"
+  (( ++pass ))
+fi
+echo ""
+
+# --- Test 7: ack does not override bye ---
+echo "--- Test 7: bye after ack → inactive ---"
+"${HELLO}" hello --session D --role util-dev --model qwen3.7-plus --scope test
+"${HELLO}" ack --session D --from A
+"${HELLO}" bye --session D
+out="$("${HELLO}" ping D)"
+assert "ping D inactive after bye (ack overridden)" "inactive" "${out}"
 echo ""
 
 # --- Summary ---
