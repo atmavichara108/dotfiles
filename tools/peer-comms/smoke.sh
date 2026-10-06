@@ -100,6 +100,34 @@ out="$("${HELLO}" ping D)"
 assert "ping D inactive after bye (ack overridden)" "inactive" "${out}"
 echo ""
 
+# --- Test 8: list shows registered sessions ---
+echo "--- Test 8: list shows registered sessions ---"
+"${HELLO}" hello --session X --role builder --model qwen3.7-plus --scope "tools/peer-comms"
+out="$("${HELLO}" list)"
+assert "list contains header" "SESSION" "${out}"
+assert "list shows session X" "X" "${out}"
+assert "list shows active status" "active" "${out}"
+echo ""
+
+# --- Test 9: find --role returns session ID ---
+echo "--- Test 9: find --role builder returns session ID ---"
+out="$("${HELLO}" find --role builder)"
+assert "find returns session X" "X" "${out}"
+echo ""
+
+# --- Test 10: find --role nonexistent → exit 1 ---
+echo "--- Test 10: find --role nonexistent → exit 1 ---"
+rc=0
+out="$("${HELLO}" find --role nonexistent 2>&1)" || rc=$?
+if (( rc != 1 )); then
+  echo "  FAIL: find should exit 1 for nonexistent role (got exit ${rc})"
+  (( ++fail ))
+else
+  echo "  PASS: find exits 1 for nonexistent role"
+  (( ++pass ))
+fi
+echo ""
+
 # --- Summary ---
 echo "=== Results: ${pass} passed, ${fail} failed ==="
 if (( fail > 0 )); then

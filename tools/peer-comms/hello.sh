@@ -3,6 +3,10 @@
 # Append-only JSONL log at tools/peer-comms/claims.jsonl.
 # Semantics: ping is a read-only status query; TTL counts from the last hello.
 # A session stays active only while re-helloing within TTL_MINUTES.
+#
+# CANON: sessionID is resolved ONLY via `find --role <role>` (claims.jsonl registry).
+# Guessing by freshness or `opencode session list` is FORBIDDEN.
+# Sending a message to your own session is NOT detected by the transport.
 set -euo pipefail
 
 # --- Constants ---
@@ -211,6 +215,121 @@ cmd_ping() {
   fi
 }
 
+# _aggregate_sessions: internal helper — jq expression that groups claims.jsonl
+# by session, takes the last record per session, computes status, and returns
+# a JSON array sorted active-first.
+# Reads from stdin (piped claims content) to avoid re-reading the file.
+_aggregate_sessions_jq() {
+  local now="${1:?}" ttl_sec="${2:?}"
+  jq -s --argjson now "${now}" --argjson ttl "${ttl_sec}" '
+    group_by(.session) |
+    map(
+      last |
+      ($now - .ts) as $raw_age |
+      (if $raw_age < 0 then 0 else $raw_age end) as $age |
+      (if .op == "bye" then "inactive"
+       elif $age > $ttl then "stale"
+       else "active"
+       end) as $status |
+      {
+        session: .session,
+        role:    (.role // ""),
+        model:   (.model // ""),
+        scope:   (.scope // ""),
+        age_sec: $age,
+        status:  $status
+      }
+    ) |
+    sort_by(
+      if   .status == "active"  then 0
+      elif .status == "stale"   then 1
+      else 2
+      end
+    )
+  '
+}
+
+cmd_list() {
+  local json_output=false
+  while (( $# > 0 )); do
+    case "$1" in
+      --json) json_output=true; shift ;;
+      *)      die "Unknown option: $1" ;;
+    esac
+  done
+
+  ensure_claims_file
+
+  local now ttl_sec
+  now="$(now_epoch)"
+  ttl_sec=$(( TTL_MINUTES * 60 ))
+
+  local aggregated
+  aggregated="$(_aggregate_sessions_jq "${now}" "${ttl_sec}" < "${CLAIMS_FILE}")"
+
+  if [[ "${json_output}" == true ]]; then
+    echo "${aggregated}" | jq .
+    return
+  fi
+
+  printf "%-40s %-20s %-25s %-25s %-10s %-10s\n" \
+    "SESSION" "ROLE" "MODEL" "SCOPE" "AGE" "STATUS"
+  printf "%-40s %-20s %-25s %-25s %-10s %-10s\n" \
+    "-------" "----" "-----" "-----" "---" "------"
+
+  # age_human is computed in jq to avoid bash IFS whitespace collapsing empty fields.
+  # awk -F'\t' (unlike bash read) preserves empty TSV fields correctly.
+  echo "${aggregated}" | jq -r '
+    def age_h:
+      if   . < 60   then "\(.)s"
+      elif . < 3600 then "\(. / 60 | floor)m"
+      else "\(. / 3600 | floor)h\((. % 3600) / 60 | floor)m"
+      end;
+    .[] | [.session, .role, .model, .scope, (.age_sec | age_h), .status] | @tsv
+  ' | awk -F'\t' '{printf "%-40s %-20s %-25s %-25s %-10s %-10s\n", $1, $2, $3, $4, $5, $6}'
+}
+
+cmd_find() {
+  local role="" json_output=false
+  while (( $# > 0 )); do
+    case "$1" in
+      --role) role="${2:?--role requires a value}"; shift 2 ;;
+      --json) json_output=true; shift ;;
+      *)      die "Unknown option: $1" ;;
+    esac
+  done
+
+  [[ -n "${role}" ]] || die "--role is required"
+  ensure_claims_file
+
+  local now ttl_sec
+  now="$(now_epoch)"
+  ttl_sec=$(( TTL_MINUTES * 60 ))
+
+  local aggregated
+  aggregated="$(_aggregate_sessions_jq "${now}" "${ttl_sec}" < "${CLAIMS_FILE}")"
+
+  # Filter to matching role + active status, extract sessionIDs
+  local sessions
+  sessions="$(echo "${aggregated}" | jq --arg role "${role}" '
+    [.[] | select(.role == $role and .status == "active") | .session]
+  ')"
+
+  local count
+  count="$(echo "${sessions}" | jq 'length')"
+
+  if (( count == 0 )); then
+    echo "No active sessions found with role '${role}'" >&2
+    exit 1
+  fi
+
+  if [[ "${json_output}" == true ]]; then
+    echo "${sessions}" | jq .
+  else
+    echo "${sessions}" | jq -r '.[]'
+  fi
+}
+
 # --- Main ---
 
 usage() {
@@ -220,19 +339,23 @@ Usage:
   hello.sh ack  --session <recipient> --from <sender> [--role <role>] [--model <model>] [--scope <scope>]
   hello.sh ping <sessionId> [--json]
   hello.sh bye  --session <id>
+  hello.sh list [--json]
+  hello.sh find --role <role> [--json]
 EOF
 }
 
 main() {
   command -v jq >/dev/null 2>&1 || die "jq is required but not installed"
   local cmd="${1:-}"
-  shift || die "Command required (hello|ack|ping|bye)"
+  shift || die "Command required (hello|ack|ping|bye|list|find)"
 
   case "${cmd}" in
     hello) cmd_hello "$@" ;;
     ack)   cmd_ack "$@" ;;
     ping)  cmd_ping "$@" ;;
     bye)   cmd_bye "$@" ;;
+    list)  cmd_list "$@" ;;
+    find)  cmd_find "$@" ;;
     -h|--help|help) usage ;;
     *) die "Unknown command: ${cmd}" ;;
   esac
