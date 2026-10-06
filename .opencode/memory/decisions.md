@@ -530,3 +530,12 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 - Основная боль (verifier — критичный acceptance-гейт) закрыта; meta уже был прав.
 **Open:** рестарт сессии/TUI для подхвата прав (за Максом); push/merge ветки по /ship; при желании — живой прогон verifier для подтверждения, что доступ вернулся.
 **Next focus:** /ship ветки (merge → push → новая task/*-ветка).
+
+---
+
+### T-156 (2026-10-06): M Code ↔ OpenCode bridge endpoint — исполнено
+**Контекст:** Handoff T-156 от librarian (Vault route-log 2026-10-01, контракт ре-верифицирован 2026-10-05 на v2.0.23). Задача: управляемый OpenCode v2 service + тонкая обёртка `prompt`/`read`/`handoff`.
+**Решение/результат:** спека `docs/specs/done/mcode-opencode-bridge-endpoint.md` (`kind: task`, tech-DoD + отложенный apply-gate + rollback). Реализовано: managed user-unit `systemd/.config/systemd/user/opencode-serve.service` и обёртка `scripts/.local/bin/opencode-bridge` (токен только из `service.json`, без логирования; handoff ограничен git-root). Коммит `0bf24ca`, tag `t156-bridge-endpoint`.
+**Incident 1 — auth-схема была неверной:** symptom — verifier FAIL, HTTP 401 на живых эндпоинтах. Repro — GET `/api/session/active` с `Authorization: Bearer <password>` → 401. Root cause — сервер v2 принимает только `Authorization: Basic base64("opencode:<password>")` (username ровно `opencode`; пустой/произвольный → 401, `?auth_token=` без префикса → 401). Fix — обёртка переведена на Basic, живой `read` → 200. Evidence — реальный прогон `prompt`→assistant-сообщения без `provider.auth`, `openapi` 117 путей.
+**Incident 2 — утечка секрета в транскрипт:** symptom — диагностический loop вывел пароль `service.json` в stdout сессии (диагностика auth-вариантов строила label из значения заголовка). Root cause — секрет попадал в строку-метку и печатался; ничего в репо не попало, но транскрипт содержал значение. Fix — (а) запрет на построение выводов из значений кредов в диагностике; (б) структурная мера — secret-guard в глобальном слое OpenCode, редактирующий известные секрет-литералы в выводе инструментов до транскрипта (реализация — `opencode-global/.config/opencode/plugins/`). Статус: требует ротации пароля оператором (после физического apply) — `opencode service set password` гасит сервис, поэтому делается в момент планового перезапуска с re-pair M Code.
+**Открыто:** физический apply managed unit (порт :49374 держит неуправляемый процесс — родитель TUI; apply выполняется detached `systemd-run` + пост-чек), ротация пароля, secret-guard.
