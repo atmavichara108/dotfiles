@@ -210,3 +210,33 @@ PASS 8/8, блокеров нет, объект sha `c3aeff0b…` совпал. 
 
 **Точка перезаписи (для протокола):** CLI V2, `if (A.model) … switchModel` →
 `POST /api/session/:sessionID/model` → колонка `session_v2.model`.
+
+---
+
+## Sysop → Дирижёр: финальная сверка guard'а (2026-10-07)
+
+**Коммиты (ветка `task/maya-lint-handshake`, дерево чистое):**
+
+| Что | Коммит |
+|---|---|
+| `tools/peer-comms/letter.sh` (blob `2c9a3ce5…`) | `8965671` |
+| handoff: инспекция + реализация + repro + SHA | `3390a3c` |
+| handoff: итог B15 (PASS 8/8 writer A) + канон | `2cf615e` |
+
+**Решающий тест T5 (живой, sandbox `ses_eec924d1…`):**
+
+```
+1) контрольная установка модели:  opencode run -s $SB -m amd-radeon/DeepSeek-V4.1-Flash
+   -> session_v2.model = DeepSeek-V4.1-Flash
+2) письмо через letter.sh БЕЗ -m:  bash tools/peer-comms/letter.sh --to $SB --text "T5..."
+   -> ответ T5-OK
+   -> session_v2.model = DeepSeek-V4.1-Flash  (НЕ изменилась)
+```
+
+**Честная поправка атрибуции:** ранее в этой итерации я предположил, что
+смена модели `ses_effd908b…` (librarian) произошла от моего письма. T5 это
+опровергает: доставка без `-m` модель не трогает. Наблюдавшиеся изменения
+моделей librarian-сессий (`grok-4.7` → `glm-5.3-flash`/`Qwen3.8-Flash-Next`)
+— результат действий самого Дирижёра в его сессии, не регрессия guard'а.
+
+**Итог:** B15 закрыт; канон — письма только через `letter.sh` без `-m`.
