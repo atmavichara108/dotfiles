@@ -152,5 +152,20 @@ if [ "${HEAD_GUARD_OK:-0}" != "1" ]; then
   fi
 fi
 
+# --- Гейт 6: decode-мусор в staged (инцидент 2026-10-07) ---------------------
+# CJK/kana/Hangul/Thai/FFFD в контенте — признак mojibake-всплеска модели.
+# Whitelist fragment-level: tools/garbage-guard/config.json.
+# Обход: MOJIBAKE_OK=1 (осознанно, как MIXED_OK).
+if [ "${MOJIBAKE_OK:-0}" != "1" ]; then
+  _root6=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+  _gg="$_root6/tools/garbage-guard/guard.py"
+  if [ -f "$_gg" ]; then
+    if ! python3 "$_gg" scan --staged; then
+      echo "❌ decode-мусор в staged (CJK/kana/FFFD). Whiteslist: tools/garbage-guard/config.json; обход: MOJIBAKE_OK=1 git commit ..." >&2
+      exit 1
+    fi
+  fi
+fi
+
 echo "✅ tree-hygiene: ветка/маркеры/зоны в порядке"
 exit 0

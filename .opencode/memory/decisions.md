@@ -545,3 +545,25 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 **Остаётся оператору:** ротация пароля `service.json` (`opencode service set password` гасит сервис → затем `systemctl --user start opencode-serve.service` и re-pair M Code) и удаление чужих незакоммиченных правок (`opencode-global/.../AGENTS.md`, `zsh/.zshrc`) их владельцами.
 **Канал хендофф-заметок (2026-10-06, по указанию оператора):** вопросы на согласование идут куратору (Vault-сессия `ses_f0877a785ffe…`, «Синхронизация работы opencode и mcode»), не напрямую оператору; апрув оператора куратор передаёт сессии. Дублирующий канал — короткие заметки `docs/handoffs/<дата>-<слаг>.md` в своей `task/*`-ветке (librarian подхватывает из git и фиксирует evidence). Конвенция записана в проектный `AGENTS.md`. Первая заметка: `docs/handoffs/2026-10-06-t156-bridge-endpoint.md`.
 **T-156 apply-gate закрыт (2026-10-06, решение оператора через librarian):** после ротации локального service password detached-процедура завершила M Code-backed orphan и выполнила `systemctl --user restart opencode-serve.service`. Post-check: `systemctl --user is-active` = active; MainPID=`346858`; `ss -tlnp` подтверждает владельца `127.0.0.1:49374` = PID 346858 в cgroup `opencode-serve.service`; Basic auth = HTTP 200; `opencode-bridge read` = rc 0. Пароль/значение не логировались.
+
+## Инцидент 2026-10-07: decode-глючность моделей (mojibake-всплески)
+
+- **Symptom:** всплески CJK/kana/Hangul/Thai/FFFD в выводах агентов (чат,
+  файлы, письма); полный распад вывода у `nvidia/moonshotai/kimi-k3` (мусорное
+  сообщение в сессии sysop). Микро-вкрапления у всех моделей провайдеров
+  (за 24ч: glm-5.3-flash 40/377, Qwen3.8-Flash-Next 38/600, luna 34/435,
+  DeepSeek 30/503, kimi-k3 3/38).
+- **Repro:** чтение `session_message` в `opencode.db` — CJK в ассистентских
+  сообщениях; в чате sysop —msg `msg_116a1f920001ka5mRmvndqAAeK` (kimi-k3).
+- **Root cause:** сбой декодирования на стороне inference-провайдеров
+  (внешний харнес — не чиним, workaround + факт).
+- **Damage-аудит:** tool-вызовов с мусором в аргументах — 0 (команды из мусора
+  не исполнялись); 2 легальных следа в git (чужие зоны): `多久`
+  (2d9f5c2, librarian-аппенд), `命名` (scripts/.local/bin/tmux-open).
+- **Fix (workaround):** `tools/garbage-guard/` — zero-LLM детектор;
+  pre-commit гейт 6 (MOJIBAKE_OK=1); letter.sh REFUSE exit 4 (GARBAGE_OK=1);
+  whitelist fragment-level config.json.
+- **Evidence:** приёмка 5/5 (positive/whitelist/staged/REFUSE/sweep);
+  мандат: Рудра msg_117add5b50018qevDS0UqIaBUF (21:43:50) + GO Дирижёра
+  (provenance сверен по sqlite).
+- **Статус:** implemented, ожидает мержа Дирижёром.
