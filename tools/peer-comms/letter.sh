@@ -14,11 +14,13 @@
 #   Fallback 3 — если `-m` совпадает с текущей моделью адресата из реестра —
 #             подаётся как есть (no-op запись).
 #
-# Read-only: скрипт НЕ пишет в БД, только читает реестр и вызывает opencode run.
+# БД не изменяет. Журнал доставки (B18) — append-only receipts-out.jsonl в
+# ~/.local/state/opencode/mail/ (metadata-only: id/digest/to/from/ts, без тела).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAIMS_FILE="${CLAIMS_FILE:-${SCRIPT_DIR}/claims.jsonl}"
+MAIL_DIR="${PEER_MAIL_DIR:-$HOME/.local/state/opencode/mail}"
 
 fail() { echo "Error: $*" >&2; exit 1; }
 
@@ -28,12 +30,34 @@ Usage:
   letter.sh --to <sessionID> [--model <provider/model>] [--title <t>] --file <path>
   letter.sh --to <sessionID> [--model <provider/model>] --text "<message>"
 
+Receipt-флаги (B18, двойной ack):
+  --from <id>                 отправитель в журнал (дефолт $OPENCODE_SESSION_ID)
+  --scope <s>                 метка scope в журнал
+  --receipt <kind> --ref <message_id>
+                              kind = started | finished | cannot; письмо-квитанция
+                              (получатель шлёт started при получении, finished при
+                              завершении хода). Тело письма обязательно содержит
+                              ref — по нему доставка проверяется delivery-check.
+
+Journal (append-only, metadata-only, без тела письма):
+  ${PEER_MAIL_DIR:-~/.local/state/opencode/mail}/receipts-out.jsonl
+  идемпотентность: повтор того же message_id (hash тела + день + from) — отклоняется.
+
 Guard (B15, model-overwrite):
   без --model    -> письмо уходит без switchModel; модель адресата не меняется
   с --model      -> REFUSE (exit 3), если модель отличается от зарегистрированной
   --force-model  -> явный обход guard (печатает WARN про перезапись профиля)
 EOF
 }
+
+journal_append() {
+  # Одна короткая JSONL-строка; < PIPE_BUF, append атомарен без лока.
+  local mail_dir="$1"; shift
+  mkdir -p "${mail_dir}"
+  printf '%s\n' "$*" >> "${mail_dir}/receipts-out.jsonl"
+}
+
+sha256_of() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
 
 resolve_registered_model() {
   local session="${1:?}"
@@ -45,6 +69,7 @@ resolve_registered_model() {
 
 main() {
   local to="" model="" title="" text="" file="" force=false
+  local from="${OPENCODE_SESSION_ID:-unknown}" scope="" receipt="" ref=""
   while (( $# > 0 )); do
     case "$1" in
       --to)          to="${2:?--to requires a value}"; shift 2 ;;
@@ -52,6 +77,10 @@ main() {
       --title)       title="${2:?--title requires a value}"; shift 2 ;;
       --text)        text="${2:?--text requires a value}"; shift 2 ;;
       --file)        file="${2:?--file requires a value}"; shift 2 ;;
+      --from)        from="${2:?--from requires a value}"; shift 2 ;;
+      --scope)       scope="${2:?--scope requires a value}"; shift 2 ;;
+      --receipt)     receipt="${2:?--receipt requires a value}"; shift 2 ;;
+      --ref)         ref="${2:?--ref requires a value}"; shift 2 ;;
       --force-model) force=true; shift ;;
       -h|--help|help) usage; return 0 ;;
       *) fail "Unknown option: $1" ;;
@@ -60,6 +89,10 @@ main() {
 
   [[ -n "${to}" ]] || fail "--to is required"
   [[ -n "${text}" || -n "${file}" ]] || fail "--text or --file is required"
+  if [[ -n "${receipt}" ]]; then
+    [[ "${receipt}" =~ ^(started|finished|cannot)$ ]] || fail "--receipt: started|finished|cannot"
+    [[ -n "${ref}" ]] || fail "--receipt requires --ref <message_id оригинала>"
+  fi
 
   # --file: текст письма читается из файла (канон против shell-quote багов)
   local payload
@@ -93,8 +126,36 @@ main() {
     args+=("-m" "${model}")
   fi
 
+  # message_id: детерминированный — hash тела + номер дня + from (спека S2.1)
+  local digest message_id
+  digest="$(sha256_of "${payload}")"
+  message_id="${digest:0:16}-$(date -u +%Y%m%d)-${from}"
+
+  # Идемпотентность (S2.2): повтор того же message_id — отклоняется, не дублирует.
+  local out_file="${MAIL_DIR}/receipts-out.jsonl"
+  if [[ -f "${out_file}" ]] && grep -qF "\"message_id\":\"${message_id}\"" "${out_file}"; then
+    echo "DUP: message_id=${message_id} уже в журнале — повтор отклонён (no-resend)" >&2
+    return 0
+  fi
+
   args+=("${payload}")
-  exec opencode "${args[@]}"
+  local rc=0
+  opencode "${args[@]}" || rc=$?
+
+  # Журнал доставки (B18): metadata-only, без тела письма.
+  journal_append "${MAIL_DIR}" "$(jq -cn \
+    --arg event "$( [[ -n "${receipt}" ]] && echo "receipt-${receipt}" || echo "sent" )" \
+    --arg id "${message_id}" \
+    --arg digest "${digest}" \
+    --arg to "${to}" \
+    --arg from "${from}" \
+    --arg scope "${scope}" \
+    --arg ref "${ref}" \
+    --argjson rc "${rc}" \
+    '{event:$event, message_id:$id, digest:$digest, to:$to, from:$from,
+      scope:$scope, ref:$ref, rc:$rc, ts:(now|floor)}')"
+  echo "RECEIPT: ${message_id} -> ${to} (journal: ${out_file})" >&2
+  return "${rc}"
 }
 
 main "$@"
