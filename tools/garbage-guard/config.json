@@ -1,0 +1,40 @@
+{
+  "kind": "garbage-guard-allowlist",
+  "updated": "2026-10-07",
+  "note": "decode-мусор в dotfiles запрещён. Исключения — fragment-level, только подтверждённые легальные CJK-вкрапления (исторический артефакт или осознанный контент).",
+  "exclude_prefixes": [
+    ".opencode/node_modules/",
+    "zsh/.oh-my-zsh/custom/themes/powerlevel10k/",
+    "zsh/.oh-my-zsh/custom/plugins/"
+  ],
+  "fragments": [
+    {
+      "path": "docs/handoffs/2026-10-06-sysop-team-hello.md",
+      "fragment": "«подтверждаю всё»);多久 лишь коротко",
+      "reason": "артефакт decode-глюка 2026-10-06 (2d9f5c2, чужая зона librarian) — в истории, не трогается",
+      "owner": "librarian",
+      "added": "2026-10-07"
+    },
+    {
+      "path": ".opencode/memory/decisions.md",
+      "fragment": "多久",
+      "reason": "запись инцидента 2026-10-07 содержит CJK-доказательства (evidence)",
+      "owner": "sysop",
+      "added": "2026-10-07"
+    },
+    {
+      "path": ".opencode/memory/decisions.md",
+      "fragment": "命名",
+      "reason": "запись инцидента 2026-10-07 — второе доказательство",
+      "owner": "sysop",
+      "added": "2026-10-07"
+    },
+    {
+      "path": "scripts/.local/bin/tmux-open",
+      "fragment": "命名",
+      "reason": "осознанное употребление (коммент в скрипте, мандат не мой) — разрешено как есть",
+      "owner": "rudra",
+      "added": "2026-10-07"
+    }
+  ]
+}
