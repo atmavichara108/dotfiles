@@ -16,6 +16,20 @@
       "added": "2026-10-07"
     },
     {
+      "path": ".opencode/memory/decisions.md",
+      "fragment": "多久",
+      "reason": "запись инцидента 2026-10-07 содержит CJK-доказательства (evidence)",
+      "owner": "sysop",
+      "added": "2026-10-07"
+    },
+    {
+      "path": ".opencode/memory/decisions.md",
+      "fragment": "命名",
+      "reason": "запись инцидента 2026-10-07 — второе доказательство",
+      "owner": "sysop",
+      "added": "2026-10-07"
+    },
+    {
       "path": "scripts/.local/bin/tmux-open",
       "fragment": "命名",
       "reason": "осознанное употребление (коммент в скрипте, мандат не мой) — разрешено как есть",
