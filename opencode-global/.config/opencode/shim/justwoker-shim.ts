@@ -57,7 +57,11 @@ function filterResponseHeaders(src: Headers): Headers {
   return h;
 }
 
-const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? 600_000);
+// Потолок времени апстрим-запроса. Держит AbortSignal; дефолтный Bun-овый
+// socket-idle (300c) отключён через fetch-опцию `timeout: false` (доказано
+// контрольным тестом: hold=340c → 200; см. ниже). 900c с запасом на полный
+// контекст Opus.
+const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? 900_000);
 const FORWARD_RETRIES = Number(process.env.FORWARD_RETRIES ?? 3);
 const FORWARD_RETRY_MS = Number(process.env.FORWARD_RETRY_MS ?? 1500);
 
@@ -75,12 +79,14 @@ async function forward(req: Request, body: string): Promise<Response> {
       body: noBody ? undefined : body,
       redirect: "manual",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      // Bun fetch по умолчанию рвёт безголовостной ответ на 300c
-      // (HeadersTimeoutError). Non-stream-генерация Opus с полным контекстом
-      // легко >5 мин — отключаем, потолок держит AbortSignal (600c).
-      headersTimeout: 0,
-      requestTimeout: 0,
-    } as RequestInit & { headersTimeout?: number; requestTimeout?: number });
+      // Bun fetch НЕ знает опций headersTimeout/requestTimeout (они серверные,
+      // Bun.serve/node:http). Клиентский socket-idle в Bun = 300c
+      // (BUN_CONFIG_HTTP_IDLE_TIMEOUT) и рвёт долгий non-stream с TimeoutError.
+      // Единственный рабочий escape-hatch — `timeout: false` (issue #16682).
+      // Контрольный тест (hold=340c): fetch default → TimeoutError@300.0c;
+      // fetch timeout:false → 200@340.1c. Потолок держит AbortSignal выше.
+      timeout: false,
+    } as RequestInit);
     // Быстрые отказы балансировщика up stream (CF rate-limit 403 ~0.5c,
     // New API «No available channel, distributor» 503): прозрачный ретрай
     // с паузой — OpenCode не должен их видеть.
