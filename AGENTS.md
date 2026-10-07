@@ -188,6 +188,24 @@ Coordination Bridge в текущем репозитории; она не фик
 - Содержимое: статус, артефакты, коммиты/теги, evidence, открытые вопросы, канал ответа. Секретов и ключей в заметках нет.
 - Вопросы на согласование идут куратору, не напрямую оператору.
 
+## Протокол писем (peer-comms B18 — двойной ack + read-gate)
+
+Единственная точка отправки письма в сессию — `tools/peer-comms/letter.sh`
+(канон B15: без `-m`, модель адресата не трогать). Механизм, не уговор:
+
+- **Отправка**: `letter.sh` пишет `sent`-журнал (append-only, metadata-only:
+  message_id/digest/to/from/ts) в `~/.local/state/opencode/mail/receipts-out.jsonl`;
+  повтор того же `message_id` отклоняется (no-resend).
+- **Получатель обязан**: при получении письма — ответить `started`
+  (`letter.sh --to <отправитель> --receipt started --ref <message_id> …`),
+  при завершении хода по письму — `finished` (в тексте — артефакт/SHA).
+  `started` = «прочитано», даже если работа ещё не начата.
+- **Read-gate отправителя**: доставку проверять `delivery-check.sh <sessionID>
+  <hash|substring>` (sqlite-реестр `session_message`, rc=0 доставлено / rc=1 нет).
+  `_ack-файлы` в `/tmp/opencodeREAD` — устаревший канал, не источник.
+- Спека: `docs/specs/mailing-protocol-proto.md`; handshake-контракт:
+  `docs/specs/done/peer-comms-handshake.md` S7.
+
 ## Конвенции
 
 - Коммиты: `feat(<pkg>): ...`, `fix(<pkg>): ...`, `chore: ...`, `docs: ...` (scope = имя пакета).
