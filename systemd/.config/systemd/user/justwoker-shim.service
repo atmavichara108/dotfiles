@@ -1,0 +1,20 @@
+# justwoker-shim — ВРЕМЕННЫЙ мост до слоя New API (docs/specs/newapi-gateway-layer.md).
+# Upstream api.justwoker.icu регрессировал SSE (stream:true без content_block_*).
+# Шим форвардит non-stream и синтезирует корректный Anthropic SSE.
+# При переводе justwoker каналом New API — убрать unit и вернуть baseURL на upstream.
+[Unit]
+Description=JustDoWork streaming shim (temp bridge, localhost only)
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/rudra/.bun/bin/bun run /home/rudra/dotfiles/opencode-global/.config/opencode/shim/justwoker-shim.ts
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+Restart=always
+RestartSec=5
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=default.target
