@@ -167,7 +167,7 @@
     "justwoker": {
       "npm": "@ai-sdk/anthropic",
       "name": "JustDoWork",
-      "options": { "baseURL": "https://api.justwoker.icu/v1" },
+      "options": { "baseURL": "http://127.0.0.1:8787/v1" },
       "models": {
         "claude-opus-4-8": { "name": "Claude Opus 4.8", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
@@ -256,7 +256,7 @@
     },
     "justwoker": {
       "package": "aisdk:@ai-sdk/anthropic",
-      "settings": { "baseURL": "https://api.justwoker.icu/v1" },
+      "settings": { "baseURL": "http://127.0.0.1:8787/v1" },
       "models": {
         "claude-opus-4-8": { "name": "Claude Opus 4.8", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
