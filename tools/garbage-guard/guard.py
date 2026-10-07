@@ -41,6 +41,28 @@ BANNED = re.compile(
     "\ufffd]"                                     # replacement char
 )
 
+# Латинический класс (мандат Дирижёра 2026-10-07): кириллическое слово с
+# вклинившейся латиницей (гомоглифы/decode-вставки: agеnt, хello, дублиca).
+# Токен = максимальная буквенная цепочка; flagged, если содержит ОБА скрипта
+# без разделителя. Естественный code-switching (letter.sh, task/*, пробел,
+# дефис) токеном не является — ноль ложных на прозе (проверено: 0/6 писем).
+WORD = re.compile(r"[A-Za-z\u0400-\u04ff]+")
+CYRILLIC = re.compile(r"[\u0400-\u04ff]")
+LATIN = re.compile(r"[A-Za-z]")
+
+
+def find_latin_mix(text: str) -> list[tuple[int, str]]:
+    hits = []
+    for m in WORD.finditer(text):
+        w = m.group(0)
+        if not (CYRILLIC.search(w) and LATIN.search(w)):
+            continue
+        # escape-последовательности (\nЗ, \tр): одиночная латиница за бэкслешем
+        if m.start() > 0 and text[m.start() - 1] == "\\":
+            continue
+        hits.append((m.start(), w))
+    return hits
+
 
 def load_config() -> dict:
     if not CONFIG.exists():
@@ -100,6 +122,18 @@ def find_banned(text: str, file_label: str, allowlist: list[dict]) -> list[dict]
             "char": ch,
             "name": unicodedata.name(ch, "?"),
             "context": text[max(0, m.start() - 30):m.start() + 30].replace("\n", "|"),
+        })
+    # латинический класс: смешанные токены (whitelist-спан тоже применяется)
+    for pos, word in find_latin_mix(text):
+        if in_spans(pos, spans):
+            continue
+        line_no = text.count("\n", 0, pos) + 1
+        hits.append({
+            "path": file_label,
+            "line": line_no,
+            "char": word,
+            "name": "latin-cyrillic-mix",
+            "context": text[max(0, pos - 30):pos + 30].replace("\n", "|"),
         })
     # группируем соседние символы одного всплеска (Han в слове = один hit на строку)
     merged: dict[tuple[str, int], dict] = {}

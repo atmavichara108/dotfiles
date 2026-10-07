@@ -27,7 +27,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAIMS_FILE="${HEAD_GUARD_CLAIMS:-${SCRIPT_DIR}/../peer-comms/claims.jsonl}"
 LOG_FILE="${HEAD_GUARD_LOG:-$HOME/.local/state/opencode/head-guard.log}"
-DEFAULT_TTL_MIN=240  # ветку держат часами; 30-мин TTL хello тут не годится
+DEFAULT_TTL_MIN=240  # ветку держат часами; 30-мин TTL hello тут не годится
 
 journal() {
   # metadata-only, append-only

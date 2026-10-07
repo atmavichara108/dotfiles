@@ -30,6 +30,13 @@
       "added": "2026-10-07"
     },
     {
+      "path": "docs/specs/mailing-protocol-proto.md",
+      "fragment": "дублиcanonical",
+      "reason": "текст igraphv2 (чужая зона, автор спеки) — смешение скриптов в исходном тексте, мандат не правит чужой текст",
+      "owner": "igraphv2",
+      "added": "2026-10-07"
+    },
+    {
       "path": "scripts/.local/bin/tmux-open",
       "fragment": "命名",
       "reason": "осознанное употребление (коммент в скрипте, мандат не мой) — разрешено как есть",
