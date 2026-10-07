@@ -129,6 +129,22 @@ main() {
   # message_id: детерминированный — hash тела + номер дня + from (спека S2.1)
   local digest message_id
   digest="$(sha256_of "${payload}")"
+
+  # Garbage-guard (инцидент 2026-10-07): не выпускать decode-мусор в живые
+  # сессии команды. REFUSE до записи в журнал и до отправки. Канон B15/B18
+  # не затронут: это проверка текста, не модели и не receipts.
+  # Обход: GARBAGE_OK=1 (осознанно, как MIXED_OK).
+  local guard_script="${SCRIPT_DIR}/../garbage-guard/guard.py"
+  if [[ -f "${guard_script}" && "${GARBAGE_OK:-0}" != "1" ]]; then
+    local guard_rc=0
+    printf '%s' "${payload}" | python3 "${guard_script}" check-text 2>/dev/null || guard_rc=$?
+    if [[ "${guard_rc}" == 1 ]]; then
+      echo "REFUSE: текст письма содержит decode-мусор (CJK/kana/FFFD — инцидент 2026-10-07)." >&2
+      echo "REFUSE: проверь вывод 'python3 tools/garbage-guard/guard.py check-text < файл'. Обход: GARBAGE_OK=1" >&2
+      exit 4
+    fi
+    # guard_rc==2 (ошибка инструмента) — не блокируем жизнь, тихо пропускаем
+  fi
   message_id="${digest:0:16}-$(date -u +%Y%m%d)-${from}"
 
   # Идемпотентность (S2.2): повтор того же message_id — отклоняется, не дублирует.
