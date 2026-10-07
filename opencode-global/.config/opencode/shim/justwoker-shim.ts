@@ -75,7 +75,12 @@ async function forward(req: Request, body: string): Promise<Response> {
       body: noBody ? undefined : body,
       redirect: "manual",
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    });
+      // Bun fetch по умолчанию рвёт безголовостной ответ на 300c
+      // (HeadersTimeoutError). Non-stream-генерация Opus с полным контекстом
+      // легко >5 мин — отключаем, потолок держит AbortSignal (600c).
+      headersTimeout: 0,
+      requestTimeout: 0,
+    } as RequestInit & { headersTimeout?: number; requestTimeout?: number });
     // Быстрые отказы балансировщика up stream (CF rate-limit 403 ~0.5c,
     // New API «No available channel, distributor» 503): прозрачный ретрай
     // с паузой — OpenCode не должен их видеть.
