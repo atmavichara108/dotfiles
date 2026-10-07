@@ -141,7 +141,7 @@ export default Plugin.define({
                 if (context?.signal?.aborted) {
                   return { content: "token-budget: skipped — request aborted before write" }
                 }
-                // Хелпер — нетипизированный .js: денo выводит только начальную
+                // Хелпер — нетипизированный .js: deno выводит только начальную
                 // форму объекта, поэтому приводим к полной форме записи.
                 const record = buildTokenRecord(args) as {
                   ts: string

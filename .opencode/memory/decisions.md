@@ -417,7 +417,7 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 ---
 
 ### Ship 2026-10-01: ship-memory в main (tree-cop, владение веткой, память)
-**Контекст:** Ветка task/ship-memory: tree-cop в mainline + точечный untracked, владение веткой (тихий branch-auto, гейт чужой ветки, claim-gate), установщик хуков, ADR-019, lane-правило, fallback субагента. Выкладка по аппруву при STOP koпа (.mcode чужой весь путь).
+**Контекст:** Ветка task/ship-memory: tree-cop в mainline + точечный untracked, владение веткой (тихий branch-auto, гейт чужой ветки, claim-gate), установщик хуков, ADR-019, lane-правило, fallback субагента. Выкладка по аппруву при STOP копа (.mcode чужой весь путь).
 **Решения:**
 - tree-cop: 4 файла из b43fded + split_stashable (симлинки/каталоги не трогаем), 18 тестов зелено, smoke в клоне (чужое засташилось, ссылка-ловушка пропущена, pop вернул), путь запуска абсолютный через python3.
 - Владение: git-config реестр (виден всем backend'ам), sessionID в tool.execute.before подтверждён типами SDK — замок настоящий; pre-commit гейт 4 матрицей 4/4.
