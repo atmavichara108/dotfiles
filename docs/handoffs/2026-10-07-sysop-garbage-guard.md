@@ -21,7 +21,7 @@ msg_117add5b50018qevDS0UqIaBUF (ses_eedd28c4…, 21:43:50) — сверен Ди
 | `letter.sh` garbage-гейт | REFUSE **exit 4** при rc=1 guard'а (мусор); rc=2 (ошибка инструмента) — не блокирует; обход `GARBAGE_OK=1`. Проверка ДО journal-append и до run. |
 | `.opencode/memory/decisions.md` | Запись инцидента: symptom→repro→root cause→damage→fix→evidence→статус. |
 
-Whitelist-кейсы: CJK-артефакт 2d9f5c2 (2 иероглифа, чужая зона), иероглифы в tmux-open,
+Whitelist-кейсы: CJK-артефакт 2d9f5c2 (чужая зона), иероглифы в tmux-open,
 осознанный контент), memory-запись инцидента (содержит CJK-доказательства).
 Само-исключение: guard/config не проверяются самим собой (иначе self-eating).
 
@@ -29,7 +29,7 @@ Whitelist-кейсы: CJK-артефакт 2d9f5c2 (2 иероглифа, чуж
 
 1. positive (мусорный текст инцидента) → rc=1 ✓
 2. negative (чистый ру-ен текст) → rc=0 ✓
-3. whitelist-файлы (`多久` в hello-handoff, `命名` в tmux-open) → rc=0 ✓
+3. whitelist-файлы (иероглифы в hello-handoff и tmux-open) → rc=0 ✓
 4. тот же артефакт вне whitelist → rc=1 ✓
 5. letter.sh: мусорное письмо → **REFUSE exit 4, журнал не тронут** ✓
 6. full-tree sweep (`scan --path .`) → rc=0 (whitelist+исключения покрыли всё

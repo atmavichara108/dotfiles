@@ -32,7 +32,7 @@ ADR-020 переписан под фактическую Bash+jq реализа�
 остановлена runtime permission gate: non-interactive shell не может подтвердить
 mutating action в чужой сессии. Обход gate запрещён.
 
-Нужен интерактивный запуск у куратора/лibrarian:
+Нужен интерактивный запуск у куратора/librarian:
 
 1. hello обеих реальных сессий с общим временным `CLAIMS_FILE`;
 2. короткое письмо B→A с ACK;

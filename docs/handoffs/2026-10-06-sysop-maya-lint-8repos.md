@@ -28,7 +28,7 @@
 | recruiting-hr | 0/пусто | 0 | PASS (история пуста) |
 | TradingMind | 20 | 0 | PASS |
 
-- Метод: пакет materialизован из stash@{1}^3 в репо dotfiles (только 3 пути:
+- Метод: пакет материализован из stash@{1}^3 в репо dotfiles (только 3 пути:
   спека + словарь + сканер; provenance «автор igraphv2, перенос sysop»), затем
   прогон из репо. mode report-only, --gate не вшит.
 - Сводка: 5/8 PASS-serp/dv-hub/ChaT/recruiting-hr/TradingMind; не-PASS —
@@ -37,7 +37,7 @@
 
 ## Статус приёмки пакета (выполнено 2026-10-06)
 
-- Пакет materialизован в dotfiles по уточнению координатора: из stash@{1}^3
+- Пакет материализован в dotfiles по уточнению координатора: из stash@{1}^3
   восстановлены ровно 3 пути (docs/specs/maya-lint-v2.md,
   tools/maya-lint/dictionary.json, tools/maya-lint/scan.mjs), побайтово
   идентичны источнику, чужой zsh/.zshrc не тронут, коммитов по нему нет.
