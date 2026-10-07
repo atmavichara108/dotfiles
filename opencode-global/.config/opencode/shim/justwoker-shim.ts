@@ -338,50 +338,64 @@ async function route(req: Request, url: URL, raw: string, parsed: any): Promise<
     const enc = new TextEncoder();
     const upstream = forward(req, jsonBody);
     let hb: ReturnType<typeof setInterval> | undefined;
-    const stopHb = () => { if (hb) clearInterval(hb); };
+    // Crash-guard: после cancel() клиента контроллер закрыт — enqueue/close
+    // в него бросают TypeError "Controller is already closed" и роняют
+    // процесс (ConnectionRefused до Restart=always). Все записи — через
+    // safeEnqueue с флагом closed.
+    let closed = false;
+    const stopHb = () => { if (hb) { clearInterval(hb); hb = undefined; } };
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        hb = setInterval(() => {
-          try { controller.enqueue(enc.encode(sseEvent("ping", { type: "ping" }))); } catch {}
-        }, 8000);
+        const safeEnqueue = (s: string) => {
+          if (closed) return;
+          try { controller.enqueue(enc.encode(s)); } catch { closed = true; stopHb(); }
+        };
+        const safeClose = () => {
+          if (closed) return;
+          closed = true; stopHb();
+          try { controller.close(); } catch {}
+        };
+        hb = setInterval(() => safeEnqueue(sseEvent("ping", { type: "ping" })), 8000);
         upstream
           .then(async (res) => {
+            if (closed) return;
             stopHb();
             if (!res.ok) {
               console.log(`[shim] ${req.method} ${url.pathname} -> upstream ${res.status} (SSE error event)`);
-              controller.enqueue(enc.encode(sseEvent("error", {
+              safeEnqueue(sseEvent("error", {
                 type: "error",
                 error: { type: "api_error", message: `shim: upstream ${res.status}` },
-              })));
-              controller.close();
+              }));
+              safeClose();
               return;
             }
             const json = await res.json().catch(() => null);
+            if (closed) return;
             if (!json) {
               console.log(`[shim] ${req.method} ${url.pathname} -> upstream non-JSON (SSE error event)`);
-              controller.enqueue(enc.encode(sseEvent("error", {
+              safeEnqueue(sseEvent("error", {
                 type: "error",
                 error: { type: "api_error", message: "shim: upstream returned non-JSON" },
-              })));
-              controller.close();
+              }));
+              safeClose();
               return;
             }
             const blocks = Array.isArray(json?.content) ? json.content.length : 0;
             console.log(`[shim] ${req.method} ${url.pathname} -> 200 (synthesized SSE, blocks=${blocks})`);
-            controller.enqueue(enc.encode(buildSSE(json)));
-            controller.close();
+            safeEnqueue(buildSSE(json));
+            safeClose();
           })
           .catch((err: any) => {
-            stopHb();
+            if (closed) return;
             console.log(`[shim] ${req.method} ${url.pathname} -> ${err?.name ?? "error"} (SSE error event)`);
-            controller.enqueue(enc.encode(sseEvent("error", {
+            safeEnqueue(sseEvent("error", {
               type: "error",
               error: { type: "api_error", message: `shim: ${err?.name ?? "upstream error"}` },
-            })));
-            controller.close();
+            }));
+            safeClose();
           });
       },
-      cancel() { stopHb(); },
+      cancel() { closed = true; stopHb(); },
     });
     console.log(`[shim] ${req.method} ${url.pathname} -> 200 (stream open, keep-alive pings)`);
     return new Response(stream, {
