@@ -77,6 +77,56 @@ cmd_hello() {
   echo "Registered session '${session}' (${role}, ${model}) — scope: ${scope}"
 }
 
+# cmd_claim — заявить владение task/*-веткой (B22, плоскость scope).
+cmd_claim() {
+  local session="" branch="" scope="" ttl_min=240
+  while (( $# > 0 )); do
+    case "$1" in
+      --session) session="${2:?--session requires a value}"; shift 2 ;;
+      --branch)  branch="${2:?--branch requires a value}"; shift 2 ;;
+      --scope)   scope="${2:?--scope requires a value}"; shift 2 ;;
+      --ttl)     ttl_min="${2:?--ttl requires a value}"; shift 2 ;;
+      *) die "Unknown option: $1" ;;
+    esac
+  done
+  [[ -n "${session}" ]] || die "--session is required"
+  [[ -n "${branch}" ]]  || die "--branch is required"
+  [[ -n "${scope}" ]]   || die "--scope is required"
+  [[ "${branch}" == task/* ]] || die "--branch must be task/*"
+
+  ensure_claims_file
+  local ts; ts="$(now_epoch)"
+  jq -c -n \
+    --arg op "claim" --arg session "${session}" --arg branch "${branch}" \
+    --arg scope "${scope}" --argjson ts "${ts}" --argjson ttl "${ttl_min}" \
+    '{op:$op, session:$session, branch:$branch, scope:$scope, ts:$ts, ttl_minutes:$ttl}' \
+    >> "${CLAIMS_FILE}"
+  echo "Claim: ветка '${branch}' заявлена за ${session} (scope: ${scope}, TTL: ${ttl_min} мин)"
+}
+
+# cmd_claim_release — снять владение веткой (B22).
+cmd_claim_release() {
+  local session="" branch=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --session) session="${2:?--session requires a value}"; shift 2 ;;
+      --branch)  branch="${2:?--branch requires a value}"; shift 2 ;;
+      *) die "Unknown option: $1" ;;
+    esac
+  done
+  [[ -n "${session}" ]] || die "--session is required"
+  [[ -n "${branch}" ]]  || die "--branch is required"
+
+  ensure_claims_file
+  local ts; ts="$(now_epoch)"
+  jq -c -n \
+    --arg op "release" --arg session "${session}" --arg branch "${branch}" \
+    --argjson ts "${ts}" \
+    '{op:$op, session:$session, branch:$branch, ts:$ts}' \
+    >> "${CLAIMS_FILE}"
+  echo "Release: ветка '${branch}' отпущена (${session})"
+}
+
 cmd_ack() {
   local session="" from="" role="" model="" scope=""
 
@@ -161,7 +211,9 @@ cmd_ping() {
 
   # Find the last valid record for this session (skip corrupted lines)
   local last_record
-  last_record="$(jq -R -c --arg s "${session}" 'fromjson? // empty | select(.session == $s)' "${CLAIMS_FILE}" 2>/dev/null | tail -n 1 || true)"
+  last_record="$(jq -R -c --arg s "${session}" \
+    'fromjson? // empty | select(.session == $s and .op != "claim" and .op != "release")' \
+    "${CLAIMS_FILE}" 2>/dev/null | tail -n 1 || true)"
 
   if [[ -z "${last_record}" ]]; then
     if [[ "${json_output}" == true ]]; then
@@ -186,6 +238,7 @@ cmd_ping() {
   age_str="$(age_human "${age}")"
 
   # op == "bye" is the only terminal state; hello and ack both mean active.
+  # (claim/release — плоскость владения веткой, вне liveness-фолда, см. B22)
   local status
   if [[ "${op}" == "bye" ]]; then
     status="inactive"
@@ -222,6 +275,7 @@ cmd_ping() {
 _aggregate_sessions_jq() {
   local now="${1:?}" ttl_sec="${2:?}"
   jq -s --argjson now "${now}" --argjson ttl "${ttl_sec}" '
+    map(select(.op != "claim" and .op != "release")) |
     group_by(.session) |
     map(
       last |
@@ -341,6 +395,8 @@ Usage:
   hello.sh bye  --session <id>
   hello.sh list [--json]
   hello.sh find --role <role> [--json]
+  hello.sh claim  --session <id> --branch task/<b> --scope <s> [--ttl <min>]
+  hello.sh claim-release --session <id> --branch task/<b>
 EOF
 }
 
@@ -356,6 +412,8 @@ main() {
     bye)   cmd_bye "$@" ;;
     list)  cmd_list "$@" ;;
     find)  cmd_find "$@" ;;
+    claim) cmd_claim "$@" ;;
+    claim-release) cmd_claim_release "$@" ;;
     -h|--help|help) usage ;;
     *) die "Unknown command: ${cmd}" ;;
   esac
