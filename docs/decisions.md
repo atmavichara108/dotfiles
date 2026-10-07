@@ -652,3 +652,29 @@ tools/peer-comms не является stow-пакетом; stow.sh содерж
 просроченные claims автоматически неактивны, а live two-party smoke остаётся
 отдельным verifier-гейтом. Альтернативный Python-дубликат убран в именованный
 stash после разрешения ownership в пользу активной task-ветки.
+
+---
+
+### ADR-021: Временный стриминг-шим justwoker (temp bridge)
+**Дата:** 2026-10-07
+**Контекст:** Провайдер justwoker (New API-шлюз, claude-opus-4-8) регрессировал SSE:
+на `stream:true` отдаёт только `message_start/delta/stop` без `content_block_*` —
+OpenCode (AI SDK всегда стримит, non-stream опции нет) отвечал пустотой.
+OpenAI-путь закрыт Cloudflare 403. Пульсации балансировщика (CF-rate-limit 403,
+"No available channel, distributor" 503, ECONNRESET) валили рабочие сессии.
+**Решение:** Локальный шим `opencode-global/.config/opencode/shim/justwoker-shim.ts`
+(bun, localhost:8787, systemd user unit `justwoker-shim.service`, Restart=always,
+IPAddressAllow=localhost): стрим-запрос форвардится наверх как non-stream, шим
+сразу открывает SSE и синтезирует корректный Anthropic-стрим; keep-alive `ping`
+каждые 8c держат коннект живым (иначе Bun idleTimeout/клиент рвут idle → ECONNRESET);
+`idleTimeout=255`; forward-ретраи 403/503; try/catch хендлера (необработанный
+таймаут ронял bun-процесс); UPSTREAM_TIMEOUT 600c; OpenAI-фасад /v1/chat/completions
+для tools/model-bench. Секреты не хранит, не логирует. baseURL justwoker переведён
+на шим (оба блока provider/providers).
+**Последствия:** ШИМ ВРЕМЕННЫЙ — при переводе justwoker каналом собственного
+New API (vault docs/specs/newapi-gateway-layer.md) unit и шим удаляются, baseURL
+возвращается на upstream. Скрытый system-промпт шлюза (~10.4K токенов, персона
+data-analysis) перебивается нашим system только на anthropic-пути. Бенч k=1:
+tools/build/reasoning 1.0 (уровень флагмана).
+**Evidence:** стрим max_tokens=1500 прожил 34.9c до message_stop (5 пингов);
+service active+enabled, NRestarts=0; curl-серия в апстрим 12/12=200.
