@@ -137,5 +137,20 @@ if [ "${CLAIM_OK:-0}" != "1" ]; then
   fi
 fi
 
+# --- Гейт 5: чужая task-ветка (B22, защита от перехвата HEAD) ----------------
+# Если HEAD на task/*-ветке, заявленной (claims.jsonl op=claim) за ДРУГОЙ
+# сессией — стоп. Своя ветка / нет claim / legacy / неопознанный исполнитель —
+# пропуск (head-guard сам пишет WARN-журнал, жизни не блокирует).
+# Обход: HEAD_GUARD_OK=1 (осознанно, как MIXED_OK/CLAIM_OK).
+if [ "${HEAD_GUARD_OK:-0}" != "1" ]; then
+  _root5=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+  _hg="$_root5/tools/git-agent/head-guard.sh"
+  if [ -f "$_hg" ]; then
+    if ! bash "$_hg" check; then
+      exit 1
+    fi
+  fi
+fi
+
 echo "✅ tree-hygiene: ветка/маркеры/зоны в порядке"
 exit 0
