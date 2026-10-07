@@ -1,6 +1,7 @@
 ---
 kind: spec
-status: proto-draft (элементы design; до мандата не реализуется)
+status: materialized (B18 реализована 2026-10-07: letter.sh receipts + delivery-check.sh +
+  контракты S7 handshake / шапка AGENTS.md; host receipts — ~/.local/state/opencode/mail/)
 title: Программный протокол писем (двойной ack + read-gate + JSONL receipts)
 spec-home: dotfiles (рядом с peer-comms-handshake)
 date: 2026-10-06

@@ -83,3 +83,25 @@ Live-тест между двумя параллельными сессиями 
 - Canonical implementation: `tools/peer-comms/hello.sh` and `smoke.sh`.
 - Runtime claims are ignored by git; no tasks, permissions, or secrets are
   carried by handshake records.
+
+## S7. Двойной ack + read-gate (B18, мандат Дирижёра 2026-10-07)
+
+Расширение канона писем (реализация: `tools/peer-comms/letter.sh`,
+`delivery-check.sh`; спека `docs/specs/mailing-protocol-proto.md`):
+
+1. `letter.sh` — единственная точка отправки (B15 guard сохранён). При
+   доставке пишет `sent` в `~/.local/state/opencode/mail/receipts-out.jsonl`
+   (append-only, metadata-only: message_id/digest/to/from/scope/ref/rc/ts,
+   без тела письма). `message_id` = sha256(тела)[:16] + YYYYMMDD + from;
+   повтор того же id отклоняется (no-resend / идемпотентность).
+2. Получатель по контракту шлёт `started` при получении (read-gate: «прочитано»
+   даже без начатой работы) и `finished` при завершении хода (артефакт/SHA в
+   тексте). Формат: `letter.sh --to <отправитель> --receipt started|finished
+   --ref <message_id> --text ...`; в журнале — событие `receipt-started|
+   receipt-finished|receipt-cannot` со ссылкой `ref`.
+3. Read-gate отправителя: `delivery-check.sh <sessionID> <hash|substring>` —
+   детерминированная проверка по sqlite (`session_message`, type=user, окно
+   7 дней): rc=0 доставлено, rc=1 нет, rc=2 ошибка. Источник истины — БД,
+   а не `_ack-файлы` в `/tmp/opencodeREAD` (external_directory закрыт).
+4. Deadline semantics (спека S2.4): нет `started` до дедлайна — статус
+   `unknown` (проверить ещё раз / handoff-канал), не «провал».
