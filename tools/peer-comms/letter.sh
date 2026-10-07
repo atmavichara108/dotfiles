@@ -139,10 +139,8 @@ main() {
   fi
 
   args+=("${payload}")
-  local rc=0
-  opencode "${args[@]}" || rc=$?
-
-  # Журнал доставки (B18): metadata-only, без тела письма.
+  # Журнал — ДО блокирующего вызова: факт «отправлено» не должен теряться,
+  # если процесс убит timeout-ом до завершения хода получателя (инцидент B18).
   journal_append "${MAIL_DIR}" "$(jq -cn \
     --arg event "$( [[ -n "${receipt}" ]] && echo "receipt-${receipt}" || echo "sent" )" \
     --arg id "${message_id}" \
@@ -151,10 +149,16 @@ main() {
     --arg from "${from}" \
     --arg scope "${scope}" \
     --arg ref "${ref}" \
-    --argjson rc "${rc}" \
     '{event:$event, message_id:$id, digest:$digest, to:$to, from:$from,
-      scope:$scope, ref:$ref, rc:$rc, ts:(now|floor)}')"
+      scope:$scope, ref:$ref, ts:(now|floor)}')"
   echo "RECEIPT: ${message_id} -> ${to} (journal: ${out_file})" >&2
+  local rc=0
+  opencode "${args[@]}" || rc=$?
+  if (( rc != 0 )); then
+    journal_append "${MAIL_DIR}" "$(jq -cn \
+      --arg id "${message_id}" --argjson rc "${rc}" \
+      '{event:"run-rc", message_id:$id, rc:$rc, ts:(now|floor)}')"
+  fi
   return "${rc}"
 }
 
