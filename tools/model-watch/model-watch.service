@@ -1,0 +1,8 @@
+[Unit]
+Description=model-watch: refresh provider model catalog snapshot (models.dev -> vault control-plane)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/model-watch/model-watch.py
+# networking only; no privileges
+NoNewPrivileges=yes

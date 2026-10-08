@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic model catalog freshness run (24h)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=24h
+AccuracySec=15min
+
+[Install]
+WantedBy=timers.target
