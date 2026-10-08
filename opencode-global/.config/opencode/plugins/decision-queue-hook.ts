@@ -1,21 +1,35 @@
-// Decision Queue runtime hook: metadata-only card creation on permission events.
+// Decision Queue runtime hook (теневой режим, ADR-022): metadata-only cards on permission events.
 // Нативный V2-формат (OpenCode 2.0.18): Plugin.define({ id, setup(ctx) }).
+//
+// Теневой режим — конвенция, не обход:
+//   - плагин НИКОГДА не вызывает reply и не возвращает изменений effect;
+//   - конфиг-deny неуязвим («never override a configured deny») — документировано в ADR-022;
+//   - детерминированный zero-LLM classify добавляет recommendation{class, rationale,
+//     proposed_glob}; сомнение → substantive (только человек).
 //
 // Маппинг хуков V1 → V2:
 //   permission.ask → ctx.permission.hook("evaluate", ...)
 //     V1 PermissionEvent { type, pattern, title, sessionID, messageID, callID, metadata }
-//     → V2 PermissionEvaluation { action, resources, sessionID, source, metadata, message }
+//     → V2 PermissionEvaluation { action, resources, sessionID, source, metadata, message, effect }
 //   event catch-all (fallback) → ctx.event.subscribe(), фильтр event.type
 //     V1 permission.ask / permission.request → V2 стрим-событие "permission.asked"
+//     + "permission.replied" — дозапись решения человека строго по requestID.
 //
-// Логика создания карточек (createCard/writeCard, inferRisk, sanitizeReason,
-// generateCardId) сохранена 1:1 — меняется только адаптация входного события.
+// Карточки: <VAULT_PATH>/cards/<requestID>.json — durable-запись (ephemeral
+// состояние плагина не является доказательством; своя durable-запись обязательна).
 
 import { Plugin } from "@opencode/plugin"
-import { appendFile, mkdir } from "fs/promises"
+import { appendFile, mkdir, readFile } from "fs/promises"
 import { join } from "path"
 import { existsSync } from "fs"
-import { inferRisk, sanitizeReason, generateCardId } from "../lib/decision-queue-helpers.js"
+import {
+  inferRisk,
+  sanitizeReason,
+  generateCardId,
+  classify,
+  parseLastJson,
+  mergeDecisionIntoCard,
+} from "../lib/decision-queue-helpers.js"
 
 interface PermissionEvent {
   id?: string
@@ -42,6 +56,12 @@ interface PermissionEvaluateEvent {
   message?: string
 }
 
+interface Recommendation {
+  class: "nomenclatural" | "substantive"
+  rationale: string
+  proposed_glob: string | null
+}
+
 interface DecisionCard {
   id: string
   created: string
@@ -56,49 +76,109 @@ interface DecisionCard {
   messageID: string
   callID: string
   metadata: Record<string, unknown>
+  // Теневой классификатор (ADR-022):
+  recommendation: Recommendation
+  effect: "allow" | "ask" | "deny" | null
+  source_directory: string | null
+  // agent известен только из evaluate-хука; из стрима asked не добирается.
+  source_agent: string | null
+  // Плейсхолдер: модель не добирается (требует лишнего API) — см. ADR-022 UNVERIFIED.
+  model: string | null
 }
 
-const VAULT_PATH = "/home/rudra/Projects/OpenCode-Vault/decision-queue"
+const VAULT_PATH = "/home/rudra/Projects/OpenCode-Vault/control-plane/decision-queue"
 const FALLBACK_PATH = "/home/rudra/.local/share/opencode/decision-queue"
 
 function getStoragePath(): string {
   return existsSync(VAULT_PATH) ? VAULT_PATH : FALLBACK_PATH
 }
 
-function createCard(event: PermissionEvent): DecisionCard {
-  const now = new Date().toISOString()
-  const type = event.type ?? "unknown"
-  const pattern = event.pattern ?? ""
-  const risk = inferRisk(type, pattern)
+function cardsDir(): string {
+  return join(getStoragePath(), "cards")
+}
 
-  return {
-    id: generateCardId(type, pattern),
+function cardPath(id: string): string {
+  return join(cardsDir(), `${id}.json`)
+}
+
+// requestID — ключ карточки: из permission.asked data.id; при его отсутствии
+// (fallback-путь, evaluate-первичная запись) — старый генератор id.
+function cardIdFrom(ev: PermissionEvent): string {
+  return ev.id && typeof ev.id === "string" ? ev.id : generateCardId(ev.type, ev.pattern)
+}
+
+// effect/agent/source_directory известны только из evaluate-хука (null иначе).
+function createCard(ev: PermissionEvent, extra?: Partial<DecisionCard> & { metadata_save?: string[] }): DecisionCard {
+  const now = new Date().toISOString()
+  const type = ev.type ?? "unknown"
+  const pattern = ev.pattern ?? ""
+  const risk = inferRisk(type, pattern)
+  // save[] (предлагаемые глобы «запомнить») приходят из permission.asked;
+  // resources — из evaluate. proposed_glob = save[0] || null (ADR-022).
+  const resources = pattern ? pattern.split(/\s+/).filter(Boolean) : []
+  const recommendation = classify(type, resources, extra?.metadata_save ?? [])
+
+  const card: DecisionCard = {
+    id: cardIdFrom(ev),
     created: now,
     updated: now,
     status: "pending",
     risk: risk as DecisionCard["risk"],
     type,
     pattern,
-    title: event.title ?? "Permission request",
-    reason: sanitizeReason(event.title ?? "Permission event captured"),
-    sessionID: event.sessionID ?? "unknown",
-    messageID: event.messageID ?? "unknown",
-    callID: event.callID ?? "unknown",
-    metadata: event.metadata ?? {},
+    title: ev.title ?? "Permission request",
+    reason: sanitizeReason(ev.title ?? "Permission event captured"),
+    sessionID: ev.sessionID ?? "unknown",
+    messageID: ev.messageID ?? "unknown",
+    callID: ev.callID ?? "unknown",
+    metadata: ev.metadata ?? {},
+    recommendation: {
+      class: recommendation.class,
+      rationale: recommendation.rationale,
+      proposed_glob: recommendation.proposed_glob,
+    },
+    effect: null,
+    source_directory: null,
+    source_agent: null,
+    model: null,
   }
+  if (extra) Object.assign(card, extra)
+  delete (card as Record<string, unknown>).metadata_save
+  return card
 }
 
 async function writeCard(card: DecisionCard) {
-  const storagePath = getStoragePath()
-  const cardsDir = join(storagePath, "cards")
-  const cardPath = join(cardsDir, `${card.id}.json`)
+  const dir = cardsDir()
+  const path = cardPath(card.id)
 
   try {
-    await mkdir(cardsDir, { recursive: true })
-    await appendFile(cardPath, JSON.stringify(card, null, 2) + "\n", "utf-8")
-    console.log(`[decision-queue-hook] card created: ${card.id} (risk: ${card.risk})`)
+    await mkdir(dir, { recursive: true })
+    await appendFile(path, JSON.stringify(card, null, 2) + "\n", "utf-8")
+    console.log(
+      `[decision-queue-hook] card ${card.id} (risk: ${card.risk}, class: ${card.recommendation.class})`,
+    )
   } catch (err) {
     console.error(`[decision-queue-hook] card write failed: ${err}`)
+  }
+}
+
+// Дозапись решения человека: читаем последнюю запись карточки, мержим, дописываем.
+// Match строго по requestID (= id карточки): reject отклоняет все pending-сессии
+// ядром, поэтому чужие карточки не должны получать неверный статус.
+// Файл карточки может быть pretty-JSON (одна запись) или JSONL-историей (append).
+async function appendDecisionToCard(requestID: string, decision: string): Promise<boolean> {
+  const path = cardPath(requestID)
+  try {
+    const raw = await readFile(path, "utf-8")
+    const last = parseLastJson(raw)
+    const merged = mergeDecisionIntoCard(last, requestID, decision, new Date().toISOString())
+    if (!merged) return false
+    await appendFile(path, JSON.stringify(merged, null, 2) + "\n", "utf-8")
+    console.log(`[decision-queue-hook] card ${requestID} decision recorded: ${decision}`)
+    return true
+  } catch {
+    // карточки с таким requestID нет — чужое/ранее событие, молча пропускаем
+    return false
   }
 }
 
@@ -120,49 +200,101 @@ function fromEvaluate(event: PermissionEvaluateEvent): PermissionEvent {
 }
 
 // Адаптация V2 стрим-события permission.asked → PermissionEvent.
-// Форма подтверждена по схеме (@opencode/schema permission.d.ts): flat-конверт
-// { id, type: "permission.asked", data: { sessionID, action, resources[],
-// metadata?, source? } }. Читаем data с фолбэком на flat (на случай envelope-less
-// подписки) — fail-safe: неизвестные поля дают "unknown", карточка всё равно пишется.
+// Форма: { id, type: "permission.asked", data/properties: { sessionID, permission/action,
+// patterns/resources[], save[]?, location?, metadata?, source/tool } }. Читаем data →
+// properties → flat (fail-safe: неизвестные поля дают "unknown", карточка всё равно пишется).
 function fromAsked(event: Record<string, any>): PermissionEvent {
-  const payload = (event?.data ?? event ?? {}) as Record<string, any>
+  const payload = (event?.data ?? event?.properties ?? event ?? {}) as Record<string, any>
   return {
-    id: event.id,
-    type: payload.action,
-    pattern: Array.isArray(payload.resources) ? payload.resources.join(" ") : "",
+    id: event.id ?? payload.id,
+    type: payload.permission ?? payload.action,
+    pattern: Array.isArray(payload.resources)
+      ? payload.resources.join(" ")
+      : Array.isArray(payload.patterns)
+        ? payload.patterns.join(" ")
+        : Array.isArray(payload.save)
+          ? payload.save.join(" ")
+          : "",
     sessionID: payload.sessionID,
-    messageID: payload.source?.messageID,
-    callID: payload.source?.id,
+    messageID: payload.source?.messageID ?? payload.tool?.messageID,
+    callID: payload.source?.id ?? payload.tool?.callID,
     title: typeof payload.message === "string" ? payload.message : undefined,
     metadata: payload.metadata,
+  }
+}
+
+// Дополнительные поля карточки из permission.asked: save[], location.directory.
+function extrasFromAsked(event: Record<string, any>): Partial<DecisionCard> & { metadata_save?: string[] } {
+  const payload = (event?.data ?? event?.properties ?? event ?? {}) as Record<string, any>
+  return {
+    metadata_save: Array.isArray(payload.save) ? payload.save.filter((s: unknown) => typeof s === "string") : [],
+    source_directory: typeof payload.location?.directory === "string" ? payload.location.directory : null,
   }
 }
 
 export default Plugin.define({
   id: "decision-queue-hook",
   async setup(ctx) {
-    // Primary: V1 permission.ask → V2 permission evaluate hook.
-    // Решение (effect) не меняем — только создаём metadata-only карточку, как в V1.
+    // Теневое состояние (только чтение): evaluate даёт effect/agent раньше либо
+    // параллельно со стримом; храним кратко, только для обогащения карточки.
+    // Никаких reply-вызовов, никаких мутаций effect — обработчик возвращает undefined
+    // (конвенция теневого режима, ADR-022).
+    const pendingByCall = new Map<string, { effect: DecisionCard["effect"]; agent?: string }>()
+
+    // Primary: V1 permission.ask → V2 permission evaluate hook. Только читаем.
     await ctx.permission.hook("evaluate", async (event: PermissionEvaluateEvent) => {
       try {
-        const card = createCard(fromEvaluate(event))
+        if (event.source?.id) {
+          pendingByCall.set(event.source.id, { effect: event.effect, agent: event.agent })
+        }
+        const extra = { effect: event.effect ?? null, source_agent: event.agent ?? null } as Partial<DecisionCard>
+        const card = createCard(fromEvaluate(event), extra)
+        // evaluate-событие не несёт requestID → id через генератор;
+        // обогащение из asked (save/directory) подтянется при его приходе.
         await writeCard(card)
       } catch (err) {
         console.error(`[decision-queue-hook] permission evaluate handler failed: ${err}`)
       }
+      // ВАЖНО: намеренно без return — effect не мутируется (теневой режим).
     })
 
-    // Fallback: V1 event catch-all → V2 подписка на публичный стрим событий.
+    // Стрим событий: asked → карточка с requestID/save/directory;
+    // replied → дозапись решения строго по requestID.
     const controller = new AbortController()
     void (async () => {
       for await (const raw of ctx.event.subscribe({ signal: controller.signal })) {
         const event = raw as unknown as Record<string, any>
-        if (event?.type !== "permission.asked") continue
-        try {
-          const card = createCard(fromAsked(event))
-          await writeCard(card)
-        } catch (err) {
-          console.error(`[decision-queue-hook] event fallback handler failed: ${err}`)
+        const type = event?.type
+
+        if (type === "permission.asked") {
+          try {
+            const ev = fromAsked(event)
+            const extras = extrasFromAsked(event)
+            const pending = ev.callID ? pendingByCall.get(ev.callID) : undefined
+            const card = createCard(ev, {
+              ...extras,
+              ...(pending ? { effect: pending.effect, source_agent: pending.agent ?? null } : {}),
+            })
+            await writeCard(card)
+          } catch (err) {
+            console.error(`[decision-queue-hook] permission asked handler failed: ${err}`)
+          }
+          continue
+        }
+
+        if (type === "permission.replied") {
+          try {
+            const payload = (event?.data ?? event?.properties ?? event ?? {}) as Record<string, any>
+            const requestID = payload.requestID ?? payload.permissionID
+            const reply = payload.reply ?? payload.response
+            if (typeof requestID === "string" && typeof reply === "string") {
+              // match строго по requestID — чужие карточки не трогаем
+              await appendDecisionToCard(requestID, reply)
+            }
+          } catch (err) {
+            console.error(`[decision-queue-hook] permission replied handler failed: ${err}`)
+          }
+          continue
         }
       }
     })()
