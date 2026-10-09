@@ -11,6 +11,15 @@ Type=simple
 ExecStart=/home/rudra/.bun/bin/bun run /home/rudra/dotfiles/opencode-global/.config/opencode/shim/justwoker-shim.ts
 Environment=HOST=127.0.0.1
 Environment=PORT=8787
+# Транспорт — curl через локальный прокси: прямое соединение с Cloudflare
+# виснет на больших upload'ах (MTU-blackhole, матрица 2026-10-09). Прокси
+# локальный (127.0.0.1:10809) — совместим с IPAddressAllow=localhost.
+Environment=SHIM_PROXY=http://127.0.0.1:10809
+# Stream hang: 30с молчания апстрима → аборт попытки; 1 ретрай, затем
+# fallback на non-stream (сейчас stream:true у upstream часто висит,
+# non-stream стабильно работает).
+Environment=HANG_MS=30000
+Environment=FORWARD_RETRIES=1
 Restart=always
 RestartSec=5
 IPAddressDeny=any
