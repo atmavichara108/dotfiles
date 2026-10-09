@@ -8,6 +8,7 @@ permission:
   edit: deny
   task: deny
   read: allow
+  external_directory: allow
   glob: allow
   grep: allow
   webfetch: deny

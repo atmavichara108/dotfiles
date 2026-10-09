@@ -7,6 +7,8 @@ steps: 12
 permission:
   edit: deny
   task: deny
+  read: allow
+  external_directory: allow
   webfetch: deny
   bash:
     "*": ask
