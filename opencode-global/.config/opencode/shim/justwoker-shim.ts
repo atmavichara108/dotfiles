@@ -1,4 +1,8 @@
 #!/usr/bin/env bun
+import { request as nodeHttpRequest } from "node:http";
+import { request as nodeHttpsRequest } from "node:https";
+import { Readable } from "node:stream";
+import type { IncomingMessage } from "node:http";
 /**
  * justwoker-shim — локальный HTTP-шим для провайдера `justwoker`.
  *
@@ -48,15 +52,6 @@ function buildUpstreamHeaders(req: Request, bodyLen: number): Headers {
   return h;
 }
 
-function filterResponseHeaders(src: Headers): Headers {
-  const h = new Headers();
-  for (const [k, v] of src) {
-    if (RES_HOP_BY_HOP.has(k.toLowerCase())) continue;
-    h.set(k, v);
-  }
-  return h;
-}
-
 // Потолок времени апстрим-запроса. Держит AbortSignal; дефолтный Bun-овый
 // socket-idle (300c) отключён через fetch-опцию `timeout: false` (доказано
 // контрольным тестом: hold=340c → 200; см. ниже). 900c с запасом на полный
@@ -64,41 +59,115 @@ function filterResponseHeaders(src: Headers): Headers {
 const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? 900_000);
 const FORWARD_RETRIES = Number(process.env.FORWARD_RETRIES ?? 3);
 const FORWARD_RETRY_MS = Number(process.env.FORWARD_RETRY_MS ?? 1500);
+// Детектор висняка: если от upstream нет ни байта дольше HANG_MS — аборт
+// попытки и ретрай форварда. Даёт дистрибьютору шанс перевыделить живой
+// канал (симптом «висит 15 минут»). Клиента держат пинги.
+const HANG_MS = Number(process.env.HANG_MS ?? 90_000);
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-async function forward(req: Request, body: string): Promise<Response> {
-  const headers = buildUpstreamHeaders(req, Buffer.byteLength(body));
-  const noBody = req.method === "GET" || req.method === "HEAD";
-  const url = upstreamUrl(req.url);
-  let res: Response | null = null;
-  for (let attempt = 0; attempt <= FORWARD_RETRIES; attempt++) {
-    res = await fetch(url, {
-      method: req.method,
+/** Плоская запись заголовков (Headers → Record) для node:http(s).request. */
+function headersRecord(h: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of h) out[k] = v;
+  return out;
+}
+
+type RawUpstream = {
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  stream: IncomingMessage;
+};
+
+/**
+ * Свежее TCP+TLS-соединение на КАЖДЫЙ запрос (agent:false, keep-alive off).
+ * Bun fetch-пул в долгоживущем процессе реюзает мёртвый сокет (Cloudflare
+ * убивает idle-соединение), тело застревает в Send-Q и запрос висит до
+ * потолка AbortSignal. node:https с agent:false регрессии не имеет
+ * (proven: выживает 340c hold, тест T3).
+ */
+function openRaw(
+  upstreamUrlStr: string,
+  method: string,
+  headers: Record<string, string>,
+  body: string | undefined,
+  signal: AbortSignal,
+): Promise<RawUpstream> {
+  const u = new URL(upstreamUrlStr);
+  const isHttps = u.protocol === "https:";
+  const reqFn = isHttps ? nodeHttpsRequest : nodeHttpRequest;
+  return new Promise((resolve, reject) => {
+    const options: any = {
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: u.port || (isHttps ? 443 : 80),
+      path: u.pathname + u.search,
+      method,
       headers,
-      body: noBody ? undefined : body,
-      redirect: "manual",
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-      // Bun fetch НЕ знает опций headersTimeout/requestTimeout (они серверные,
-      // Bun.serve/node:http). Клиентский socket-idle в Bun = 300c
-      // (BUN_CONFIG_HTTP_IDLE_TIMEOUT) и рвёт долгий non-stream с TimeoutError.
-      // Единственный рабочий escape-hatch — `timeout: false` (issue #16682).
-      // Контрольный тест (hold=340c): fetch default → TimeoutError@300.0c;
-      // fetch timeout:false → 200@340.1c. Потолок держит AbortSignal выше.
-      timeout: false,
-    } as RequestInit);
-    // Быстрые отказы балансировщика up stream (CF rate-limit 403 ~0.5c,
-    // New API «No available channel, distributor» 503): прозрачный ретрай
-    // с паузой — OpenCode не должен их видеть.
-    if ((res.status === 403 || res.status === 503) && attempt < FORWARD_RETRIES) {
-      console.log(`[shim] upstream ${res.status} retry ${attempt + 1}/${FORWARD_RETRIES}`);
-      await res.body?.cancel().catch(() => {});
+    };
+    options.agent = false; // без пула: новое TCP-соединение на каждый запрос
+    const r = reqFn(options, (res: IncomingMessage) => {
+      resolve({ status: res.statusCode ?? 0, headers: res.headers, stream: res });
+    });
+    const onAbort = () => r.destroy(new Error("shim: aborted"));
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+    r.on("error", reject);
+    if (body !== undefined) r.write(body);
+    r.end();
+  });
+}
+
+/**
+ * Свежее TCP+TLS-соединение на КАЖДЫЙ запрос (agent:false, keep-alive off).
+ * Bun fetch-пул в долгоживущем процессе реюзает мёртвый сокет (Cloudflare
+ * убивает idle-соединение), тело застревает в Send-Q и запрос висит до
+ * потолка AbortSignal. node:https с agent:false регрессии не имеет
+ * (proven: выживает 340c hold, тест T3).
+ */
+function openUpstream(req: Request, body: string | undefined, signal: AbortSignal): Promise<RawUpstream> {
+  return openRaw(
+    upstreamUrl(req.url),
+    req.method,
+    headersRecord(buildUpstreamHeaders(req, body ? Buffer.byteLength(body) : 0)),
+    body,
+    signal,
+  );
+}
+
+/** Форвард апстрима через node:https с прозрачным ретраем 403/503. */
+async function forward(req: Request, body: string, signal: AbortSignal): Promise<RawUpstream> {
+  for (let attempt = 0; attempt <= FORWARD_RETRIES; attempt++) {
+    const up = await openUpstream(req, body, signal);
+    // Быстрые отказы балансировщика (CF rate-limit 403, New API «No available
+    // channel» 503): прозрачный ретрай с паузой — OpenCode их не видит.
+    if ((up.status === 403 || up.status === 503) && attempt < FORWARD_RETRIES) {
+      console.log(`[shim] upstream ${up.status} retry ${attempt + 1}/${FORWARD_RETRIES}`);
+      up.stream.destroy();
       await sleep(FORWARD_RETRY_MS * (attempt + 1));
       continue;
     }
-    return res;
+    return up;
   }
-  return res;
+  throw new Error("shim: forward retries exhausted");
+}
+
+/** Заголовки ответа апстрима без hop-by-hop. */
+function filteredHeaders(rec: Record<string, string | string[] | undefined>): Headers {
+  const h = new Headers();
+  for (const [k, v] of Object.entries(rec)) {
+    if (v === undefined) continue;
+    if (RES_HOP_BY_HOP.has(k.toLowerCase())) continue;
+    h.set(k, Array.isArray(v) ? v.join(", ") : v);
+  }
+  return h;
+}
+
+/** Полное чтение node-стрима в строку (для non-stream/facade). */
+async function readAll(stream: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /** Чистый ответ-ошибка JSON (не бросаем наружу, не валим процесс). */
@@ -294,26 +363,44 @@ const server = Bun.serve({
 async function route(req: Request, url: URL, raw: string, parsed: any): Promise<Response> {
 
     // ── OpenAI-фасад для бенчера: /v1/chat/completions → /v1 messages ──
+    // Держим на non-stream-пути (бенчеру нужен целый JSON).
     if (url.pathname === "/v1/chat/completions" && req.method === "POST" && parsed) {
       const anthBody = openaiToAnthropic(parsed);
       const key = extractBearer(req) || req.headers.get("x-api-key") || "";
-      const res = await fetch(UPSTREAM_BASE + "/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "anthropic-version": "2023-06-01",
-          "x-api-key": key,
-        },
-        body: JSON.stringify(anthBody),
-      });
-      if (!res.ok) {
-        console.log(`[shim] POST /v1/chat/completions -> ${res.status} (upstream error, facade)`);
+      const ac = new AbortController();
+      const hardTimer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
+      let up: RawUpstream;
+      try {
+        up = await openRaw(
+          UPSTREAM_BASE + "/messages",
+          "POST",
+          { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": key },
+          JSON.stringify(anthBody),
+          ac.signal,
+        );
+      } catch {
+        clearTimeout(hardTimer);
+        return jsonError(502, "shim: upstream error (facade)");
+      }
+      if (up.status < 200 || up.status >= 300) {
+        clearTimeout(hardTimer);
+        up.stream.destroy();
+        console.log(`[shim] POST /v1/chat/completions -> ${up.status} (upstream error, facade)`);
         return new Response(
-          JSON.stringify({ error: { message: `shim: upstream ${res.status}`, type: "upstream_error" } }),
-          { status: res.status, headers: { "content-type": "application/json" } },
+          JSON.stringify({ error: { message: `shim: upstream ${up.status}`, type: "upstream_error" } }),
+          { status: up.status || 502, headers: { "content-type": "application/json" } },
         );
       }
-      const j = await res.json().catch(() => null);
+      let text = "";
+      try {
+        text = await readAll(up.stream);
+      } catch {
+        clearTimeout(hardTimer);
+        return jsonError(502, "shim: upstream stream error (facade)");
+      }
+      clearTimeout(hardTimer);
+      let j: any = null;
+      try { j = JSON.parse(text); } catch { j = null; }
       if (!j) {
         return new Response(
           JSON.stringify({ error: { message: "shim: upstream non-JSON (facade)", type: "api_error" } }),
@@ -329,77 +416,175 @@ async function route(req: Request, url: URL, raw: string, parsed: any): Promise<
 
     const wantsStream = parsed?.stream === true;
 
+    // Non-stream запрос: форвардим как есть, тело ответа — потоком.
     if (!wantsStream) {
-      const res = await forward(req, raw);
-      console.log(`[shim] ${req.method} ${url.pathname} -> ${res.status} (passthrough)`);
-      return new Response(res.body, { status: res.status, headers: filterResponseHeaders(res.headers) });
+      const ac = new AbortController();
+      let up: RawUpstream;
+      try {
+        up = await forward(req, raw, ac.signal);
+      } catch {
+        return jsonError(502, "shim: upstream error");
+      }
+      const hardTimer = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
+      up.stream.on("close", () => clearTimeout(hardTimer));
+      console.log(`[shim] ${req.method} ${url.pathname} -> ${up.status} (passthrough)`);
+      const bodyStream = Readable.toWeb(up.stream) as unknown as ReadableStream<Uint8Array>;
+      return new Response(bodyStream, { status: up.status, headers: filteredHeaders(up.headers) });
     }
 
-    // Стрим запрошен: форвардим наверх как non-stream.
-    // ВАЖНО: отвечаем 200 СРАЗУ и держим соединение стандартными пингами
-    // Anthropic SSE (`ping`), пока апстрим думает. Иначе Bun idleTimeout
-    // (default 10s) рвёт "пустой" коннект, и OpenCode получает ECONNRESET
-    // на любых генерациях длиннее ~10 секунд.
-    const jsonBody = JSON.stringify({ ...parsed, stream: false });
+    // ── Гибридный passthrough (v3) ──
+    // Форвардим наверх с stream:true и пробрасываем СЫРЫЕ SSE-байты:
+    // peek-then-flush по маркеру `content_block` (мгновенный TTFB, живые
+    // инкрементальные дельты), без парсинга/пересборки. Если стрим завершился
+    // БЕЗ content_block (старая регрессия upstream) — fallback на non-stream
+    // и синтез SSE (buildSSE). Нет чанков дольше HANG_MS → abort + ретрай
+    // форварда; клиента держат пинги (crash-guard safeEnqueue/closed).
     const enc = new TextEncoder();
-    const upstream = forward(req, jsonBody);
     let hb: ReturnType<typeof setInterval> | undefined;
-    // Crash-guard: после cancel() клиента контроллер закрыт — enqueue/close
-    // в него бросают TypeError "Controller is already closed" и роняют
-    // процесс (ConnectionRefused до Restart=always). Все записи — через
-    // safeEnqueue с флагом closed.
     let closed = false;
     const stopHb = () => { if (hb) { clearInterval(hb); hb = undefined; } };
+
+    // Fallback: повтор запроса как non-stream + синтез. Возвращает JSON|null.
+    const synthNonStream = async (): Promise<any> => {
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), UPSTREAM_TIMEOUT_MS);
+      try {
+        const up = await forward(req, JSON.stringify({ ...parsed, stream: false }), ac.signal);
+        const text = await readAll(up.stream);
+        if (up.status < 200 || up.status >= 300) return null;
+        return JSON.parse(text);
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(t);
+      }
+    };
+
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        const safeEnqueue = (s: string) => {
+        // Crash-guard: после cancel() клиента контроллер закрыт — enqueue/close
+        // в него бросают TypeError и роняют процесс. Все записи через safeEnqueue.
+        const safeEnqueue = (s: string | Uint8Array) => {
           if (closed) return;
-          try { controller.enqueue(enc.encode(s)); } catch { closed = true; stopHb(); }
+          try { controller.enqueue(typeof s === "string" ? enc.encode(s) : s); }
+          catch { closed = true; stopHb(); }
         };
         const safeClose = () => {
           if (closed) return;
           closed = true; stopHb();
           try { controller.close(); } catch {}
         };
+        const fail = (msg: string) => {
+          safeEnqueue(sseEvent("error", { type: "error", error: { type: "api_error", message: msg } }));
+          safeClose();
+        };
+        // Клиента держат пинги (Bun idleTimeout default 10s иначе рвёт коннект).
         hb = setInterval(() => safeEnqueue(sseEvent("ping", { type: "ping" })), 8000);
-        upstream
-          .then(async (res) => {
-            if (closed) return;
-            stopHb();
-            if (!res.ok) {
-              console.log(`[shim] ${req.method} ${url.pathname} -> upstream ${res.status} (SSE error event)`);
-              safeEnqueue(sseEvent("error", {
-                type: "error",
-                error: { type: "api_error", message: `shim: upstream ${res.status}` },
-              }));
-              safeClose();
-              return;
+
+        // true — ответ клиенту уже отдан (успех/ошибка); false — нужен fallback.
+        const attemptStream = async (): Promise<boolean> => {
+          for (let attempt = 0; attempt <= FORWARD_RETRIES; attempt++) {
+            if (closed) return true;
+            const ac = new AbortController();
+            let reason = "";
+            // Watchdog НЕ зависит от того, отклонит ли abort промис транспорта:
+            // гоним forward/read через Promise.race с reject-таймерами.
+            let hangTimer: ReturnType<typeof setTimeout> | undefined;
+            let hardTimer: ReturnType<typeof setTimeout> | undefined;
+            let rejectHang: (e: Error) => void = () => {};
+            let rejectHard: (e: Error) => void = () => {};
+            const hangP = new Promise<never>((_, rej) => { rejectHang = rej; });
+            const hardP = new Promise<never>((_, rej) => { rejectHard = rej; });
+            const armHang = () => {
+              clearTimeout(hangTimer);
+              hangTimer = setTimeout(() => { reason = "hang"; ac.abort(); rejectHang(new Error("hang")); }, HANG_MS);
+            };
+            const drop = () => { clearTimeout(hangTimer); clearTimeout(hardTimer); };
+            let up: RawUpstream | undefined;
+            armHang();
+            hardTimer = setTimeout(() => { reason = "hard"; ac.abort(); rejectHard(new Error("hard")); }, UPSTREAM_TIMEOUT_MS);
+            try {
+              up = await Promise.race([forward(req, raw, ac.signal), hangP, hardP]);
+              if (up.status < 200 || up.status >= 300) {
+                drop();
+                console.log(`[shim] ${req.method} ${url.pathname} -> upstream ${up.status} (SSE error event)`);
+                up.stream.destroy();
+                fail(`shim: upstream ${up.status}`);
+                return true;
+              }
+              const reader = (Readable.toWeb(up.stream) as unknown as ReadableStream<Uint8Array>).getReader();
+              const buffered: Uint8Array[] = [];
+              const dec = new TextDecoder();
+              let seen = "";
+              let flushed = false;
+              for (;;) {
+                armHang();
+                const step = await Promise.race([reader.read(), hangP, hardP]);
+                if (closed) { await reader.cancel().catch(() => {}); drop(); return true; }
+                if (step.done) break;
+                const chunk = step.value;
+                if (!flushed) {
+                  buffered.push(chunk);
+                  seen += dec.decode(chunk, { stream: true });
+                  if (seen.includes("content_block")) {
+                    stopHb();
+                    for (const c of buffered) safeEnqueue(c);
+                    buffered.length = 0;
+                    flushed = true;
+                  }
+                } else {
+                  safeEnqueue(chunk);
+                }
+              }
+              drop();
+              if (closed) return true;
+              if (flushed) {
+                console.log(`[shim] ${req.method} ${url.pathname} -> 200 (live SSE passthrough)`);
+                safeClose();
+                return true;
+              }
+              // Стрим кончился без content_block — регрессия: fallback на non-stream.
+              console.log(`[shim] ${req.method} ${url.pathname} -> upstream stream had no content_block (fallback to non-stream)`);
+              return false;
+            } catch (err: any) {
+              drop();
+              if (up) up.stream.destroy();
+              if (closed) return true;
+              if (reason === "hang" && attempt < FORWARD_RETRIES) {
+                console.log(`[shim] upstream hang >${HANG_MS}ms, retry ${attempt + 1}/${FORWARD_RETRIES}`);
+                await sleep(FORWARD_RETRY_MS * (attempt + 1));
+                continue;
+              }
+              fail(reason === "hard" ? "shim: upstream timeout" : "shim: upstream hang");
+              return true;
             }
-            const json = await res.json().catch(() => null);
+          }
+          // Попытки исчерпаны на hang.
+          fail("shim: upstream hang");
+          return true;
+        };
+
+        (async () => {
+          try {
+            if (await attemptStream()) return;
+            if (closed) return;
+            const json = await synthNonStream();
             if (closed) return;
             if (!json) {
-              console.log(`[shim] ${req.method} ${url.pathname} -> upstream non-JSON (SSE error event)`);
-              safeEnqueue(sseEvent("error", {
-                type: "error",
-                error: { type: "api_error", message: "shim: upstream returned non-JSON" },
-              }));
-              safeClose();
+              console.log(`[shim] ${req.method} ${url.pathname} -> fallback non-stream non-JSON (SSE error event)`);
+              fail("shim: upstream returned non-JSON");
               return;
             }
             const blocks = Array.isArray(json?.content) ? json.content.length : 0;
             console.log(`[shim] ${req.method} ${url.pathname} -> 200 (synthesized SSE, blocks=${blocks})`);
             safeEnqueue(buildSSE(json));
             safeClose();
-          })
-          .catch((err: any) => {
+          } catch (err: any) {
             if (closed) return;
             console.log(`[shim] ${req.method} ${url.pathname} -> ${err?.name ?? "error"} (SSE error event)`);
-            safeEnqueue(sseEvent("error", {
-              type: "error",
-              error: { type: "api_error", message: `shim: ${err?.name ?? "upstream error"}` },
-            }));
-            safeClose();
-          });
+            fail(`shim: ${err?.name ?? "upstream error"}`);
+          }
+        })();
       },
       cancel() { closed = true; stopHb(); },
     });
