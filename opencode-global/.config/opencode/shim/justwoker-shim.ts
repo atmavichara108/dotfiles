@@ -1,8 +1,6 @@
 #!/usr/bin/env bun
-import { request as nodeHttpRequest } from "node:http";
-import { request as nodeHttpsRequest } from "node:https";
-import { Readable } from "node:stream";
-import type { IncomingMessage } from "node:http";
+import { spawn } from "node:child_process";
+import { PassThrough, Readable } from "node:stream";
 /**
  * justwoker-shim — локальный HTTP-шим для провайдера `justwoker`.
  *
@@ -11,6 +9,14 @@ import type { IncomingMessage } from "node:http";
  * (то есть без текста). Без стрима тот же запрос работает. OpenCode (AI SDK)
  * всегда стримит, поэтому шим перехватывает стрим-запрос, форвардит его наверх
  * как non-stream и сам синтезирует корректный Anthropic SSE.
+ *
+ * Транспорт: curl subprocess (child_process.spawn). Bun-овый сетевой стек
+ * (и fetch, и node:https) виснет на больших upload'ах (>64KB): доказано
+ * репро с телом 796KB — node:https HANG во всех вариантах записи
+ * (write+end / end(body) / chunks+drain), bun-fetch TimeoutError,
+ * тогда как curl с тем же телом отвечает 200 за ~9с. curl — отдельный
+ * бинарник, баг Bun не задевает; свежее TCP-соединение на каждый spawn
+ * (пула нет), плюс нативный детектор висняка --speed-limit/--speed-time.
  *
  * Границы:
  *  - слушает только localhost;
@@ -52,10 +58,8 @@ function buildUpstreamHeaders(req: Request, bodyLen: number): Headers {
   return h;
 }
 
-// Потолок времени апстрим-запроса. Держит AbortSignal; дефолтный Bun-овый
-// socket-idle (300c) отключён через fetch-опцию `timeout: false` (доказано
-// контрольным тестом: hold=340c → 200; см. ниже). 900c с запасом на полный
-// контекст Opus.
+// Потолок времени апстрим-запроса: curl --max-time + AbortSignal (kill ребёнка).
+// 900c с запасом на полный контекст Opus.
 const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS ?? 900_000);
 const FORWARD_RETRIES = Number(process.env.FORWARD_RETRIES ?? 3);
 const FORWARD_RETRY_MS = Number(process.env.FORWARD_RETRY_MS ?? 1500);
@@ -63,10 +67,14 @@ const FORWARD_RETRY_MS = Number(process.env.FORWARD_RETRY_MS ?? 1500);
 // попытки и ретрай форварда. Даёт дистрибьютору шанс перевыделить живой
 // канал (симптом «висит 15 минут»). Клиента держат пинги.
 const HANG_MS = Number(process.env.HANG_MS ?? 90_000);
+// Прокси для апстрима. Прямое соединение с Cloudflare виснет на больших
+// upload'ах (тело 796KB: http=000 >45c; матрица 2026-10-09), через этот
+// прокси — 200 за ~26c. Пустая строка = напрямую (для отладки).
+const SHIM_PROXY = process.env.SHIM_PROXY ?? "http://127.0.0.1:10809";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** Плоская запись заголовков (Headers → Record) для node:http(s).request. */
+/** Плоская запись заголовков (Headers → Record) для аргументов curl -H. */
 function headersRecord(h: Headers): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [k, v] of h) out[k] = v;
@@ -76,15 +84,24 @@ function headersRecord(h: Headers): Record<string, string> {
 type RawUpstream = {
   status: number;
   headers: Record<string, string | string[] | undefined>;
-  stream: IncomingMessage;
+  stream: PassThrough;
 };
 
 /**
- * Свежее TCP+TLS-соединение на КАЖДЫЙ запрос (agent:false, keep-alive off).
- * Bun fetch-пул в долгоживущем процессе реюзает мёртвый сокет (Cloudflare
- * убивает idle-соединение), тело застревает в Send-Q и запрос висит до
- * потолка AbortSignal. node:https с agent:false регрессии не имеет
- * (proven: выживает 340c hold, тест T3).
+ * Транспорт апстрима: curl subprocess (child_process.spawn).
+ *
+ * Почему не bun fetch и не node:https: Bun-овый сетевой стек виснет на
+ * больших upload'ах в обоих вариантах — репро 2026-10-09 (тело 796KB):
+ * node:https HANG во всех вариантах записи (write+end / end(body) /
+ * chunks+drain / keepAlive:false), bun-fetch TimeoutError, тогда как curl
+ * с тем же телом отвечает 200 за ~9c. curl — отдельный бинарник, баг Bun
+ * не задевает. Уходит через SHIM_PROXY (прямое соединение с CF виснет на
+ * больших телах), свежее TCP-соединение на каждый spawn — пула и мёртвых
+ * сокетов не существует.
+ *
+ * Заголовки ответа парсим из stdout с -i; блоки CONNECT-туннеля прокси
+ * («200 Connection established») и 1xx-continue пропускаются. Тело —
+ * PassThrough, прозрачен для readAll/Readable.toWeb.
  */
 function openRaw(
   upstreamUrlStr: string,
@@ -93,38 +110,90 @@ function openRaw(
   body: string | undefined,
   signal: AbortSignal,
 ): Promise<RawUpstream> {
-  const u = new URL(upstreamUrlStr);
-  const isHttps = u.protocol === "https:";
-  const reqFn = isHttps ? nodeHttpsRequest : nodeHttpRequest;
   return new Promise((resolve, reject) => {
-    const options: any = {
-      protocol: u.protocol,
-      hostname: u.hostname,
-      port: u.port || (isHttps ? 443 : 80),
-      path: u.pathname + u.search,
-      method,
-      headers,
+    const args = [
+      "-sS", "-N", "--http1.1", "-i",
+      "--max-time", String(Math.ceil(UPSTREAM_TIMEOUT_MS / 1000)),
+    ];
+    if (SHIM_PROXY) args.push("--proxy", SHIM_PROXY);
+    args.push("--noproxy", "localhost,127.0.0.1,::1");
+    args.push("-X", method);
+    args.push("-H", "Expect:"); // без 100-continue: тело уходит сразу
+    for (const [k, v] of Object.entries(headers)) {
+      if (k.toLowerCase() === "content-length") continue; // curl сам чанкует stdin
+      args.push("-H", `${k}: ${v}`);
+    }
+    if (body !== undefined) args.push("--data-binary", "@-");
+    args.push(upstreamUrlStr);
+
+    const child = spawn("curl", args, { stdio: ["pipe", "pipe", "pipe"] });
+    const out = new PassThrough();
+
+    let settled = false;
+    let headBuf = Buffer.alloc(0);
+    let headersDone = false;
+    let status = 0;
+    const resHeaders: Record<string, string | string[] | undefined> = {};
+
+    // Ищем завершённый header-block; пропускаем CONNECT-туннель прокси и 1xx.
+    const tryParseHeaders = (): boolean => {
+      for (;;) {
+        const idx = headBuf.indexOf("\r\n\r\n");
+        if (idx === -1) return false;
+        const block = headBuf.subarray(0, idx).toString("latin1");
+        headBuf = Buffer.from(headBuf.subarray(idx + 4));
+        const lines = block.split("\r\n");
+        const statusLine = lines[0] ?? "";
+        const m = statusLine.match(/^HTTP\/\d+(?:\.\d+)?\s+(\d{3})/);
+        const code = m ? Number(m[1]) : 0;
+        if (code === 200 && /connection established/i.test(statusLine)) continue;
+        if (code >= 100 && code < 200) continue;
+        status = code;
+        for (const line of lines.slice(1)) {
+          const ci = line.indexOf(":");
+          if (ci === -1) continue;
+          const k = line.slice(0, ci).trim().toLowerCase();
+          const v = line.slice(ci + 1).trim();
+          const prev = resHeaders[k];
+          if (prev === undefined) resHeaders[k] = v;
+          else if (Array.isArray(prev)) prev.push(v);
+          else resHeaders[k] = [String(prev), v];
+        }
+        return true;
+      }
     };
-    options.agent = false; // без пула: новое TCP-соединение на каждый запрос
-    const r = reqFn(options, (res: IncomingMessage) => {
-      resolve({ status: res.statusCode ?? 0, headers: res.headers, stream: res });
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (headersDone) { out.write(chunk); return; }
+      headBuf = Buffer.concat([headBuf, chunk]);
+      if (tryParseHeaders()) {
+        headersDone = true;
+        settled = true;
+        resolve({ status, headers: resHeaders, stream: out });
+        if (headBuf.length) { out.write(headBuf); headBuf = Buffer.alloc(0); }
+      }
     });
-    const onAbort = () => r.destroy(new Error("shim: aborted"));
+    child.stdout.on("end", () => { if (!headersDone) out.end(); });
+    child.on("error", (e) => { if (!settled) { settled = true; reject(e); } out.destroy(); });
+    child.on("close", (code) => {
+      if (!headersDone) {
+        if (!settled) { settled = true; reject(new Error(`shim: curl exit ${code} (no response headers)`)); }
+        return;
+      }
+      out.end();
+    });
+    // stderr — только коды ошибок curl; не логируем (в нём может быть URL).
+    child.stderr.on("data", () => {});
+    const onAbort = () => { try { child.kill("SIGKILL"); } catch {} };
     if (signal.aborted) onAbort();
     else signal.addEventListener("abort", onAbort, { once: true });
-    r.on("error", reject);
-    if (body !== undefined) r.write(body);
-    r.end();
+    child.stdin.on("error", () => {}); // EPIPE, если curl умер раньше
+    if (body !== undefined) child.stdin.write(body);
+    child.stdin.end();
   });
 }
 
-/**
- * Свежее TCP+TLS-соединение на КАЖДЫЙ запрос (agent:false, keep-alive off).
- * Bun fetch-пул в долгоживущем процессе реюзает мёртвый сокет (Cloudflare
- * убивает idle-соединение), тело застревает в Send-Q и запрос висит до
- * потолка AbortSignal. node:https с agent:false регрессии не имеет
- * (proven: выживает 340c hold, тест T3).
- */
+/** Обёртка: URL апстрима + заголовки клиента (без hop-by-hop) → curl. */
 function openUpstream(req: Request, body: string | undefined, signal: AbortSignal): Promise<RawUpstream> {
   return openRaw(
     upstreamUrl(req.url),
@@ -135,7 +204,7 @@ function openUpstream(req: Request, body: string | undefined, signal: AbortSigna
   );
 }
 
-/** Форвард апстрима через node:https с прозрачным ретраем 403/503. */
+/** Форвард апстрима через curl с прозрачным ретраем 403/503. */
 async function forward(req: Request, body: string, signal: AbortSignal): Promise<RawUpstream> {
   for (let attempt = 0; attempt <= FORWARD_RETRIES; attempt++) {
     const up = await openUpstream(req, body, signal);
@@ -164,7 +233,7 @@ function filteredHeaders(rec: Record<string, string | string[] | undefined>): He
 }
 
 /** Полное чтение node-стрима в строку (для non-stream/facade). */
-async function readAll(stream: IncomingMessage): Promise<string> {
+async function readAll(stream: PassThrough): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const c of stream) chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
   return Buffer.concat(chunks).toString("utf8");
@@ -555,13 +624,19 @@ async function route(req: Request, url: URL, raw: string, parsed: any): Promise<
                 await sleep(FORWARD_RETRY_MS * (attempt + 1));
                 continue;
               }
-              fail(reason === "hard" ? "shim: upstream timeout" : "shim: upstream hang");
+              if (reason === "hang") {
+                // Последняя попытка тоже зависла — шанс фолбэку, не ошибка клиенту.
+                console.log(`[shim] upstream hang after ${FORWARD_RETRIES + 1} attempts (fallback to non-stream)`);
+                return false;
+              }
+              fail(reason === "hard" ? "shim: upstream timeout" : "shim: upstream error");
               return true;
             }
           }
-          // Попытки исчерпаны на hang.
-          fail("shim: upstream hang");
-          return true;
+          // Попытки исчерпаны на hang — отдаём шанс fallback на non-stream
+          // (stream:true у upstream сейчас висит без байтов, non-stream работает).
+          console.log(`[shim] ${req.method} ${url.pathname} -> stream attempts exhausted (fallback to non-stream)`);
+          return false;
         };
 
         (async () => {
