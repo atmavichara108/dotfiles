@@ -19,7 +19,7 @@
 // состояние плагина не является доказательством; своя durable-запись обязательна).
 
 import { Plugin } from "@opencode/plugin"
-import { appendFile, mkdir, readFile } from "fs/promises"
+import { mkdir, readFile, rename, writeFile } from "fs/promises"
 import { join } from "path"
 import { existsSync } from "fs"
 import {
@@ -147,13 +147,22 @@ function createCard(ev: PermissionEvent, extra?: Partial<DecisionCard> & { metad
   return card
 }
 
+// Атомарная запись: temp-файл + rename. Один файл = ровно один JSON-объект.
+// Append запрещён: id генерируется с секундным разрешением и коллизии
+// склеивали РАЗНЫЕ события в один файл (Extra data). Перезапись — fail-safe.
+async function writeCardAtomic(path: string, card: unknown) {
+  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
+  await writeFile(tmp, JSON.stringify(card, null, 2) + "\n", "utf-8")
+  await rename(tmp, path)
+}
+
 async function writeCard(card: DecisionCard) {
   const dir = cardsDir()
   const path = cardPath(card.id)
 
   try {
     await mkdir(dir, { recursive: true })
-    await appendFile(path, JSON.stringify(card, null, 2) + "\n", "utf-8")
+    await writeCardAtomic(path, card)
     console.log(
       `[decision-queue-hook] card ${card.id} (risk: ${card.risk}, class: ${card.recommendation.class})`,
     )
@@ -165,7 +174,10 @@ async function writeCard(card: DecisionCard) {
 // Дозапись решения человека: читаем последнюю запись карточки, мержим, дописываем.
 // Match строго по requestID (= id карточки): reject отклоняет все pending-сессии
 // ядром, поэтому чужие карточки не должны получать неверный статус.
-// Файл карточки может быть pretty-JSON (одна запись) или JSONL-историей (append).
+// Файл карточки может быть pretty-JSON (одна запись); legacy JSONL-история
+// читается через parseLastJson и схлопывается в один объект при перезаписи.
+// Ранее тут был append — из-за этого в файле оказывалось два JSON-объекта
+// (Extra data). Теперь файл ПЕРЕЗАПИСЫВАЕТСЯ целиком, атомарно.
 async function appendDecisionToCard(requestID: string, decision: string): Promise<boolean> {
   const path = cardPath(requestID)
   try {
@@ -173,7 +185,7 @@ async function appendDecisionToCard(requestID: string, decision: string): Promis
     const last = parseLastJson(raw)
     const merged = mergeDecisionIntoCard(last, requestID, decision, new Date().toISOString())
     if (!merged) return false
-    await appendFile(path, JSON.stringify(merged, null, 2) + "\n", "utf-8")
+    await writeCardAtomic(path, merged)
     console.log(`[decision-queue-hook] card ${requestID} decision recorded: ${decision}`)
     return true
   } catch {
