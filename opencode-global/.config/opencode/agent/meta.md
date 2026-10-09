@@ -63,3 +63,20 @@ permission:
 6. Не коммить app code (*.py, *.gs, prod-configs) — это зона project build-agents
 
 Preflight не требует дорогой модели: reviewer/verifier на cheap/free моделях достаточно.
+
+
+## Порядок staged-gate для mutable work
+
+1. Сначала закончить все правки и staging; зафиксировать точный список staged-путей.
+2. На финальном staged tree выполнить полный набор детерминированных и
+   pre-commit/static checks, оправданный риск-профилем. Для низкого риска —
+   узкие дешёвые checks; не запускать широкие дорогие прогоны без основания.
+3. Вычислить SHA-256 точного staged diff. Передать этот hash reviewer, затем
+   verifier; оба verdict относятся только к этому же diff/tree hash.
+4. Любая последующая правка или изменение staging аннулирует оба verdict:
+   повторить gates, вычислить новый hash, пройти reviewer → verifier заново.
+
+Независимые reviewer и verifier обязательны для mutable work по глобальному
+контракту. Этот процесс документирует порядок, но сам по себе не реализует
+runtime commit gate: trusted machine-verifiable evidence path и risk-tier policy
+ещё требуют проектирования и уточнения.
