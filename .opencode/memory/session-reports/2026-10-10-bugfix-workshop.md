@@ -121,3 +121,86 @@ fix/workaround → evidence → status.
 (не через канонический журнал — в `receipts-out.jsonl` входящего на сессию нет),
 поэтому формальная квитанция не ушла. Урок: при живом канале закрывать петлю
 `started/finished`, если известен session_id отправителя и message_id (`--ref`).
+
+---
+
+## INC-5 — `external_directory` блокирует sibling-worktree и `/tmp/opencode`
+
+- **Symptom (BAGFIX-LETTER, basis: quoted):** в librarian-сессии с workspace
+  `/home/rudra/Projects/OpenCode-Vault` команды `git push` и даже
+  `git remote get-url origin` из
+  `/home/rudra/Projects/OpenCode-Vault-tasks/ssa-bootstrap-20261010`, а также
+  `write` в `/tmp/opencode/<file>` возвращали
+  `permission.rejected: Permission denied: external_directory`. Из того же
+  worktree `git add`/`git commit` прошли; push из workspace-root с refspec
+  прошёл. Shell-запись в `/tmp/opencode` также проходит.
+- **Repro:** BAGFIX-LETTER, 2026-10-10, repro A/B; сообщение об ошибке дано
+  дословно в поручении.
+- **Root cause (уточнено после apply):** не «нет правила», а **отставший
+  checkout**. Нужные allow-строки уже есть в `origin/main` Vault (коммит
+  `cac2a00` «permission preflight for worktrees»: `OpenCode-Vault-tasks/**`,
+  `dotfiles-tasks/**`), но основной рабочий checkout Vault стоял на отошедшей
+  от main task-ветке `task/pipboy-rebuild-20261009`, чья версия `opencode.json`
+  эти строки не содержит. Сессия librarian открыта из основного корня →
+  применялась отставшая версия файла. Отказ `external_directory` — прямое
+  следствие. Гипотеза «common `.git` вне allow-scope» опровергнута:
+  `git-common-dir` лежит в allowlisted основном Vault.
+- **Fix (применён 2026-10-10, мандат Рудры):** `git checkout origin/main --
+  opencode.json` в чужом checkout Vault; JSON валиден, обе allow-строки на
+  месте, секретные `deny` сохранены. Оставлено uncommitted в чужой task-ветке —
+  коммит в неё бессмыслен (строки уже в main), переключение/merge чужой dirty
+  ветки не моя зона.
+- **Evidence:** прочитаны оба Vault `opencode.json`, librarian frontmatter,
+  Vault `02-Methods/incident-fix.md`; установлен git common-dir; сверка
+  HEAD↔origin/main показала регрессию файла именно в отошедшей ветке.
+  Live permission-repro после apply не запускался.
+- **Status:** fixed (apply выполнен, файл рабочего дерева == origin/main).
+  Residual `[проверить]`: (1) live-прогон `git push`/`write` из корня Vault;
+  (2) при будущем merge `pipboy-rebuild` в main — conflict-check по
+  `opencode.json`, чтобы не откатить `cac2a00`.
+
+---
+
+## INC-6 — повтор сигнатуры skill tool `id: Missing key` (корреляция INC-1)
+
+- **Symptom:** вызов доступного skill-инструмента с объявленным аргументом
+  `name: tree-hygiene` вернул `Invalid arguments ... id: Missing key`.
+- **Repro:** первичная попытка загрузить skill перед этой работой; skill затем
+  прочитан напрямую из `.opencode/skills/tree-hygiene/SKILL.md`.
+- **Correlation:** сигнатура совпадает с INC-1 (`00e2910`, исправлен
+  `fix-tool-schema.ts`: runtime skill schema использует `id`). Это повторное
+  наблюдение, не второй подтверждённый dotfiles-root-cause. Слой вызова здесь —
+  developer skill-tool adapter; связь с INC-1 runtime fix пока `[проверить]`.
+- **Fix/workaround:** runtime fix INC-1 не переоткрывается без repro на самом
+  OpenCode skill tool. В этой сессии инструкцию прочитал прямым read.
+  Включить сигнатуру как tool/channel fixture в `BF-20261010-01`, сохраняя
+  отдельный source-layer в записи.
+- **Evidence:** точный отказ вызова и успешное чтение
+  `.opencode/skills/tree-hygiene/SKILL.md`; ранее shipped INC-1/`00e2910`.
+- **Status:** коррелирован с INC-1, adapter-layer не подтверждён; наблюдать,
+  не считать отдельным неисправленным dotfiles-инцидентом.
+
+---
+
+## BF-20261010-01 — программное правило «сбой → багфикс»
+
+- **Symptom/trigger:** сбой инфраструктуры может быть обойдён или скрыт без
+  обязательного incident record и письма в мастерскую.
+- **Repro:** перечисленные в BAGFIX-LETTER классы ошибок (permission.rejected,
+  tool/channel, plugin/script, model/quota); дополнительно INC-6 — tool-schema
+  failure.
+- **Root cause:** спека `docs/specs/bugfix-proactive-plugin.md` (под substance
+  получила approval Рудры 2026-10-07, но во frontmatter всё ещё `status: draft`)
+  фиксирует capture/handoff, но запрещает auto-dispatch и оставляет letter
+  маршрут за отдельным мандатом.
+- **Fix:** отдельная execution spec `docs/specs/bugfix-failure-rule.md`, ID
+  `BF-20261010-01`, статус `proposed`; включает канон `letter.sh`/B18,
+  шаблон symptom→repro→root cause→fix→evidence→status, command/registry,
+  metadata-only capture, dedup, cost/false-positive gates, fail-visible маршрут
+  при отсутствии активной роли `bugfix`. Runtime enforcement не включать до
+  отдельного approval Rudra.
+- **Evidence:** статическая сверка draft-спеки плагина (substance approved
+  Рудрой) и B18;
+  claims registry сейчас не содержит активной роли/session `bugfix`.
+- **Status:** proposed; reviewer→verifier до approval; runtime реализация
+  заблокирована до явного approval Rudra.
