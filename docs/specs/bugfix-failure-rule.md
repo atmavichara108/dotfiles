@@ -130,8 +130,9 @@ hook, fallback должен быть fail-visible workflow gate, а не фик�
 ## 9. Вне scope и blockers
 
 - Изменение Vault `opencode.json` не входит в dotfiles edit scope. INC-5
-  передаётся Vault owner отдельным handoff; до его применения external-directory
-  инцидент остаётся blocked/unverified.
+  исправлен apply'ем рабочего дерева по отдельному мандату Рудры (2026-10-10,
+  восстановление из `origin/main`); residual — conflict-check при merge
+  отошедшей task-ветки Vault, чтобы не откатить `cac2a00`.
 - Источник — вложение `bugfix-extdir-and-rule-20261010.txt`; полный текст не
   копируется в runtime logs. Точные требования процитированы в §1.
 - OpenCode core/tool API не патчить; runtime недоступность описывать как
