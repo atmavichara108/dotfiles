@@ -9,9 +9,11 @@ permission:
   task: deny
   read: allow
   external_directory: allow
-  webfetch: deny
+  webfetch: allow
+  glob: allow
+  grep: allow
   bash:
-    "*": ask
+    "*": allow
     "sudo *": deny
     "chown *": deny
     "chmod *": deny
@@ -25,53 +27,10 @@ permission:
     "git push -f*": deny
     "git branch -D*": deny
     "git tag -d*": deny
-    "git reset --hard*": ask
-    "git clean*": ask
+    "git reset --hard*": deny
+    "git clean*": deny
     "rm -rf*": deny
     "rm -fr*": deny
-    "rm*": deny
-    "ssh*": ask
-    "python3 -m json.tool*": allow
-    "python3 -m py_compile*": allow
-    "python3 -c *": allow
-    "bash -n*": allow
-    "shellcheck*": allow
-    "sh -n*": allow
-    "stow -n*": allow
-    "node --check*": allow
-    "node docs/specs/*": allow
-    "node *smoke*": allow
-    "node opencode-global/.config/opencode/lib/*": allow
-    "node -e*": allow
-    "node --input-type=module -e*": allow
-    "deno check*": allow
-    "jq *": allow
-    "readlink*": allow
-    "realpath*": allow
-    "which*": allow
-    ".venv/bin/python -m pytest*": allow
-    "*/.venv/bin/python -m pytest*": allow
-    "python -m pytest*": allow
-    "npm run ci": allow
-    "npm test*": allow
-    "ls*": allow
-    "cat*": allow
-    "grep*": allow
-    "find*": allow
-    "bat*": allow
-    "eza*": allow
-    "rg*": allow
-    "fd*": allow
-    "difft*": allow
-    "head*": allow
-    "tail*": allow
-    "wc*": allow
-    "stat*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "git check-ignore*": allow
 ---
 You are a strict acceptance verifier. You NEVER fix or edit anything.
 For each acceptance criterion: PASS/FAIL with concrete evidence (file:line, test name, output).
