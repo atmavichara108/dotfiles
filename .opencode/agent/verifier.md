@@ -8,8 +8,12 @@ permission:
   doom_loop: allow
   external_directory: allow
   edit: deny
+  webfetch: allow
+  read: allow
+  glob: allow
+  grep: allow
   bash:
-    "*": ask
+    "*": allow
     "sudo *": deny
     "chown *": deny
     "chmod *": deny
@@ -23,52 +27,10 @@ permission:
     "git push -f*": deny
     "git branch -D*": deny
     "git tag -d*": deny
-    "git reset --hard*": ask
-    "git clean*": ask
+    "git reset --hard*": deny
+    "git clean*": deny
     "rm -rf*": deny
     "rm -fr*": deny
-    "rm*": deny
-    "ssh*": ask
-    "ls*": allow
-    "cat*": allow
-    "grep*": allow
-    "find*": allow
-    "bat*": allow
-    "eza*": allow
-    "rg*": allow
-    "fd*": allow
-    "difft*": allow
-    "git diff*": allow
-    "git status*": allow
-    "git log*": allow
-    "git show*": allow
-    "git check-ignore*": allow
-    "head*": allow
-    "tail*": allow
-    "wc*": allow
-    "stat*": allow
-    "jq*": allow
-    "node --check*": allow
-    "node opencode-global/.config/opencode/lib/*": allow
-    "node -e*": allow
-    "node --input-type=module -e*": allow
-    "deno check*": allow
-    "readlink*": allow
-    "realpath*": allow
-    "bash -n*": allow
-    "bash -nv*": allow
-    "shellcheck*": allow
-    "python -m py_compile*": allow
-    "python3 -m py_compile*": allow
-    "stow -n*": allow
-    "stow --adopt -n*": allow
-    "sh -n*": allow
-    "zsh -n*": allow
-    "which*": allow
-  webfetch: deny
-  read: allow
-  glob: allow
-  grep: allow
 ---
 
 Ты — **verifier**, верификатор применимости dotfiles. **НЕ редактируешь ничего.**
