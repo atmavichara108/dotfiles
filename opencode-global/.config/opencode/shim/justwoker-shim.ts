@@ -431,6 +431,23 @@ const server = Bun.serve({
 
 async function route(req: Request, url: URL, raw: string, parsed: any): Promise<Response> {
 
+    // ── tool_choice normalize ──
+    // upstream justwoker (New API gateway) поддерживает только tool_choice:"auto";
+    // на "none"/"required"/named (OpenCode/AI SDK форсирует инструмент, напр. при
+    // спавне субагента) отвечает «only auto is supported for tool_choice» и роняет
+    // ход (инцидент builder-subagent 2026-10-10). Нормализуем к auto: инструменты
+    // остаются доступны, просто не форсируются. Тело пере-сериализуем только когда
+    // реально меняем — иначе форвард идёт сырым (raw), без мутаций.
+    if (parsed && parsed.tool_choice !== undefined && parsed.tool_choice !== null) {
+      const tc = parsed.tool_choice;
+      const isAuto = typeof tc === "string" ? tc === "auto" : tc?.type === "auto";
+      if (!isAuto) {
+        parsed = { ...parsed, tool_choice: typeof tc === "string" ? "auto" : { type: "auto" } };
+        raw = JSON.stringify(parsed);
+        console.log(`[shim] tool_choice normalized -> auto`);
+      }
+    }
+
     // ── OpenAI-фасад для бенчера: /v1/chat/completions → /v1 messages ──
     // Держим на non-stream-пути (бенчеру нужен целый JSON).
     if (url.pathname === "/v1/chat/completions" && req.method === "POST" && parsed) {
