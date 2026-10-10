@@ -136,26 +136,28 @@ fix/workaround → evidence → status.
   прошёл. Shell-запись в `/tmp/opencode` также проходит.
 - **Repro:** BAGFIX-LETTER, 2026-10-10, repro A/B; сообщение об ошибке дано
   дословно в поручении.
-- **Root cause (ведущая, runtime-привязка `[проверить]`):** конфиг активного
-  корня Vault содержит `external_directory: {"*":"deny", ...allowlist...}`.
-  В allowlist есть основной `OpenCode-Vault/**`, но нет sibling
-  `OpenCode-Vault-tasks/**` и `/tmp/opencode/**`. Конфиг task-worktree включает
-  `OpenCode-Vault-tasks/**`, но сессия была открыта из основного Vault —
-  подтверждение, какой project config применён при обоих вызовах, требует live
-  repro. `git rev-parse --git-common-dir` worktree разрешается под основным
-  Vault (`.git/worktrees/...`), который allowlisted; гипотеза «common `.git`
-  вне allow-scope» этим не подтверждается. Ранее записанный Vault-метод также
-  отмечает возможный отказ `write` на внешних temp-путях.
-- **Fix:** для активного сбоя нужен change в Vault-owned `opencode.json`:
-  согласовать allowlist sibling worktrees и требуемого temp-каталога при
-  сохранении deny секретов. В dotfiles не менял permission-конфиги вслепую:
-  глобальный dotfiles-конфиг уже `allow` + secret-deny. Изменение Vault вне
-  разрешённого scope dotfiles; создан handoff владельцу Vault.
+- **Root cause (уточнено после apply):** не «нет правила», а **отставший
+  checkout**. Нужные allow-строки уже есть в `origin/main` Vault (коммит
+  `cac2a00` «permission preflight for worktrees»: `OpenCode-Vault-tasks/**`,
+  `dotfiles-tasks/**`), но основной рабочий checkout Vault стоял на отошедшей
+  от main task-ветке `task/pipboy-rebuild-20261009`, чья версия `opencode.json`
+  эти строки не содержит. Сессия librarian открыта из основного корня →
+  применялась отставшая версия файла. Отказ `external_directory` — прямое
+  следствие. Гипотеза «common `.git` вне allow-scope» опровергнута:
+  `git-common-dir` лежит в allowlisted основном Vault.
+- **Fix (применён 2026-10-10, мандат Рудры):** `git checkout origin/main --
+  opencode.json` в чужом checkout Vault; JSON валиден, обе allow-строки на
+  месте, секретные `deny` сохранены. Оставлено uncommitted в чужой task-ветке —
+  коммит в неё бессмыслен (строки уже в main), переключение/merge чужой dirty
+  ветки не моя зона.
 - **Evidence:** прочитаны оба Vault `opencode.json`, librarian frontmatter,
-  Vault `02-Methods/incident-fix.md`; установлен фактический git common-dir.
-  Live permission-repro не запускался из этой сессии.
-- **Status:** root cause вероятна, подтверждение runtime `[проверить]`;
-  исправление ждёт Vault-owned change. Не объявлять fixed.
+  Vault `02-Methods/incident-fix.md`; установлен git common-dir; сверка
+  HEAD↔origin/main показала регрессию файла именно в отошедшей ветке.
+  Live permission-repro после apply не запускался.
+- **Status:** fixed (apply выполнен, файл рабочего дерева == origin/main).
+  Residual `[проверить]`: (1) live-прогон `git push`/`write` из корня Vault;
+  (2) при будущем merge `pipboy-rebuild` в main — conflict-check по
+  `opencode.json`, чтобы не откатить `cac2a00`.
 
 ---
 
