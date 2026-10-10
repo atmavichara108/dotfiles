@@ -58,13 +58,58 @@ fix/workaround → evidence → status.
   конкретную причину по нему не извлечь. В dotfiles перехватчика/обработчика
   `session_move` нет; `external_directory` у verifier = allow. Dotfiles-причина
   не подтверждена.
-- **Fix/workaround:** чужой harness (ядро OpenCode) не патчим. Workaround —
-  открывать verifier-сессию сразу в целевом worktree, а не переносить рабочую.
-  Прямую правку БД сессий не делать.
-- **Evidence:** установлена v2.0.26; целевые каталоги существуют и доступны;
-  живой перенос на рабочей сессии не повторялся. Источники: v2.0.26
-  `session/move.ts`, `tool/plugin/opencode.ts`.
-- **Status:** core-bug OpenCode, dotfiles-фикса нет; workaround `[проверить]`.
+- **Доп. расследование (2026-10-10, после push-back Макса):** воспроизвёл сам
+  своим тулом `session_move` (primary) → та же `Unable to move session to …`.
+  Значит это НЕ нехватка capability у вызывающего (verifier-субагента),
+  ошибка настоящая и на моём инструменте. По исходнику v2.0.26 общий текст —
+  обёртка над одной из: `NotFoundError` (сессии нет), `DestinationNotFoundError`,
+  `DestinationNotDirectoryError`, `DestinationUnavailableError` (не поднялся
+  project-контекст назначения).
+- **Ведущая причина (evidence, линковка `[проверить]`):** в логах — серии
+  `Failed to drain Session … Session.AgentNotFoundError: Agent not found: "meta"/"sysop"/"librarian"`.
+  Эти агенты определены **проектно-локально** (`dotfiles/.opencode/agent/*.md`),
+  а целевые каталоги (`/home/rudra/Projects`, SSA bootstrap-worktree) лежат вне
+  dotfiles и этих определений не имеют. При переносе сессия просыпается в новом
+  каталоге, `prepareContext → SessionContext.select` не находит её активного
+  агента → drain падает → ядро отдаёт общий `Unable to move session`. Точная
+  привязка именно к моей попытке move во времени не зафиксирована — `[проверить]`.
+- **Fix/workaround:** чужой harness (ядро OpenCode) не патчим. Рабочий путь —
+  (а) открывать сессию сразу в целевом worktree, либо (б) делать roaming-агентов
+  **глобальными** (`~/.config/opencode/agent/`, копии уже есть в
+  `opencode-global/.config/opencode/agent/`), чтобы контекст назначения
+  резолвил агента в любом каталоге. Прямую правку БД сессий не делать.
+- **Evidence:** v2.0.26; целевые каталоги существуют/доступны; собственный
+  вызов `session_move` воспроизвёл ошибку; лог `AgentNotFound` при drain.
+  Источники: v2.0.26 `session/move.ts`, `tool/plugin/opencode.ts`,
+  `~/.local/share/opencode/log/opencode.log`.
+- **Status:** диагностировано (ведущая причина — локальный агент не резолвится
+  в каталоге назначения). Чистого dotfiles-фикса в патче ядра нет; обходы (а)/(б)
+  доступны. Core-поведение (маскировка причины общим текстом) — `[проверить]`,
+  баг ядра.
+
+---
+
+## INC-4 — субагент падает: `only "auto" is supported for tool_choice`
+
+- **Symptom:** спавн субагента (builder) падал: `only "auto" is supported for
+  tool_choice. "none", "required", and named function choices are not currently
+  supported`.
+- **Repro:** `task(agent=builder …)` на провайдере `justwoker`; ядро/AI SDK
+  при спавне форсирует инструмент (`tool_choice` ≠ auto) → upstream отбивает.
+- **Root cause:** в наших конфигах `tool_choice` нигде нет — его шлёт
+  OpenCode/AI SDK. Upstream `api.justwoker.icu` (New API gateway) принимает
+  только `tool_choice:"auto"`; на `none`/`required`/named отвечает ошибкой и
+  роняет ход. Наш транспорт `justwoker-shim.ts` форвардил тело как есть.
+- **Fix:** в `route()` шима добавлена нормализация: если `tool_choice` присутствует
+  и не `auto` (строка или объект) — переписываем в `auto` и пере-сериализуем тело
+  (только когда реально меняем; иначе форвард сырым `raw`). Покрывает оба пути
+  (stream synthesis, non-stream passthrough) и OpenAI-фасад (через `parsed`).
+  Инструменты остаются доступны — просто не форсируются.
+  Файл: `opencode-global/.config/opencode/shim/justwoker-shim.ts`. Коммит `d6446f5`.
+- **Evidence:** `bun build` шима — OK (bundled, без ошибок); `raw`/`parsed`
+  переиспользуются на всех форвард-путях (строки 510/593 и фасад).
+- **Status:** fixed. Acceptance gate — живой спавн субагента без ошибки
+  tool_choice **после рестарта systemd-юнита шима** (транспорт не hot-reload).
 
 ---
 
