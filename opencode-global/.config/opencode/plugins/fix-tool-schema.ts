@@ -11,6 +11,12 @@
 //   отправкой запроса. Поведение идентично V1: skill → плоская схема,
 //   остальные → сглаживание корневого union без required.
 //
+//   V2-фикс (2026-10-10): ядро V2 ждёт у тула skill поле `id`
+//   (доки: вызов {"id": "<skill-id>"}), а старая SKILL_FLAT слала `name` —
+//   модель звала тул без id и валидатор отвечал `id Missing key`.
+//   Новая схема плоская (без oneOf — strict-провайдеры её бы отвергли),
+//   требует `id`, `name` оставлен deprecated-алиасом.
+//
 // Глобальное размещение: подхватывается во всех проектах (в отличие от
 // старой копии в Vault, которая грузилась только там и упиралась в V1-форму).
 
@@ -21,23 +27,17 @@ type Json = Record<string, any>
 const SKILL_FLAT: Json = {
   type: "object",
   properties: {
+    id: {
+      type: "string",
+      description: "The exact ID of the skill from available_skills (e.g. \"tree-hygiene\").",
+    },
     name: {
       type: "string",
-      description: "The name of the matching skill from available_skills.",
-    },
-    arguments: {
-      type: "string",
       description:
-        "Arguments for the skill, as a person would type them after `/name`. Omit when the skill takes none.",
-    },
-    reason: {
-      type: "string",
-      minLength: 1,
-      maxLength: 500,
-      description:
-        "A short note (1–500 characters) on the decision: why no skill applies, or why this one does. Optional when a skill is named.",
+        "Deprecated alias for id (pre-V2 schema). Prefer id; if both are sent, id wins.",
     },
   },
+  required: ["id"],
   additionalProperties: false,
 }
 
