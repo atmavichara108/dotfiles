@@ -25,26 +25,36 @@
 
 ## Sourced evidence / ведущая гипотеза
 
-- Vault-root `opencode.json`: `external_directory` default `* deny`; allowlist
-  содержит `/home/rudra/Projects/OpenCode-Vault/**`, но не sibling
-  `/home/rudra/Projects/OpenCode-Vault-tasks/**` и не `/tmp/opencode/**`.
-- SSA worktree `opencode.json` содержит allow для
-  `/home/rudra/Projects/OpenCode-Vault-tasks/**`; однако сообщённый workspace
-  root — основной Vault, поэтому ещё нужно подтвердить, какой project config
-  применился к live-вызовам.
+- Vault-root `opencode.json` **в рабочем дереве** на момент инцидента: default
+  `* deny`; в allowlist был основной `OpenCode-Vault/**`, но НЕ было sibling
+  `OpenCode-Vault-tasks/**` и `/tmp/opencode/**`. Это и дало отказ.
+- **Корень (уточнено 2026-10-10 после apply):** нужные строки уже есть в
+  `origin/main` Vault (коммит `cac2a00` «permission preflight for worktrees»,
+  добавляет `OpenCode-Vault-tasks/**` и `dotfiles-tasks/**`). Но основной рабочий
+  checkout Vault стоял на отошедшей от main task-ветке
+  `task/pipboy-rebuild-20261009`, чья версия файла эти строки не содержит —
+  рабочее дерево отстало от main. Это не «нет фикса», а «checkout устарел».
+- SSA worktree `opencode.json` содержит нужный allow; сессия была открыта из
+  основного корня, поэтому применялась отставшая версия файла.
 - Worktree `git-common-dir` —
   `/home/rudra/Projects/OpenCode-Vault/.git`; common-dir лежит в allowlisted
   основном Vault. Гипотеза о `.git` target вне allow-scope не подтверждена.
 - Vault method `02-Methods/incident-fix.md` уже отмечает, что внешние temp-пути
   могут быть закрыты для write-tools.
 
-## Рекомендуемая проверка владельцем Vault
+## Применённый apply (2026-10-10, мандат Рудры)
 
-Провести минимальный live repro отдельно для target write, `git remote get-url`
-и push из workspace-root/worktree; зафиксировать effective workspace/config и
-конкретный проверяемый path. После этого обновить **Vault-owned** allowlist для
-необходимого sibling-worktree/temp scope, сохранив deny секретов, затем
-повторить repro через инструмент, который ранее блокировался.
+Рабочее дерево `OpenCode-Vault/opencode.json` восстановлено из `origin/main`
+(`git checkout origin/main -- opencode.json`), JSON валиден, обе allow-строки
+на месте, секретные `deny` сохранены. Изменение оставлено **uncommitted** в
+чужом checkout: коммит в отошедшую task-ветку бессмыслен (строки уже в main),
+а переключение/merge чужого dirty-ветки — работа её владельца. Статус live
+сессий из корня Vault теперь должен читать правильный файл.
+
+**Остаточный шаг за куратором Vault:** когда task-ветка `pipboy-rebuild`
+сольётся в main, её версия `opencode.json` снова затрёт эти строки (diff
+HEAD↔origin/main это подтверждает) — при merge нужен conflict-check по этому
+файлу, чтобы не откатить `cac2a00`.
 
 Dotfiles-конфиги уже дают общую внешнюю allow с secret-deny; dotfiles не вносит
 изменения в Vault. Это handoff, не просьба Максу выполнять команды вручную.
