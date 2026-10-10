@@ -121,3 +121,84 @@ fix/workaround → evidence → status.
 (не через канонический журнал — в `receipts-out.jsonl` входящего на сессию нет),
 поэтому формальная квитанция не ушла. Урок: при живом канале закрывать петлю
 `started/finished`, если известен session_id отправителя и message_id (`--ref`).
+
+---
+
+## INC-5 — `external_directory` блокирует sibling-worktree и `/tmp/opencode`
+
+- **Symptom (BAGFIX-LETTER, basis: quoted):** в librarian-сессии с workspace
+  `/home/rudra/Projects/OpenCode-Vault` команды `git push` и даже
+  `git remote get-url origin` из
+  `/home/rudra/Projects/OpenCode-Vault-tasks/ssa-bootstrap-20261010`, а также
+  `write` в `/tmp/opencode/<file>` возвращали
+  `permission.rejected: Permission denied: external_directory`. Из того же
+  worktree `git add`/`git commit` прошли; push из workspace-root с refspec
+  прошёл. Shell-запись в `/tmp/opencode` также проходит.
+- **Repro:** BAGFIX-LETTER, 2026-10-10, repro A/B; сообщение об ошибке дано
+  дословно в поручении.
+- **Root cause (ведущая, runtime-привязка `[проверить]`):** конфиг активного
+  корня Vault содержит `external_directory: {"*":"deny", ...allowlist...}`.
+  В allowlist есть основной `OpenCode-Vault/**`, но нет sibling
+  `OpenCode-Vault-tasks/**` и `/tmp/opencode/**`. Конфиг task-worktree включает
+  `OpenCode-Vault-tasks/**`, но сессия была открыта из основного Vault —
+  подтверждение, какой project config применён при обоих вызовах, требует live
+  repro. `git rev-parse --git-common-dir` worktree разрешается под основным
+  Vault (`.git/worktrees/...`), который allowlisted; гипотеза «common `.git`
+  вне allow-scope» этим не подтверждается. Ранее записанный Vault-метод также
+  отмечает возможный отказ `write` на внешних temp-путях.
+- **Fix:** для активного сбоя нужен change в Vault-owned `opencode.json`:
+  согласовать allowlist sibling worktrees и требуемого temp-каталога при
+  сохранении deny секретов. В dotfiles не менял permission-конфиги вслепую:
+  глобальный dotfiles-конфиг уже `allow` + secret-deny. Изменение Vault вне
+  разрешённого scope dotfiles; создан handoff владельцу Vault.
+- **Evidence:** прочитаны оба Vault `opencode.json`, librarian frontmatter,
+  Vault `02-Methods/incident-fix.md`; установлен фактический git common-dir.
+  Live permission-repro не запускался из этой сессии.
+- **Status:** root cause вероятна, подтверждение runtime `[проверить]`;
+  исправление ждёт Vault-owned change. Не объявлять fixed.
+
+---
+
+## INC-6 — повтор сигнатуры skill tool `id: Missing key` (корреляция INC-1)
+
+- **Symptom:** вызов доступного skill-инструмента с объявленным аргументом
+  `name: tree-hygiene` вернул `Invalid arguments ... id: Missing key`.
+- **Repro:** первичная попытка загрузить skill перед этой работой; skill затем
+  прочитан напрямую из `.opencode/skills/tree-hygiene/SKILL.md`.
+- **Correlation:** сигнатура совпадает с INC-1 (`00e2910`, исправлен
+  `fix-tool-schema.ts`: runtime skill schema использует `id`). Это повторное
+  наблюдение, не второй подтверждённый dotfiles-root-cause. Слой вызова здесь —
+  developer skill-tool adapter; связь с INC-1 runtime fix пока `[проверить]`.
+- **Fix/workaround:** runtime fix INC-1 не переоткрывается без repro на самом
+  OpenCode skill tool. В этой сессии инструкцию прочитал прямым read.
+  Включить сигнатуру как tool/channel fixture в `BF-20261010-01`, сохраняя
+  отдельный source-layer в записи.
+- **Evidence:** точный отказ вызова и успешное чтение
+  `.opencode/skills/tree-hygiene/SKILL.md`; ранее shipped INC-1/`00e2910`.
+- **Status:** коррелирован с INC-1, adapter-layer не подтверждён; наблюдать,
+  не считать отдельным неисправленным dotfiles-инцидентом.
+
+---
+
+## BF-20261010-01 — программное правило «сбой → багфикс»
+
+- **Symptom/trigger:** сбой инфраструктуры может быть обойдён или скрыт без
+  обязательного incident record и письма в мастерскую.
+- **Repro:** перечисленные в BAGFIX-LETTER классы ошибок (permission.rejected,
+  tool/channel, plugin/script, model/quota); дополнительно INC-6 — tool-schema
+  failure.
+- **Root cause:** спека `docs/specs/bugfix-proactive-plugin.md` (под substance
+  получила approval Рудры 2026-10-07, но во frontmatter всё ещё `status: draft`)
+  фиксирует capture/handoff, но запрещает auto-dispatch и оставляет letter
+  маршрут за отдельным мандатом.
+- **Fix:** отдельная execution spec `docs/specs/bugfix-failure-rule.md`, ID
+  `BF-20261010-01`, статус `proposed`; включает канон `letter.sh`/B18,
+  шаблон symptom→repro→root cause→fix→evidence→status, command/registry,
+  metadata-only capture, dedup, cost/false-positive gates, fail-visible маршрут
+  при отсутствии активной роли `bugfix`. Runtime enforcement не включать до
+  отдельного approval Rudra.
+- **Evidence:** статическая сверка draft-спеки плагина (substance approved
+  Рудрой) и B18;
+  claims registry сейчас не содержит активной роли/session `bugfix`.
+- **Status:** proposed; reviewer→verifier до approval; runtime реализация
+  заблокирована до явного approval Rudra.
