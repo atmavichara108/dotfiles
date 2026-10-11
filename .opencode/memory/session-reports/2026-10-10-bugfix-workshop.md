@@ -225,12 +225,15 @@ fix/workaround → evidence → status.
      Живой тест `xdotool key --clearmodifiers super+o`: PID
      `opencode serve --service` сменился — хоткей работает.
   2. Рудра запустил `systemctl --user start dunst.service` — нотификации вернулись.
-- **Попутная правка (dotfiles):** убран дубль `Super+Shift+T` в
-  `qtile/.config/qtile/keys.py`: две привязки на одну комбинацию —
-  `alacritty -e tmux-open` (стр. 39, мёртв: qtile перетирал её) и
-  `conky-toggle` (стр. 49, фактически работала). Удалена мёртвая строка 39 —
-  живое поведение не изменилось, предупреждение `Key spec duplicated` ушло.
-  `tmux-open` остаётся утилитой, хоткей на него не привязан.
+- **Попутная правка (dotfiles, ревизия 2026-10-11 по уточнению Рудры):**
+  дубль `Super+Shift+T` в `qtile/.config/qtile/keys.py` был двумя привязками —
+  `tmux-open` (стр.39) и `conky-toggle` (стр.49). Рудра не пользуется Conky и
+  просил хоткей именно на `tmux-open`; живым оставлять нужно `tmux-open`.
+  Удалена строка `conky-toggle` — `Super+Shift+T` теперь открывает сохранённую
+  tmux-сессию через `alacritty -e tmux-open`. (Первоначально в `ff1fee5` была
+  удалена мёртвая `tmux-open`-строка — по ошибке; исправлено этой ревизией.)
+  `conky-toggle` из keys.py убран полностью; сама утилита `conky-toggle` не
+  тронута.
 - **Evidence:** `~/.local/share/qtile/qtile.log` (398 grab-ошибок 2026-10-09,
   0 после reload 2026-10-11); `systemctl --user status dunst.service`;
   смена PID бэкенда после `xdotool super+o`.
