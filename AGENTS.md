@@ -59,8 +59,6 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 | Агент | Тип | Роль | Модель (ярус) |
 |-------|-----|------|---------------|
 | **sysop** | primary | Оператор-оркестратор Manjaro: планирует, пишет, делегирует субагентам | `opencode-go/gpt-5.6-luna` · Strategic |
-| **planner** | subagent | Стратег/ADR: анализирует, проектирует, код не пишет | `opencode-go/gpt-5.6-luna` · Strategic |
-| **builder** | subagent | Реализация конфигов/скриптов по спеку | `opencode-go/qwen3.7-plus` · Coding |
 | **qtile-dev** | subagent | Qtile (WM, виджеты, Python) | `opencode-go/qwen3.7-plus` · Coding |
 | **bash-dev** | subagent | bash-скрипты, автоматизация | `opencode-go/qwen3.7-plus` · Coding |
 | **util-dev** | subagent | утилиты (макросы, нотификации, rofi) | `opencode-go/qwen3.7-plus` · Coding |
@@ -130,7 +128,7 @@ Researcher имеет:
 | Агент | Вызывает субагентов? | Причина |
 |-------|----------------------|---------|
 | **sysop** (primary) | ✅ | Единственный оркестратор; `task(agent=…)` по задаче |
-| **planner / builder / dev / reviewer / verifier / stow-ops** | ❌ | Субагенты исполняют, не оркестрируют |
+| **dev / reviewer / verifier / stow-ops / tree-cop** | ❌ | Субагенты исполняют, не оркестрируют |
 
 Canonical reviewer prompt: `opencode-global/.config/opencode/agent/reviewer.md`
 (после stow — `~/.config/opencode/agent/reviewer.md`), capability —
