@@ -204,3 +204,36 @@ fix/workaround → evidence → status.
   claims registry сейчас не содержит активной роли/session `bugfix`.
 - **Status:** proposed; reviewer→verifier до approval; runtime реализация
   заблокирована до явного approval Rudra.
+
+---
+
+## INC-7 — хоткей `Super+o` (opencode-reload) «перестал работать»
+
+- **Symptom:** жалоба Рудры: не срабатывает `Super+o` (перезагрузка backend'а
+  OpenCode через `scripts/.local/bin/opencode-reload`).
+- **Repro:** нажатие `Super+o` не давало перезапуска `opencode serve --service`.
+- **Root cause (две составляющие, конфиги невиновны):**
+  1. **Grab-race в qtile (2026-10-09):** 398 ошибок `Can't grab ... unknown
+     keysym` на 32 клавишах, включая `Super+o`. При старте/reload X-сервер не
+     успевал отдать keysym'ы — qtile физически не захватил клавишу, нажатие не
+     доходило до обработчика. Конфиг валиден (`keys.py`, скрипт синтаксис OK),
+     дублей по `Super+o` не было.
+  2. **dunst мёртв:** `dunst.service` в `inactive (dead)` — скрипт шлёт
+     `notify-send`, уведомления нет, срабатывание невидимо.
+- **Fix:**
+  1. `qtile cmd-obj -o cmd -f reload_config` — пере-grab клавиш, ошибок нет.
+     Живой тест `xdotool key --clearmodifiers super+o`: PID
+     `opencode serve --service` сменился — хоткей работает.
+  2. Рудра запустил `systemctl --user start dunst.service` — нотификации вернулись.
+- **Попутная правка (dotfiles):** убран дубль `Super+Shift+T` в
+  `qtile/.config/qtile/keys.py`: две привязки на одну комбинацию —
+  `alacritty -e tmux-open` (стр. 39, мёртв: qtile перетирал её) и
+  `conky-toggle` (стр. 49, фактически работала). Удалена мёртвая строка 39 —
+  живое поведение не изменилось, предупреждение `Key spec duplicated` ушло.
+  `tmux-open` остаётся утилитой, хоткей на него не привязан.
+- **Evidence:** `~/.local/share/qtile/qtile.log` (398 grab-ошибок 2026-10-09,
+  0 после reload 2026-10-11); `systemctl --user status dunst.service`;
+  смена PID бэкенда после `xdotool super+o`.
+- **Status:** fixed. Residual `[проверить]`: grab-race — разовый X/qtile race,
+  при повторе смотреть старт X-сессии; `tmux-open`-хоткей при желании
+  перепривязать на свободную клавишу (отдельная задача, не делал).
