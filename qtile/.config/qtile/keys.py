@@ -36,6 +36,7 @@ def maximize_by_switching_layout(qtile):
 
 keys = [
     Key([mod], "Return", lazy.spawn(myTerm), desc="Terminal"),
+    Key([mod, "shift"], "t", lazy.spawn("alacritty -e tmux-open"), desc="Open saved tmux session"),
     Key([mod, "shift"], "Return", lazy.spawn("rofi -show drun -show-icons"), desc='Run Launcher'),
     Key([mod], "o", lazy.spawn("opencode-reload"), desc="Reload opencode backend (kill serve, fresh session picks new config)"),
     Key([mod], "b", lazy.hide_show_bar(position='all'), desc="Toggles the bar to show/hide"),
@@ -45,7 +46,6 @@ keys = [
     Key([mod, "control"], "r", lazy.restart(), desc="Restart Qtile (full)"),
     Key([mod, "shift"], "q", lazy.spawn("dm-logout -r"), desc="Logout menu"),
     Key([mod], "r", lazy.spawncmd(), desc="Spawn a command using a prompt widget"),
-    Key([mod, "shift"], "T", lazy.spawn("conky-toggle"), desc="Conky toggle on/off"),
     Key([mod, "shift"], "z", lazy.spawn("translate_selected"), desc="Translate selected text"),
 
     Key([mod], "h", lazy.layout.left(), desc="Move focus to left"),
