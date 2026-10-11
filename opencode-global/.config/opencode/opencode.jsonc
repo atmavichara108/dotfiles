@@ -1,18 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "opencode-go/glm-5.3-flash",
-  "agent": {
-    "general": { "model": "anymodel/cx/gpt-5.6-sol" },
-    "build": { "model": "anymodel/cx/gpt-6-luna" },
-    "explore": { "model": "anymodel/am/nemotron-3-ultra-550b-a55b" },
-    "plan": { "model": "anymodel/cx/gpt-6-luna" }
-  },
-  "agents": {
-    "general": { "model": "anymodel/cx/gpt-5.6-sol" },
-    "build": { "model": "anymodel/cx/gpt-6-luna" },
-    "explore": { "model": "anymodel/am/nemotron-3-ultra-550b-a55b" },
-    "plan": { "model": "anymodel/cx/gpt-6-luna" }
-  },
+  "agent": {},
+  "agents": {},
   "permission": {
     "task": "allow",
     "edit": {

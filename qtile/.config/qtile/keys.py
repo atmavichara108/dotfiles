@@ -46,7 +46,6 @@ keys = [
     Key([mod, "control"], "r", lazy.restart(), desc="Restart Qtile (full)"),
     Key([mod, "shift"], "q", lazy.spawn("dm-logout -r"), desc="Logout menu"),
     Key([mod], "r", lazy.spawncmd(), desc="Spawn a command using a prompt widget"),
-    Key([mod, "shift"], "T", lazy.spawn("conky-toggle"), desc="Conky toggle on/off"),
     Key([mod, "shift"], "z", lazy.spawn("translate_selected"), desc="Translate selected text"),
 
     Key([mod], "h", lazy.layout.left(), desc="Move focus to left"),
