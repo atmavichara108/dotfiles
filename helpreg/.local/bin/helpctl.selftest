@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# helpctl.selftest — самопроверка helpreg v1 по пунктам приёмки спеки
+# docs/specs/help-registry-v1.md (раздел 7).
+#
+# Запуск:  bash helpreg/.local/bin/helpctl.selftest
+# Работает на ВРЕМЕННОМ реестре и временном каталоге navi, репозиторный реестр
+# не трогает. Код возврата 0 — все проверки прошли.
+
+set -uo pipefail
+
+REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
+CLI="$REPO/helpreg/.local/bin/helpctl"
+REG_SRC="$REPO/helpreg/.config/help-registry/registry.jsonl"
+TMP="$(mktemp -d /tmp/opencode/helpreg-selftest-XXXXXX)"
+REG="$TMP/registry.jsonl"
+NAVI_OUT="$TMP/navi"
+NAVI_CHEATS="$HOME/.local/share/navi/cheats/rudra"
+
+pass=0; fail=0
+ok()   { printf '  [PASS] %s\n' "$1"; pass=$((pass+1)); }
+bad()  { printf '  [FAIL] %s\n' "$1"; fail=$((fail+1)); }
+check(){ if [ "$2" = "$3" ]; then ok "$1 ($2)"; else bad "$1 — ожидал $3, получил $2"; fi; }
+
+cp "$REG_SRC" "$REG"
+export HELPREG_REGISTRY="$REG"
+
+echo "helpctl.selftest: CLI $CLI"
+echo "временный реестр: $REG"
+echo
+echo "[1/7] реестр валиден (check)"
+python3 "$CLI" check >"$TMP/check.out" 2>&1
+check "check на исходном реестре" "$?" "0"
+grep -q 'записей: 1[0-9]' "$TMP/check.out" && ok "в реестре больше 9 записей" \
+  || bad "в реестре меньше 10 записей: $(tail -2 "$TMP/check.out" | head -1)"
+
+echo
+echo "[2/7] list и list --json"
+n_list=$(python3 "$CLI" list 2>/dev/null | grep -c ' — ')
+[ "$n_list" -ge 5 ] && ok "list отдаёт записи ($n_list строк)" || bad "list пуст ($n_list)"
+python3 "$CLI" list --json 2>/dev/null | jq -e 'length >= 5' >/dev/null 2>&1
+check "list --json — валидный JSON с >=5 записями" "$?" "0"
+
+echo
+echo "[3/7] add: добавляет одну строку; дубликат отклоняется"
+before=$(wc -l < "$REG")
+python3 "$CLI" add --name "selftest: проба" --desc "проверка добавления" \
+        --cmd "echo probe" --tags selftest >/dev/null 2>&1
+check "add новой записи" "$?" "0"
+check "строк стало ровно на одну больше" "$(wc -l < "$REG")" "$((before+1))"
+python3 "$CLI" add --name "selftest: проба" --desc "дубль" --cmd "echo d" >/dev/null 2>&1
+check "повторный add того же name → rc=3" "$?" "3"
+
+echo
+echo "[4/7] add: секретоподобная запись отклоняется и не попадает в реестр"
+python3 "$CLI" add --name "selftest: секрет" --desc "секрет" \
+        --cmd "token=SUPERSECRETVALUE123456" >/dev/null 2>&1
+check "секрет → rc=3" "$?" "3"
+if grep -q 'SUPERSECRETVALUE' "$REG"; then bad "секрет найден в реестре"; else ok "секрета в реестре нет"; fi
+
+echo
+echo "[5/7] navi: экспорт не ломает чужие cheat-файлы"
+before_cheats=$(ls -1 "$NAVI_CHEATS" 2>/dev/null | sort | md5sum | cut -d' ' -f1)
+python3 "$CLI" navi --out "$NAVI_OUT" >/dev/null 2>&1
+check "navi --out" "$?" "0"
+made=$(ls -1 "$NAVI_OUT" 2>/dev/null | grep -c '^helpreg-')
+[ "$made" -ge 5 ] && ok "создано cheat-файлов helpreg-*: $made" || bad "создано мало файлов ($made)"
+after_cheats=$(ls -1 "$NAVI_CHEATS" 2>/dev/null | sort | md5sum | cut -d' ' -f1)
+[ "$before_cheats" = "$after_cheats" ] && ok "каталог своих cheats не тронут" \
+  || bad "каталог $NAVI_CHEATS изменился"
+
+echo
+echo "[6/7] keys: сопоставление с keys.py (только чтение)"
+python3 "$CLI" keys >"$TMP/keys.out" 2>&1
+check "keys" "$?" "0"
+grep -q '^  ключ: ' "$TMP/keys.out" && ok "минимум одна пара «команда — клавиша» найдена" \
+  || bad "ни одной пары не сопоставлено"
+
+echo
+echo "[7/7] rofi-список и гигиена"
+python3 "$CLI" rofi --print-list >"$TMP/rofi.out" 2>&1
+check "rofi --print-list" "$?" "0"
+grep -q 'добавить команду' "$TMP/rofi.out" && ok "в списке есть пункт добавления" \
+  || bad "нет пункта добавления"
+n_rofi=$(grep -c ' — ' "$TMP/rofi.out")
+[ "$n_rofi" -ge 5 ] && ok "в rofi-списке записей: $n_rofi" || bad "rofi-список пуст ($n_rofi)"
+git -C "$REPO" status --porcelain > "$TMP/git_before"
+python3 "$CLI" list >/dev/null 2>&1
+git -C "$REPO" status --porcelain > "$TMP/git_after"
+if [ "$(grep -c 'help-registry' "$TMP/git_after" || true)" = "0" ]; then
+  ok "работа CLI не добавила путей реестра в git status"
+else
+  bad "в git status появились пути help-registry (реестр в репозитории?)"
+fi
+if stow -n -t "$HOME" helpreg >"$TMP/stow.out" 2>&1; then ok "stow -n helpreg — чисто"; else
+  bad "stow -n helpreg сообщает о конфликте: $(tail -2 "$TMP/stow.out" | tr '\n' ' ')"
+fi
+
+echo
+echo "ИТОГ: пройдено $pass, провалено $fail (каталог $TMP)"
+[ "$fail" = "0" ] && echo "ВЕРДИКТ: все семь пунктов приёмки пройдены." || echo "ВЕРДИКТ: есть провалы."
+[ "$fail" = "0" ]

@@ -1,0 +1,16 @@
+{"name": "qtile reload config", "desc": "перезагрузить конфиг qtile", "cmd": "qtile cmd-obj -o cmd -f reload_config", "hint": "Super+Shift+R", "tags": ["qtile", "wm"], "source": "qtile-keys"}
+{"name": "qtile restart", "desc": "полный перезапуск qtile", "cmd": "qtile cmd-obj -o cmd -f restart", "hint": "Super+Ctrl+R", "tags": ["qtile", "wm"], "source": "qtile-keys"}
+{"name": "terminal", "desc": "открыть терминал alacritty", "cmd": "alacritty", "hint": "Super+Return", "tags": ["terminal"], "source": "qtile-keys"}
+{"name": "rofi launcher", "desc": "лаунчер приложений rofi (drun)", "cmd": "rofi -show drun -show-icons", "hint": "Super+Shift+Return", "tags": ["rofi", "launcher"], "source": "qtile-keys"}
+{"name": "wallpaper + palette", "desc": "случайные обои и новая палитра wal", "cmd": "wal-set", "hint": "Super+F5", "tags": ["wal", "wallpaper"], "source": "qtile-keys"}
+{"name": "wallust repalette", "desc": "перегенерировать палитру wallust из текущих обоев", "cmd": "wallust run \"$(cat ~/.cache/wal/wal)\"", "hint": "", "tags": ["wallust", "wal", "theme"], "source": "manual"}
+{"name": "clear screen", "desc": "очистить экран терминала", "cmd": "clear", "hint": "Ctrl+L в оболочке", "tags": ["shell", "terminal"], "source": "manual"}
+{"name": "ranger", "desc": "файловый менеджер ranger в alacritty", "cmd": "alacritty -e ranger", "hint": "", "tags": ["ranger", "files"], "source": "manual"}
+{"name": "nvim", "desc": "открыть Neovim (LazyVim)", "cmd": "nvim", "hint": "Space — меню LazyVim", "tags": ["nvim", "editor"], "source": "manual"}
+{"name": "opencode reload", "desc": "перезапустить backend opencode, чтобы подхватить свежий конфиг", "cmd": "opencode-reload", "hint": "Super+O", "tags": ["opencode"], "source": "qtile-keys"}
+{"name": "pipboy", "desc": "открыть Pip-Boy (rofi-модуль)", "cmd": "pipboy-rofi open", "hint": "Super+Shift+P", "tags": ["pipboy", "rofi"], "source": "qtile-keys"}
+{"name": "screenshot", "desc": "скриншот области через flameshot", "cmd": "flameshot gui", "hint": "Print", "tags": ["flameshot", "screenshot"], "source": "qtile-keys"}
+{"name": "lock screen", "desc": "заблокировать экран", "cmd": "/usr/local/bin/lock.sh", "hint": "Super+F10", "tags": ["x11", "lock"], "source": "qtile-keys"}
+{"name": "translate selected", "desc": "перевести выделенный текст", "cmd": "translate_selected", "hint": "Super+Shift+Z", "tags": ["translate", "utility"], "source": "qtile-keys"}
+{"name": "sys snapshot", "desc": "один JSON с состоянием ноутбука: git, демоны, память, диск", "cmd": "sys-snapshot", "hint": "", "tags": ["system", "diagnostics"], "source": "manual"}
+{"name": "ai-syshelp", "desc": "локальный AI-помощник по системе (Ollama + mistral:7b); не на PATH — запускается по пути", "cmd": "python3 \"$HOME/dotfiles/scripts/ai-syshelp.py\"", "hint": "", "tags": ["ai", "system", "help"], "source": "manual"}
