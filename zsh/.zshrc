@@ -278,6 +278,11 @@ export OPENCODE_ENABLE_EXA=1
 # LSP-инструмент в TUI (экспериментальный, для qtile-dev/python):
 # pyright уже стоит; серверы подбираются движком по языку.
 export OPENCODE_EXPERIMENTAL_LSP_TOOL=true
+# Защита от необратимой очистки черновика: по умолчанию prompt.clear=ctrl+c
+# (контекстно: если поле не пустое — очищает без подтверждения, иначе выход).
+# Переназначаем на <leader>d, чтобы Ctrl+C только выходил из приложения.
+# OPENCODE_CLI_CONFIG_CONTENT merge'ится поверх cli.json (nested objects merge).
+export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"prompt.clear":"<leader>d"}}'
 
 # Провайдерные ключи для SDK с жёстким именем переменной.
 # @ai-sdk/anthropic (провайдер justwoker) требует именно ANTHROPIC_API_KEY
