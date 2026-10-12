@@ -16,6 +16,17 @@ permission:
     verifier: allow
   bash:
     "*": allow
+    "sudo*": deny
+    "chmod*": deny
+    "chown*": deny
+    "systemctl*": deny
+    "systemctl status*": allow
+    "systemctl --user status*": allow
+    "systemctl list-*": allow
+    "systemctl --user list-*": allow
+    "systemctl show*": allow
+    "systemctl cat*": allow
+    "systemctl is-*": allow
     "sudo *": deny
     "chown *": deny
     "chmod *": deny
