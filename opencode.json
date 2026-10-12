@@ -421,7 +421,7 @@
       "description": "Agent infrastructure editor: .opencode/, ~/.config/opencode/, vault. No app code.",
       "permission": {
         "edit": {
-          "*": "deny",
+          "*": "allow",
           "**/.opencode/**": "allow",
           "**/AGENTS.md": "allow",
           "/home/rudra/.config/opencode/**": "allow",
@@ -786,7 +786,7 @@
       "steps": 25,
       "description": "Agent infrastructure editor: .opencode/, ~/.config/opencode/, vault. No app code.",
       "permissions": [
-        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "*", "effect": "allow" },
         { "action": "edit", "resource": "**/.opencode/**", "effect": "allow" },
         { "action": "edit", "resource": "**/AGENTS.md", "effect": "allow" },
         { "action": "edit", "resource": "/home/rudra/.config/opencode/**", "effect": "allow" },
