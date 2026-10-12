@@ -58,17 +58,17 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 
 | Агент | Тип | Роль | Модель (ярус) |
 |-------|-----|------|---------------|
-| **sysop** | primary | Оператор-оркестратор Manjaro: планирует, пишет, делегирует субагентам | `opencode-go/gpt-5.6-luna` · Strategic |
-| **qtile-dev** | subagent | Qtile (WM, виджеты, Python) | `opencode-go/qwen3.7-plus` · Coding |
-| **bash-dev** | subagent | bash-скрипты, автоматизация | `opencode-go/qwen3.7-plus` · Coding |
-| **util-dev** | subagent | утилиты (макросы, нотификации, rofi) | `opencode-go/qwen3.7-plus` · Coding |
-| **stow-ops** | subagent | stow-операции, реструктуризация, миграция, дрейф | `opencode-go/qwen3.7-plus` · Coding |
-| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `opencode/muse-spark-1.3-contributor-free` · Free |
-| **system-audit** | subagent (global) | read-only аудит системы/экосистемы (ранее глобальный `sysop`) | `opencode-go/glm-5.3-flash` · Go |
-| **system-ops** | subagent (global) | approval-gated high-risk apply planning | `opencode-go/gpt-5.6-luna` · Strategic |
-| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `linaliapi/deepseek/deepseek-v4-pro` · Go |
-| **researcher** | subagent (global) | исследование кода/файлов/git/документации, read-only | `linaliapi/google/gemini-3.8-flash` · Go |
-| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `opencode-go/qwen3.7-plus` · Strategic |
+| **sysop** | primary | Оператор-оркестратор Manjaro: планирует, пишет, делегирует субагентам | `opencode/muse-spark-1.3-contributor-free` · Free |
+| **qtile-dev** | subagent | Qtile (WM, виджеты, Python) | `justwoker/claude-opus-4-8#max` · Strategic |
+| **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `justwoker/claude-opus-4-8#max` · Strategic |
+| **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `justwoker/claude-opus-4-8#max` · Strategic |
+| **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `justwoker/claude-opus-4-8#max` · Strategic |
+| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `nvidia/z-ai/glm-5.3-flash` · Free |
+| **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `opencode-go/glm-5.3-flash` · Go |
+| **system-ops** | subagent (global) | approval-gated high-risk apply planning | `justwoker/claude-opus-4-8#max` · Strategic |
+| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `justwoker/claude-opus-4-8#max` · Strategic |
+| **researcher** | subagent (global) | Read-only research: code, files, git, docs, web | `opencode-go/glm-5.3-flash` · Go |
+| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `justwoker/claude-opus-4-8#max` · Strategic |
 
 Роутинг субагентов задаёт primary `sysop`: `task(agent=…)` под конкретную задачу. Нет задачи из чьей-то зоны → primary делает сам, для несвойственной себе работы не молча отдаёт `general`.
 

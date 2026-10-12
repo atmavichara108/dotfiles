@@ -5,7 +5,6 @@ model: opencode-go/glm-5.3-flash
 temperature: 0.1
 steps: 15
 permission:
-  edit: deny
   task: deny
   read: allow
   glob: allow
@@ -87,6 +86,26 @@ permission:
     "journalctl --user*": allow
     "stow -n*": allow
     "stow --adopt -n*": allow
+    "git remote -v*": allow
+    "git describe*": allow
+    "git symbolic-ref*": allow
+    "git rev-parse*": allow
+    "git ls-files*": allow
+    "python3 -m json.tool*": allow
+    "python -m json.tool*": allow
+    "node --check*": allow
+    "basename*": allow
+    "dirname*": allow
+    "tokei*": allow
+    "procs*": allow
+    "date*": allow
+    "md5sum*": allow
+    "sha1sum*": allow
+    "sort*": allow
+    "uniq*": allow
+    "cut*": allow
+    "jq*": allow
+    "sqlite3 -readonly *": allow
 ---
 Ты — researcher с capability `read-research`.
 

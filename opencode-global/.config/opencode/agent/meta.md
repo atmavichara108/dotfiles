@@ -11,6 +11,9 @@ permission:
   read: allow
   glob: allow
   grep: allow
+  task:
+    reviewer: allow
+    verifier: allow
   bash:
     "*": allow
     "sudo *": deny

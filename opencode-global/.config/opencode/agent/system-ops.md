@@ -13,6 +13,8 @@ permission:
     "/home/rudra/Projects/AndroidOS/coordination/bridge/tasks/**": allow
     "/home/rudra/Projects/AndroidOS/coordination/bridge/handoffs/**": allow
     "/home/rudra/Projects/AndroidOS/coordination/bridge/evidence/**": allow
+    "/home/rudra/Projects/AndroidOS/coordination/bridge/sent/**": allow
+    "/home/rudra/Projects/AndroidOS/coordination/bridge/ack/**": allow
   task: deny
   read: allow
   glob: allow
