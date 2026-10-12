@@ -13,102 +13,89 @@ permission:
   webfetch: allow
   websearch: allow
   bash:
-    "*": deny
-    "sudo *": deny
-    "chown *": deny
-    "chmod *": deny
-    "mkfs*": deny
-    "shutdown*": deny
-    "reboot*": deny
-    "systemctl stop*": deny
-    "systemctl disable*": deny
-    "systemctl mask*": deny
-    "git push --force*": deny
-    "git push -f*": deny
-    "git branch -D*": deny
-    "git tag -d*": deny
-    "git reset --hard*": ask
-    "git clean*": ask
-    "rm -rf*": deny
-    "rm -fr*": deny
-    "rm*": deny
-    "ssh*": ask
-    "pacman -S*": deny
-    "pacman -R*": deny
-    "yay *": deny
-    "paru *": deny
-    "ls*": allow
-    "cat*": allow
-    "grep*": allow
-    "find*": allow
-    "bat*": allow
-    "eza*": allow
-    "rg*": allow
-    "fd*": allow
-    "tokei*": allow
-    "procs*": allow
-    "git status*": allow
-    "git diff*": allow
-    "git log*": allow
-    "git show*": allow
-    "git blame*": allow
-    "which*": allow
-    "type*": allow
-    "head*": allow
-    "tail*": allow
-    "wc*": allow
-    "file*": allow
-    "stat*": allow
-    "readlink*": allow
-    "realpath*": allow
-    "basename*": allow
-    "dirname*": allow
-    "echo*": allow
-    "ps*": allow
-    "df*": allow
-    "free*": allow
-    "uname*": allow
-    "hostnamectl*": allow
-    "du -sh*": allow
-    "date*": allow
-    "md5sum*": allow
-    "sha1sum*": allow
-    "sort*": allow
-    "uniq*": allow
-    "cut*": allow
-    "jq*": allow
-    "sqlite3 -readonly *": allow
-    "python3 -m json.tool*": allow
-    "python3 -m py_compile*": allow
-    "python -m py_compile*": allow
-    "lsblk*": allow
-    "ip addr*": allow
-    "ss -tlnp*": allow
-    "systemctl status*": allow
-    "journalctl --user*": allow
-    "stow -n*": allow
-    "stow --adopt -n*": allow
-    "git remote -v*": allow
-    "git describe*": allow
-    "git symbolic-ref*": allow
-    "git rev-parse*": allow
-    "git ls-files*": allow
-    "git branch*": allow
-    "python3 -m json.tool*": allow
-    "python -m json.tool*": allow
-    "node --check*": allow
-    "basename*": allow
-    "dirname*": allow
-    "tokei*": allow
-    "procs*": allow
-    "date*": allow
-    "md5sum*": allow
-    "sha1sum*": allow
-    "sort*": allow
-    "uniq*": allow
-    "cut*": allow
-    "jq*": allow
-    "sqlite3 -readonly *": allow
+    "*": deny,
+    "sudo *": deny,
+    "chown *": deny,
+    "chmod *": deny,
+    "mkfs*": deny,
+    "shutdown*": deny,
+    "reboot*": deny,
+    "systemctl stop*": deny,
+    "systemctl disable*": deny,
+    "systemctl mask*": deny,
+    "git push --force*": deny,
+    "git push -f*": deny,
+    "git branch -D*": deny,
+    "git tag -d*": deny,
+    "git reset --hard*": ask,
+    "git clean*": ask,
+    "rm -rf*": deny,
+    "rm -fr*": deny,
+    "rm*": deny,
+    "ssh*": ask,
+    "pacman -S*": deny,
+    "pacman -R*": deny,
+    "yay *": deny,
+    "paru *": deny,
+    "ls*": allow,
+    "cat*": allow,
+    "grep*": allow,
+    "find*": allow,
+    "bat*": allow,
+    "eza*": allow,
+    "rg*": allow,
+    "fd*": allow,
+    "tokei*": allow,
+    "procs*": allow,
+    "git status*": allow,
+    "git diff*": allow,
+    "git log*": allow,
+    "git show*": allow,
+    "git blame*": allow,
+    "which*": allow,
+    "type*": allow,
+    "head*": allow,
+    "tail*": allow,
+    "wc*": allow,
+    "file*": allow,
+    "stat*": allow,
+    "readlink*": allow,
+    "realpath*": allow,
+    "basename*": allow,
+    "dirname*": allow,
+    "echo*": allow,
+    "ps*": allow,
+    "df*": allow,
+    "free*": allow,
+    "uname*": allow,
+    "hostnamectl*": allow,
+    "du -sh*": allow,
+    "date*": allow,
+    "md5sum*": allow,
+    "sha1sum*": allow,
+    "sort*": allow,
+    "uniq*": allow,
+    "cut*": allow,
+    "jq*": allow,
+    "sqlite3 -readonly *": allow,
+    "python3 -m json.tool*": allow,
+    "python3 -m py_compile*": allow,
+    "python -m py_compile*": allow,
+    "lsblk*": allow,
+    "ip addr*": allow,
+    "ss -tlnp*": allow,
+    "systemctl status*": allow,
+    "journalctl --user*": allow,
+    "stow -n*": allow,
+    "stow --adopt -n*": allow,
+    "git remote -v*": allow,
+    "git describe*": allow,
+    "git symbolic-ref*": allow,
+    "git rev-parse*": allow,
+    "git ls-files*": allow,
+    "git branch*": allow,
+    "python -m json.tool*": allow,
+    "node --check*": allow,
 ---
 Ты — researcher с capability `read-research`.
 
