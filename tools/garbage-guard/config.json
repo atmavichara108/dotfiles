@@ -1,6 +1,6 @@
 {
   "kind": "garbage-guard-allowlist",
-  "updated": "2026-10-07",
+  "updated": "2026-10-13",
   "note": "decode-мусор в dotfiles запрещён. Исключения — fragment-level, только подтверждённые легальные CJK-вкрапления (исторический артефакт или осознанный контент).",
   "exclude_prefixes": [
     ".opencode/node_modules/",
@@ -54,6 +54,13 @@
       "reason": "цитата исторического дефекта в описании инцидента — глобально: уникальная строка-цитата",
       "owner": "librarian",
       "added": "2026-10-07"
+    },
+    {
+      "path": "scripts/.local/bin/hotmem.selftest",
+      "fragment": "日本語",
+      "reason": "осознанные тестовые данные: самопроверка проверяет байтовую точность юникода (put→get), CJK здесь намеренно",
+      "owner": "sysop",
+      "added": "2026-10-13"
     }
   ]
 }
