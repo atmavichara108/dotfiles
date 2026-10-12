@@ -58,6 +58,7 @@ packages=(
   "taskwarrior" "task-tools" "calcurse"
   "xdg" "environment.d" "systemd" "proxyctl"
   "scripts"
+  "helpreg"
   "opencode-global"
 )
 
