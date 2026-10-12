@@ -287,7 +287,7 @@ export OPENCODE_EXPERIMENTAL_LSP_TOOL=true
 # service.restart: super+o перехвачен qtile (mod4+o = opencode-reload, keys.py:42),
 # поэтому ставим на <leader>shift+r.
 # OPENCODE_CLI_CONFIG_CONTENT merge'ится поверх cli.json (nested objects merge).
-export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"prompt.clear":"<leader>d","app.exit":"ctrl+d,<leader>q","prompt.stash":"<leader>z","prompt.stash.pop":"<leader>shift+z","prompt.stash.list":"<leader>f","prompt.fullscreen":"<leader>p","service.restart":"<leader>shift+r"}}'
+export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"prompt.clear":"<leader>d","app.exit":"ctrl+d,<leader>q","prompt.stash":"<leader>z","prompt.stash.pop":"<leader>shift+z","prompt.stash.list":"<leader>f","service.restart":"<leader>shift+r"}}'
 
 # Провайдерные ключи для SDK с жёстким именем переменной.
 # @ai-sdk/anthropic (провайдер justwoker) требует именно ANTHROPIC_API_KEY
