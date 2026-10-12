@@ -1,5 +1,5 @@
 ---
-description: Коп чистоты дерева и выкладки ветки. Зовётся на параллельных сессиях и /ship.
+description: Коп чистоты дерева и preflight выкладки. Зовётся на параллельных сессиях и /ship. Preflight — коп; сам switch/merge/push и удаление ветки — только primary.
 mode: subagent
 model: anymodel/cx/gpt-5.6-sol
 temperature: 0.1
