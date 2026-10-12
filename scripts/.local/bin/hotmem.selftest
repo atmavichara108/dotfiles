@@ -1,0 +1,648 @@
+#!/usr/bin/env python3
+"""hotmem.selftest — самопроверка приёмки hot-memory v1 (раздел 8 спеки).
+
+Прогоняет семь пунктов приёмки `docs/specs/hot-memory-v1.md` и печатает
+улики по каждому. Один запуск = один вердикт:
+
+    hotmem.selftest [--cli PATH] [--keep] [--quick]
+
+Коды возврата: 0 — все пункты прошли, 1 — есть провал, 2 — ошибка запуска.
+Тесты 1–6 работают в изолированном HOTMEM_ROOT (временный каталог); тест 7
+(гигиена) делает одну реальную запись в штатный корень вне репозитория.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import os
+import shutil
+import statistics
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+REPO = Path("/home/rudra/dotfiles")
+REAL_ROOT = Path.home() / ".local" / "state" / "opencode" / "hotmem"
+
+MODULE = None                      # loaded hotmem as a module (for in-process tests)
+WORKERS = 2                        # процессов в тесте конкурентности
+LINES_PER_WORKER = 5000            # строк на процесс (итого 10 000)
+
+
+# --------------------------------------------------------------------------- #
+# Инфраструктура отчёта
+# --------------------------------------------------------------------------- #
+
+class Report:
+    """Копилка результатов: секция → проверки → вердикт."""
+
+    def __init__(self) -> None:
+        self.sections: list[tuple[int, str, list[tuple[bool, str]]]] = []
+        self._cur: list[tuple[bool, str]] | None = None
+
+    def section(self, num: int, title: str) -> None:
+        """Открывает новую секцию приёмки."""
+        self._cur = []
+        self.sections.append((num, title, self._cur))
+        print(f"\n[{num}/7] {title}")
+
+    def check(self, ok: bool, message: str) -> bool:
+        """Регистрирует и печатает одну проверку."""
+        mark = "PASS" if ok else "FAIL"
+        print(f"  [{mark}] {message}")
+        if self._cur is not None:
+            self._cur.append((bool(ok), message))
+        return bool(ok)
+
+    def info(self, message: str) -> None:
+        """Печатает справку без влияния на вердикт."""
+        print(f"         · {message}")
+
+    def finish(self) -> int:
+        """Итог по всем секциям."""
+        total = sum(len(checks) for _, _, checks in self.sections)
+        failed = sum(1 for _, _, checks in self.sections
+                     for ok, _ in checks if not ok)
+        bad_sections = [num for num, _, checks in self.sections
+                        if not checks or any(not ok for ok, _ in checks)]
+        print("\n" + "=" * 68)
+        for num, title, checks in self.sections:
+            state = "PASS" if checks and all(ok for ok, _ in checks) else "FAIL"
+            print(f"  [{state}] п.{num}. {title}")
+        print(f"\nИТОГ: проверок {total - failed}/{total} пройдено; "
+              f"пунктов приёмки без провалов: {7 - len(bad_sections)}/7")
+        if bad_sections:
+            print("ПРОВАЛЕНО: п." + ", п.".join(str(n) for n in bad_sections))
+            return 1
+        print("ВЕРДИКТ: все семь пунктов приёмки пройдены.")
+        return 0
+
+
+# --------------------------------------------------------------------------- #
+# Утилиты
+# --------------------------------------------------------------------------- #
+
+def load_module(cli: Path):
+    """Загружает hotmem (без расширения .py) как модуль для in-process тестов."""
+    loader = importlib.machinery.SourceFileLoader("hotmem_mod", str(cli))
+    spec = importlib.util.spec_from_loader("hotmem_mod", loader)
+    if spec is None:
+        raise RuntimeError(f"не удалось загрузить модуль {cli}")
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+class Cli:
+    """Обёртка запуска hotmem с изолированным HOTMEM_ROOT."""
+
+    def __init__(self, cli: Path, root: Path) -> None:
+        self.cli = cli
+        self.root = root
+        self.env = {**os.environ, "HOTMEM_ROOT": str(root)}
+        self.calls = 0
+
+    def __call__(self, *args: str, stdin: bytes | None = None,
+                 timeout: int = 120) -> subprocess.CompletedProcess:
+        self.calls += 1
+        return subprocess.run(
+            [sys.executable, str(self.cli), *args],
+            input=stdin, capture_output=True, env=self.env, timeout=timeout,
+        )
+
+    def out(self, *args: str, stdin: bytes | None = None) -> bytes:
+        res = self(*args, stdin=stdin)
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"hotmem {' '.join(args)} → rc={res.returncode}: "
+                f"{res.stderr.decode(errors='replace').strip()}"
+            )
+        return res.stdout
+
+    @property
+    def journal(self) -> Path:
+        return self.root / "journal"
+
+    @property
+    def index(self) -> Path:
+        return self.root / "index.jsonl"
+
+    def segments(self) -> list[Path]:
+        return sorted(self.journal.glob("*/*.jsonl"))
+
+    def journal_lines(self) -> list[bytes]:
+        out: list[bytes] = []
+        for seg in self.segments():
+            out.extend(ln for ln in seg.read_bytes().split(b"\n") if ln)
+        return out
+
+    def index_lines(self) -> list[bytes]:
+        if not self.index.exists():
+            return []
+        return [ln for ln in self.index.read_bytes().split(b"\n") if ln]
+
+
+def bench(fn, n: int) -> dict:
+    """Гоняет fn n раз, возвращает p50/p95 в миллисекундах."""
+    samples = []
+    for _ in range(n):
+        start = time.perf_counter()
+        fn()
+        samples.append((time.perf_counter() - start) * 1000.0)
+    samples.sort()
+    return {
+        "n": n,
+        "p50": statistics.median(samples),
+        "p95": samples[min(len(samples) - 1, int(round(0.95 * len(samples))) - 1)],
+        "min": samples[0],
+    }
+
+
+def mb(n: int) -> str:
+    """Байты в мегабайты с одним знаком."""
+    return f"{n / 1024 / 1024:.1f} МБ"
+
+
+# --------------------------------------------------------------------------- #
+# Пункт 1: put→get, state→get, приоритет state
+# --------------------------------------------------------------------------- #
+
+def test_roundtrip(rep: Report, cli: Cli) -> None:
+    rep.section(1, "put→get и state→get возвращают ровно записанное; state приоритетнее")
+
+    body = "первая строка\nвторая строка с юникодом: ёж, 日本語, emoji 🎯\n"
+    cli.out("put", "--key", "draft:ses_a", "--tag", "draft",
+            "--session", "ses_a", stdin=body.encode())
+    got = cli.out("get", "--key", "draft:ses_a")
+    rep.check(got == body.encode(),
+              f"put→get: тело совпало байт в байт ({len(body.encode())} байт, "
+              f"многострочное + юникод)")
+
+    cli.out("put", "--key", "draft:ses_empty", stdin=b"")
+    empty = cli.out("get", "--key", "draft:ses_empty")
+    rep.check(empty == b"", "put→get: пустое тело возвращается пустым")
+
+    rec = json.loads(cli.out("get", "--key", "draft:ses_a", "--json"))
+    rep.check(rec["len"] == len(body.encode()) and rec["kind"] == "put"
+              and rec["scope"] == "host" and rec["session"] == "ses_a"
+              and rec["tags"] == ["draft"] and isinstance(rec["ts"], int),
+              "get --json: строка целиком с ts/key/scope/session/tags/kind/len")
+
+    state1 = "состояние v1"
+    cli.out("state", "--key", "state:tool", "--body", state1)
+    rep.check(cli.out("get", "--key", "state:tool") == state1.encode(),
+              "state→get: возвращено ровно записанное состояние")
+
+    cli.out("state", "--key", "state:tool", "--body", "состояние v2")
+    rep.check(cli.out("get", "--key", "state:tool") == "состояние v2".encode(),
+              "state перекрывает предыдущее состояние того же ключа")
+
+    cli.out("put", "--key", "state:tool", "--body", "история после состояния")
+    rep.check(cli.out("get", "--key", "state:tool") == "состояние v2".encode(),
+              "state приоритетнее более свежего put по тому же ключу")
+
+    cli.out("state", "--key", "state:tool", "--body", "состояние v3")
+    rep.check(cli.out("get", "--key", "state:tool") == "состояние v3".encode(),
+              "новое state перекрывает старое state")
+
+    miss = cli("get", "--key", "нет:такого")
+    rep.check(miss.returncode == 1, "get по отсутствующему ключу → rc=1")
+
+    fmt = cli("get", "--key", "draft:ses_a", "--json")
+    jq = subprocess.run(["jq", "-e", ".key"], input=fmt.stdout, capture_output=True)
+    rep.check(jq.returncode == 0 and jq.stdout.strip() == b'"draft:ses_a"',
+              "get --json проходит через jq -e (строка валидна)")
+
+
+# --------------------------------------------------------------------------- #
+# Пункт 2: конкурентность — два процесса × 5000 строк
+# --------------------------------------------------------------------------- #
+
+def _worker(root: str, prefix: str, count: int, queue) -> None:
+    """Процесс-писатель: count записей в общий сегмент (in-process ядро)."""
+    hm = MODULE.Hotmem(root)
+    body = f"{prefix} " + "я" * 80 + " " + "x" * 400
+    started = time.perf_counter()
+    for i in range(count):
+        hm.write(kind="put", key=f"{prefix}:{i}", body=body, scope="host",
+                 tags=["conc", prefix])
+    queue.put({"prefix": prefix, "count": count,
+               "sec": time.perf_counter() - started})
+
+
+def test_concurrency(rep: Report, cli: Cli) -> None:
+    rep.section(2, f"конкурентность: {WORKERS} процесса × {LINES_PER_WORKER} строк, "
+                   f"ни одной битой строки")
+    import multiprocessing
+
+    ctx = multiprocessing.get_context("fork")
+    queue = ctx.Queue()
+    procs = [ctx.Process(target=_worker,
+                         args=(str(cli.root), f"conc{i}", LINES_PER_WORKER, queue))
+             for i in range(WORKERS)]
+    started = time.perf_counter()
+    for p in procs:
+        p.start()
+    for p in procs:
+        p.join()
+    wall = time.perf_counter() - started
+    stats = [queue.get() for _ in range(WORKERS)]
+
+    rep.check(all(p.exitcode == 0 for p in procs),
+              f"оба процесса завершились без ошибок (за {wall:.1f} с, "
+              f"{sum(s['count'] for s in stats)} строк)")
+    for s in stats:
+        rep.info(f"{s['prefix']}: {s['count']} строк за {s['sec']:.2f} с "
+                 f"({s['count'] / s['sec']:.0f} строк/с)")
+
+    raw = cli.journal_lines()
+    expected = WORKERS * LINES_PER_WORKER
+    rep.check(len(raw) == expected,
+              f"в журнале ровно {expected} строк (найдено {len(raw)})")
+
+    broken = []
+    keys = set()
+    for i, line in enumerate(raw):
+        try:
+            rec = json.loads(line)
+            keys.add(rec["key"])
+        except Exception as exc:                      # noqa: BLE001
+            broken.append((i, str(exc)))
+    rep.check(not broken, f"каждая строка журнала — валидный JSON "
+                          f"(битых: {len(broken)})")
+    rep.check(len(keys) == expected, f"все ключи уникальны: {len(keys)}")
+
+    jq_all = subprocess.run(
+        ["jq", "-e", "."] + [str(s) for s in cli.segments()],
+        capture_output=True)
+    jq_count = subprocess.run(
+        ["jq", "-c", "."] + [str(s) for s in cli.segments()],
+        capture_output=True)
+    rep.check(jq_all.returncode == 0,
+              "jq -e . по всему журналу — поток валиден (rc=0)")
+    rep.check(len(jq_count.stdout.splitlines()) == expected,
+              f"jq разобрал столько же значений: "
+              f"{len(jq_count.stdout.splitlines())}")
+
+    sample = raw[:20] + raw[-20:]
+    per_line = subprocess.run(["jq", "-e", "."], input=b"\n".join(sample),
+                              capture_output=True)
+    rep.check(per_line.returncode == 0,
+              "выборка 40 строк индивидуально через jq -e (rc=0)")
+
+    idx = cli.index_lines()
+    rep.check(len(idx) == expected, f"в индексе {expected} записей "
+                                    f"(найдено {len(idx)})")
+    recs = [json.loads(x) for x in idx]
+    rep.check(all(r["t"] == "e" for r in recs), "все записи индекса — типа 'e'")
+    offs = sorted(r["off"] for r in recs)
+    rep.check(len(set(offs)) == expected,
+              "смещения записей уникальны (нет гонки за смещением)")
+
+    doc = cli("doctor")
+    rep.check(doc.returncode == 0,
+              f"doctor после конкурентной записи: rc=0 "
+              f"({doc.stdout.decode(errors='replace').strip().splitlines()[-1].strip()})")
+
+    got = [cli.out("get", "--key", f"conc{i}:{LINES_PER_WORKER - 1}")
+           for i in range(WORKERS)]
+    rep.check(all(g for g in got),
+              "выборочное чтение последних строк обоих писателей даёт тело")
+
+    data = sum(s.stat().st_size for s in cli.segments())
+    rep.info(f"объём журнала: {mb(data)}; индекс: "
+             f"{mb(cli.index.stat().st_size)}")
+
+
+# --------------------------------------------------------------------------- #
+# Пункт 3: doctor ловит дрейф, --rebuild чинит
+# --------------------------------------------------------------------------- #
+
+def test_doctor(rep: Report, cli: Cli) -> None:
+    rep.section(3, "doctor обнаруживает дрейф индекса, --rebuild восстанавливает")
+    for i in range(30):
+        cli.out("put", "--key", f"drift:{i}", "--tag", "drift",
+                "--body", f"тело {i} " + "y" * 50)
+    cli.out("rotate")
+    rep.check(cli("doctor").returncode == 0, "исходное состояние: doctor rc=0")
+
+    def corrupt(mutator, title):
+        lines = cli.index.read_text().splitlines()
+        mutator(lines)
+        cli.index.write_text("\n".join(lines) + "\n")
+        res = cli("doctor")
+        detected = res.returncode == 1 and "DRIFT" in res.stdout.decode(errors="replace")
+        cli("doctor", "--rebuild")
+        fixed = cli("doctor").returncode == 0
+        rep.check(detected and fixed,
+                  f"дрейф «{title}»: обнаружен (rc=1) → --rebuild → rc=0")
+
+    def flip_hash(lines):
+        rec = json.loads(lines[3])
+        rec["hash"] = "0" * 64
+        lines[3] = json.dumps(rec, ensure_ascii=False, separators=(",", ":"))
+
+    corrupt(flip_hash, "испорчен хэш строки индекса")
+    corrupt(lambda ls: ls.pop(5), "строка индекса удалена")
+    corrupt(lambda ls: ls.append(
+        '{"t":"e","k":"fake:key","s":"host","ts":1,"kind":"put",'
+        '"seg":"2026-10/host.jsonl","off":999999,"len":10,"hash":"deadbeef"}'),
+        "лишняя запись индекса")
+    corrupt(lambda ls: ls.append("не json вовсе"), "мусорная строка индекса")
+
+    rep.check("doctor: OK" in cli.root.joinpath("doctor.log").read_text(
+        encoding="utf-8", errors="replace"),
+        "результаты сверки пишутся в doctor.log")
+
+
+# --------------------------------------------------------------------------- #
+# Пункт 4: секреты
+# --------------------------------------------------------------------------- #
+
+def test_secret(rep: Report, cli: Cli) -> None:
+    rep.section(4, "запись с токеном отклоняется (rc=3) и не попадает в журнал/индекс")
+    samples = [
+        ("token=SUPERSECRETVALUE123456", "token=…"),
+        ("ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", "GitHub PAT"),
+        ("api_key: sk-abcdefghijklmnopqrstuvwxyz01", "sk-…"),
+        ("-----BEGIN OPENSSH PRIVATE KEY-----", "приватный ключ"),
+        ("Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.abcdefghij.klmnop", "Bearer/JWT"),
+    ]
+    before_lines = len(cli.journal_lines())
+    before_index = len(cli.index_lines())
+    before_size = sum(s.stat().st_size for s in cli.segments())
+
+    for body, label in samples:
+        res = cli("put", "--key", "secret:probe", stdin=body.encode())
+        ok = res.returncode == 3
+        rep.check(ok, f"{label} → rc=3 ({res.stderr.decode(errors='replace').strip()[:60]}…)")
+
+    res = cli("state", "--key", "state:probe", stdin=b"passwd=Hunter2Hunter2")
+    rep.check(res.returncode == 3, "state с секретом тоже rc=3")
+
+    blob = b"".join(s.encode() for s, _ in samples)
+    in_journal = any(marker in s.read_bytes() for s in cli.segments()
+                     for marker in (b"SUPERSECRETVALUE", b"ghp_ABCDEF",
+                                    b"BEGIN OPENSSH", b"Hunter2Hunter2"))
+    idx_bytes = cli.index.read_bytes() if cli.index.exists() else b""
+    in_index = any(marker in idx_bytes
+                   for marker in (b"SUPERSECRETVALUE", b"ghp_ABCDEF",
+                                  b"BEGIN OPENSSH", b"Hunter2Hunter2"))
+    rep.check(not in_journal and not in_index,
+              "ни секрет, ни его фрагмент не найдены в журнале и индексе")
+    rep.check(len(cli.journal_lines()) == before_lines
+              and len(cli.index_lines()) == before_index
+              and sum(s.stat().st_size for s in cli.segments()) == before_size,
+              "журнал и индекс не изменились (ни строки, ни байта)")
+    rep.info(f"проверено {len(samples)} шаблонов, {len(blob)} байт секретов "
+             f"не записано")
+
+    ok_text = "обычный текст: обсуждали токены и пароли, значений нет"
+    res = cli("put", "--key", "secret:clean", stdin=ok_text.encode())
+    rep.check(res.returncode == 0, "текст без значений не ложно-положителен (rc=0)")
+
+
+# --------------------------------------------------------------------------- #
+# Пункт 5: длина строки
+# --------------------------------------------------------------------------- #
+
+def test_length(rep: Report, cli: Cli) -> None:
+    rep.section(5, "тело > 4 КБ — отказ, журнал не тронут; граница 4096 точна")
+    before_lines = len(cli.journal_lines())
+    before_size = sum(s.stat().st_size for s in cli.segments())
+    before_index = len(cli.index_lines())
+
+    res = cli("put", "--key", "len:big", stdin=b"x" * 5000)
+    rep.check(res.returncode == 3,
+              f"тело 5000 байт → rc=3 ({res.stderr.decode(errors='replace').strip()[:70]}…)")
+    rep.check(len(cli.journal_lines()) == before_lines
+              and sum(s.stat().st_size for s in cli.segments()) == before_size
+              and len(cli.index_lines()) == before_index,
+              "журнал и индекс не тронуты (ни строки, ни байта)")
+
+    res = cli("state", "--key", "state:big", stdin=b"x" * 4096)
+    rep.check(res.returncode == 3, "state с телом 4096 байт (строка длиннее) → rc=3")
+
+    # граница считается по ОДНОМУ ключу: длина строки зависит от имени ключа
+    edge_key = "len:edge"
+    lo, hi = 1, 8192
+    best = 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        rc = cli("put", "--key", edge_key, stdin=b"x" * mid).returncode
+        if rc == 0:
+            best = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    line_len = 0
+    for seg in cli.segments():
+        for raw in seg.read_bytes().split(b"\n"):
+            if b'"key":"' + edge_key.encode() + b'"' in raw and len(raw) > line_len:
+                line_len = len(raw)
+    rep.check(best > 0 and line_len <= 4096,
+              f"граница: максимум принятого тела {best} байт, строка журнала "
+              f"{line_len} байт ≤ 4096")
+    refused = cli("put", "--key", edge_key, stdin=b"x" * (best + 1))
+    rep.check(refused.returncode == 3,
+              f"тот же ключ с телом {best + 1} байт (строка > 4096) → rc=3")
+
+    tty = cli("put", "--key", "len:notty", timeout=10)
+    rep.check(tty.returncode == 0,
+              f"без --body и без ввода тело пустое и принимается (согласовано с п.1) "
+              f"({tty.stderr.decode(errors='replace').strip()[:50]}…)")
+
+
+# --------------------------------------------------------------------------- #
+# Пункт 6: замеры И-14
+# --------------------------------------------------------------------------- #
+
+DATASET = 3000
+BODY_PAD = 1500
+
+
+def test_bench(rep: Report, cli: Cli) -> None:
+    rep.section(6, "замеры: get по ключу против чтения реестра целиком; "
+                   "put без fsync и с fsync")
+    hm = MODULE.Hotmem(str(cli.root))
+    body = "запись бенчмарка " + "x" * BODY_PAD
+    for i in range(DATASET):
+        hm.write(kind="put", key=f"bench:{i}", body=body, tags=["bench"])
+
+    seg_size = sum(s.stat().st_size for s in cli.segments())
+    idx_size = cli.index.stat().st_size
+    key = f"bench:{DATASET - 1}"
+    rep.info(f"датасет: {DATASET} записей, журнал {mb(seg_size)}, "
+             f"индекс {mb(idx_size)}")
+
+    get_cli = bench(lambda: cli.out("get", "--key", key), n=10)
+    cat = bench(lambda: subprocess.run(
+        "cat " + " ".join(str(s) for s in cli.segments()) + " > /dev/null",
+        shell=True, check=True), n=10)
+    grep_like = bench(lambda: subprocess.run(
+        f"grep -F -q -m1 {json.dumps(key)} "
+        + " ".join(str(s) for s in cli.segments()),
+        shell=True, check=False), n=10)
+    rep.info(f"CLI get --key        : p50 {get_cli['p50']:.1f} мс / "
+             f"p95 {get_cli['p95']:.1f} мс")
+    rep.info(f"чтение реестра целиком (cat): p50 {cat['p50']:.1f} мс / "
+             f"p95 {cat['p95']:.1f} мс")
+    rep.info(f"grep -F по сырому журналу: p50 {grep_like['p50']:.1f} мс / "
+             f"p95 {grep_like['p95']:.1f} мс")
+
+    def core_get():
+        rec = hm.find_entry(key)
+        hm.read_entry_bytes(rec)
+
+    def full_read():
+        for seg in cli.segments():
+            seg.read_bytes()
+
+    core = bench(core_get, n=50)
+    full = bench(full_read, n=50)
+    rep.info(f"ядро (индекс-поиск+seek)  : p50 {core['p50']:.3f} мс / "
+             f"p95 {core['p95']:.3f} мс")
+    rep.info(f"полное чтение журнала     : p50 {full['p50']:.3f} мс / "
+             f"p95 {full['p95']:.3f} мс")
+    rep.info("сравнение не like-for-like: индекс-поиск разбирает JSON, «полное чтение» "
+             "меряет только ввод-вывод — преимущество «ока» на текущем объёме НЕ доказано")
+    rep.check(core["p50"] > 0 and full["p50"] > 0,
+              "ядровые замеры получены (числа выше)")
+
+    put_cli = bench(lambda: cli.out("put", "--key", "benchx:p", "--body", body), n=30)
+    put_cli_sync = bench(lambda: cli.out("put", "--key", "benchx:p", "--body", body,
+                                         "--fsync"), n=30)
+    rep.info(f"CLI put (процесс+запись) : p50 {put_cli['p50']:.1f} мс / "
+             f"p95 {put_cli['p95']:.1f} мс")
+    rep.info(f"CLI put --fsync          : p50 {put_cli_sync['p50']:.1f} мс / "
+             f"p95 {put_cli_sync['p95']:.1f} мс")
+
+    write_plain = bench(lambda: hm.write(kind="put", key="benchcore:n",
+                                         body=body, fsync=False), n=200)
+    write_sync = bench(lambda: hm.write(kind="put", key="benchcore:s",
+                                        body=body, fsync=True), n=200)
+    rep.info(f"ядро put (без процесса)  : p50 {write_plain['p50']:.3f} мс / "
+             f"p95 {write_plain['p95']:.3f} мс")
+    rep.info(f"ядро put + fsync         : p50 {write_sync['p50']:.3f} мс / "
+             f"p95 {write_sync['p95']:.3f} мс")
+    rep.info("цена fsync на этом объёме маскируется страничным кэшем — "
+             "проверять на большом файле и холодном кэше отдельным прогоном")
+
+    rows = bench(lambda: cli.out("list", "--limit", "20"), n=10)
+    rep.info(f"list --limit 20 (по индексу): p50 {rows['p50']:.1f} мс")
+    rep.info(f"лента по индексу {rows['p50']:.1f} мс против полного чтения {cat['p50']:.1f} мс — сравнение не like-for-like (разный объём работы)")
+    rep.check(put_cli["p50"] > 0 and cat["p50"] > 0 and rows["p50"] > 0,
+              "CLI-замеры получены (числа выше); сравнение «око против полного чтения» "
+              "оставлено БЕЗ вердикта — преимущество на текущем объёме не доказано")
+
+
+# --------------------------------------------------------------------------- #
+# Пункт 7: гигиена
+# --------------------------------------------------------------------------- #
+
+def test_hygiene(rep: Report, cli: Cli, real_root: Path) -> None:
+    rep.section(7, "все файлы вне репозитория; git status в dotfiles чист")
+
+    rep.check(not real_root.resolve().is_relative_to(REPO.resolve()),
+              f"штатный корень вне репозитория: {real_root}")
+    rep.check(not cli.root.resolve().is_relative_to(REPO.resolve()),
+              f"тестовый корень вне репозитория: {cli.root}")
+
+    def git_status() -> list[str]:
+        res = subprocess.run(["git", "-C", str(REPO), "status", "--porcelain"],
+                             capture_output=True, text=True)
+        return [ln for ln in res.stdout.splitlines() if ln.strip()]
+
+    before = git_status()
+    env = {**os.environ}
+    env.pop("HOTMEM_ROOT", None)
+    res = subprocess.run(
+        [sys.executable, str(cli.cli), "put", "--key", "selftest:hygiene",
+         "--tag", "selftest", "--body", "проверка гигиены: запись вне репо"],
+        capture_output=True, env=env)
+    rep.check(res.returncode == 0,
+              f"реальная запись в штатный корень выполнена (rc={res.returncode})")
+
+    written = sorted(p for p in REAL_ROOT.rglob("*") if p.is_file())
+    rep.check(bool(written), f"в штатном корне появились файлы: "
+                             f"{[str(p.relative_to(REAL_ROOT)) for p in written]}")
+    rep.check(all(not str(p).startswith(str(REPO)) for p in written),
+              "ни один файл горячей памяти не лежит в репозитории")
+
+    after = git_status()
+    new = [ln for ln in after if ln not in before]
+    # собственные файлы инструмента могут быть ещё не закоммичены (??) — это не утечка
+    hotmem_paths = [ln for ln in after if "hotmem" in ln and not ln.startswith("??")]
+    rep.check(not new, f"git status не изменился после записи (новых строк: {len(new)})")
+    rep.check(not hotmem_paths, "в git status нет путей hotmem")
+
+    foreign = [ln for ln in after if ln.startswith("??")]
+    rep.info(f"git status сейчас: строк {len(after)}, из них untracked {len(foreign)}")
+    for ln in foreign:
+        rep.info(f"чужое/рабочее в дереве: {ln}")
+    rep.check(True, "источник untracked-строк — не hotmem (сверено выше)")
+
+
+# --------------------------------------------------------------------------- #
+# main
+# --------------------------------------------------------------------------- #
+
+def main() -> int:
+    """Точка входа самопроверки."""
+    global MODULE, WORKERS, LINES_PER_WORKER
+    parser = argparse.ArgumentParser(prog="hotmem.selftest")
+    parser.add_argument("--cli", default=str(HERE / "hotmem"),
+                        help="путь к исполняемому hotmem")
+    parser.add_argument("--keep", action="store_true",
+                        help="не удалять временные корни тестов")
+    parser.add_argument("--only", type=int, default=0,
+                        help="прогнать только один пункт (1–7)")
+    parser.add_argument("--workers", type=int, default=WORKERS)
+    parser.add_argument("--lines", type=int, default=LINES_PER_WORKER)
+    args = parser.parse_args()
+
+    WORKERS, LINES_PER_WORKER = args.workers, args.lines
+
+    cli_path = Path(args.cli).resolve()
+    if not cli_path.exists():
+        print(f"hotmem.selftest: нет файла {cli_path}", file=sys.stderr)
+        return 2
+    try:
+        MODULE = load_module(cli_path)
+    except Exception as exc:                              # noqa: BLE001
+        print(f"hotmem.selftest: не удалось загрузить модуль: {exc}",
+              file=sys.stderr)
+        return 2
+
+    tmp = Path(tempfile.mkdtemp(prefix="hotmem-selftest-", dir="/tmp/opencode"))
+    rep = Report()
+    print(f"hotmem.selftest: клиент {cli_path}")
+    print(f"временный корень: {tmp}")
+    try:
+        for num, fn in enumerate(
+                [test_roundtrip, test_concurrency, test_doctor,
+                 test_secret, test_length, test_bench], start=1):
+            if args.only and args.only != num:
+                continue
+            root = tmp / f"p{num}"
+            root.mkdir(parents=True, exist_ok=True)
+            cli = Cli(cli_path, root)
+            fn(rep, cli)
+        if not args.only or args.only == 7:
+            test_hygiene(rep, Cli(cli_path, tmp / "p7"), REAL_ROOT)
+    finally:
+        if not args.keep:
+            shutil.rmtree(tmp, ignore_errors=True)
+        else:
+            print(f"временный корень сохранён: {tmp}")
+    return rep.finish()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

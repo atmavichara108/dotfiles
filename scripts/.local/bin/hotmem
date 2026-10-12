@@ -1,0 +1,907 @@
+#!/usr/bin/env python3
+"""hotmem — горячая память обвязки: append-only журнал + производный индекс + CLI.
+
+Контракт: docs/specs/hot-memory-v1.md (разделы 4–8). RAM — только кеш;
+если чего-то нет в журнале, для системы этого не существует.
+
+Данные (вне репозитория):
+
+    ~/.local/state/opencode/hotmem/
+      journal/<YYYY-MM>/<scope>.jsonl   append-only сегменты по месяцам
+      index.jsonl                       производный индекс (пересобираемый)
+      doctor.log                        результаты сверки индекса с журналом
+
+Коды возврата: 0 успех, 1 нет данных, 2 ошибка ввода, 3 отказано
+(секрет / длина строки).
+
+Решения реализации там, где спека допускает варианты, помечены в коде
+комментарием «решение:» — сводка в отчёте исполнителя.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+VERSION = "1.0"
+
+# Строка журнала ≤ 4 КБ (PIPE_BUF); длиннее — отказ (спека, п.3.4).
+MAX_LINE = 4096
+
+EXIT_OK = 0
+EXIT_NODATA = 1
+EXIT_INPUT = 2
+EXIT_REFUSED = 3
+
+DEFAULT_ROOT = Path.home() / ".local" / "state" / "opencode" / "hotmem"
+
+VALID_SCOPES = re.compile(r"^(host|vault|repo:[A-Za-z0-9._-]+)$")
+VALID_KEY = re.compile(r"^[A-Za-z0-9_.:/+@#-]{1,200}$")
+
+# Индекс-читающий поиск «с конца»: get/grep ищут свежие записи, не читая
+# индекс целиком (И-14: индекс вместо чтения реестра).
+REVERSE_CHUNK = 64 * 1024
+
+# Доктор при расхождении повторяет сверку: параллельная запись могла оставить
+# ещё не проиндексированную последнюю строку (транзиент, а не дрейф).
+DOCTOR_RETRY_DELAY = 0.15
+
+
+# --------------------------------------------------------------------------- #
+# Ошибки и служебное
+# --------------------------------------------------------------------------- #
+
+class HotmemError(Exception):
+    """Базовая ошибка CLI; code — код возврата по спеке."""
+
+    code = EXIT_INPUT
+
+
+class NoData(HotmemError):
+    """Нет данных по запросу (rc=1)."""
+
+    code = EXIT_NODATA
+
+
+class Refused(HotmemError):
+    """Отказано: секрет или превышение длины (rc=3)."""
+
+    code = EXIT_REFUSED
+
+
+class InputError(HotmemError):
+    """Ошибка ввода (rc=2)."""
+
+    code = EXIT_INPUT
+
+
+def now_ms() -> int:
+    """Текущее время в миллисекундах эпохи."""
+    return time.time_ns() // 1_000_000
+
+
+def default_root() -> Path:
+    """Корень данных: HOTMEM_ROOT (для тестов), иначе штатный путь вне репо."""
+    env = os.environ.get("HOTMEM_ROOT")
+    return Path(env) if env else DEFAULT_ROOT
+
+
+def scope_slug(scope: str) -> str:
+    """Имя файла сегмента из scope: недопустимые символы → '_'."""
+    return re.sub(r"[^A-Za-z0-9._-]", "_", scope)
+
+
+def month_of(ts_ms: int) -> str:
+    """Месяц сегмента (локальное время) в формате YYYY-MM."""
+    lt = time.localtime(ts_ms / 1000)
+    return f"{lt.tm_year:04d}-{lt.tm_mon:02d}"
+
+
+def sha256_hex(data: bytes) -> str:
+    """SHA-256 в hex — сверка индекса с журналом (совместимо с sha256sum)."""
+    return hashlib.sha256(data).hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# Секреты (спека, п.3.2): запись отклоняется, ни в журнал, ни в индекс
+# --------------------------------------------------------------------------- #
+
+SECRET_PATTERNS = (
+    (r"-----BEGIN [A-Z ]*PRIVATE KEY-----", "приватный ключ"),
+    (r"\b(?:api[_-]?key|apikey|access[_-]?key|secret[_-]?key|client[_-]?secret"
+     r"|token|secret|password|passwd|passphrase)\b\s*[:=]\s*[\"']?"
+     r"[A-Za-z0-9_\-/+.]{8,}", "присвоение секрета"),
+    (r"\bsk-[A-Za-z0-9]{16,}", "ключ вида sk-"),
+    (r"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}", "токен GitHub"),
+    (r"\bgithub_pat_[A-Za-z0-9_]{20,}", "токен GitHub PAT"),
+    (r"\bAKIA[0-9A-Z]{16}\b", "AWS access key"),
+    (r"\bxox[baprs]-[A-Za-z0-9-]{10,}", "токен Slack"),
+    (r"\bBearer\s+[A-Za-z0-9_\-.]{20,}", "заголовок Authorization"),
+    (r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{5,}", "JWT"),
+)
+
+SECRET_RE = [(re.compile(p), name) for p, name in SECRET_PATTERNS]
+
+# Дословные слова пользователя: маркер репозитория (basis: quoted).
+VERBATIM_HINT_RE = re.compile(r"(?i)\bbasis\s*:\s*quoted\b")
+
+
+def detect_secret(*values: str) -> str | None:
+    """Ищет признаки секрета в значениях полей; возвращает имя шаблона."""
+    for value in values:
+        if not value:
+            continue
+        for rx, name in SECRET_RE:
+            if rx.search(value):
+                return name
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Разбор индекса
+# --------------------------------------------------------------------------- #
+
+def iter_index_forward(path: Path):
+    """Читает index.jsonl от начала; yield (record, ok).
+
+    ok=False для неразбираемых строк — doctor их считает дрейфом.
+    """
+    if not path.exists():
+        return
+    with open(path, "rb") as fh:
+        for raw in fh:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                yield json.loads(raw), True
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                yield raw, False
+
+
+def iter_index_reverse(path: Path):
+    """Читает index.jsonl с конца блоками; yield dict (свежие — первыми).
+
+    Нужен для get: свежая запись по ключу находится без чтения всего индекса.
+    """
+    if not path.exists():
+        return
+    size = path.stat().st_size
+    if size == 0:
+        return
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        pos = size
+        tail = b""
+        while pos > 0:
+            start = max(0, pos - REVERSE_CHUNK)
+            data = os.pread(fd, pos - start, start) + tail
+            parts = data.split(b"\n")
+            if start > 0:
+                tail = parts[0]          # строка может быть обрезана слева
+                complete = parts[1:]
+            else:
+                tail = b""
+                complete = parts[:-1] if parts and parts[-1] == b"" else parts
+            for raw in reversed(complete):
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    yield json.loads(raw)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    continue
+            pos = start
+        if tail.strip():
+            try:
+                yield json.loads(tail)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                return
+    finally:
+        os.close(fd)
+
+
+def iter_segment(path: Path):
+    """Строки сегмента журнала: yield (off, len, sha256hex, raw_line)."""
+    off = 0
+    with open(path, "rb") as fh:
+        for raw in fh:
+            line = raw[:-1] if raw.endswith(b"\n") else raw
+            yield off, len(line), sha256_hex(line), line
+            off += len(raw)
+
+
+def entry_kind(rec: dict) -> str:
+    """Тип записи индекса: 'e' — запись, 'ckpt' — чекпоинт сегмента."""
+    return rec.get("t", "e")
+
+
+# --------------------------------------------------------------------------- #
+# Ядро
+# --------------------------------------------------------------------------- #
+
+class Hotmem:
+    """Журнал + индекс: запись, чтение, сверка, ротация."""
+
+    def __init__(self, root: Path | str | None = None) -> None:
+        self.root = Path(root) if root is not None else default_root()
+
+    # --- пути ------------------------------------------------------------- #
+
+    @property
+    def journal_dir(self) -> Path:
+        return self.root / "journal"
+
+    @property
+    def index_path(self) -> Path:
+        return self.root / "index.jsonl"
+
+    @property
+    def doctor_log(self) -> Path:
+        return self.root / "doctor.log"
+
+    def segment_rel(self, scope: str, ts_ms: int) -> str:
+        """Относительный путь сегмента (он же ключ сегмента в индексе)."""
+        return f"{month_of(ts_ms)}/{scope_slug(scope)}.jsonl"
+
+    def segment_path(self, rel: str) -> Path:
+        return self.journal_dir / rel
+
+    def ensure_dirs(self) -> None:
+        """Создаёт каталоги данных (0700 — в журнале живут черновики)."""
+        for d in (self.root, self.journal_dir):
+            d.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    def existing_segments(self) -> list[str]:
+        """Все сегменты на диске, относительными путями, в стабильном порядке."""
+        if not self.journal_dir.is_dir():
+            return []
+        return sorted(
+            str(p.relative_to(self.journal_dir))
+            for p in self.journal_dir.glob("*/*.jsonl")
+            if p.is_file()
+        )
+
+    # --- запись ----------------------------------------------------------- #
+
+    def write(
+        self,
+        kind: str,
+        key: str,
+        body: str,
+        scope: str = "host",
+        session: str | None = None,
+        tags: list[str] | None = None,
+        verbatim: bool = False,
+        fsync: bool = False,
+    ) -> dict:
+        """Одна строка журнала + запись в индекс. Возвращает запись журнала.
+
+        Append одной записью без лока (строка < PIPE_BUF). fsync — только по
+        запросу: он обязателен на `state` и при фиксации решения (спека, п.7).
+        """
+        body_bytes = len(body.encode("utf-8"))
+        ts = now_ms()
+        record: dict = {"ts": ts, "key": key, "scope": scope}
+        if session:
+            record["session"] = session
+        if tags:
+            record["tags"] = list(tags)
+        record["kind"] = kind
+        record["len"] = body_bytes
+        if verbatim:
+            record["verbatim"] = True
+        record["body"] = body
+
+        line = json.dumps(record, ensure_ascii=False,
+                          separators=(",", ":")).encode("utf-8") + b"\n"
+        if len(line) > MAX_LINE:
+            raise Refused(
+                f"тело слишком длинное: строка {len(line)} байт при лимите "
+                f"{MAX_LINE} (тело {body_bytes} байт); журнал не тронут"
+            )
+
+        self.ensure_dirs()
+        rel = self.segment_rel(scope, ts)
+        path = self.segment_path(rel)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+        off = self._append_line(path, line, fsync)
+        content = line[:-1]
+        digest = sha256_hex(content)
+        if self._read_at(path, off, len(content)) != content:
+            # Страховка на случай гонки за смещением: находим строку по факту.
+            off = self._locate(path, content, off)
+        self._append_index({
+            "t": "e", "k": key, "s": scope, "ts": ts, "kind": kind,
+            "seg": rel, "off": off, "len": len(content), "hash": digest,
+            **({"ses": session} if session else {}),
+            **({"tags": list(tags)} if tags else {}),
+            **({"v": True} if verbatim else {}),
+        }, fsync=fsync)
+        return record
+
+    def _append_line(self, path: Path, line: bytes, fsync: bool) -> int:
+        """Дописывает строку одной системной записью; возвращает её смещение."""
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            view = memoryview(line)
+            while view:
+                written = os.write(fd, view)
+                if written <= 0:
+                    raise InputError("журнал: запись не выполнена")
+                view = view[written:]
+            # O_APPEND: сразу после своей записи курсор fd стоит на её конце.
+            off = os.lseek(fd, 0, os.SEEK_CUR) - len(line)
+            if fsync:
+                os.fsync(fd)
+        finally:
+            os.close(fd)
+        return max(off, 0)
+
+    def _append_index(self, entry: dict, fsync: bool = False) -> None:
+        """Дописывает запись индекса (тоже одной записью, без лока)."""
+        line = json.dumps(entry, ensure_ascii=False,
+                          separators=(",", ":")).encode("utf-8") + b"\n"
+        fd = os.open(self.index_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            os.write(fd, line)
+            if fsync:
+                os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    @staticmethod
+    def _read_at(path: Path, off: int, length: int) -> bytes:
+        """Читает ровно length байт со смещения off (или меньше, если файл короче)."""
+        fd = os.open(path, os.O_RDONLY)
+        try:
+            return os.pread(fd, length, off)
+        finally:
+            os.close(fd)
+
+    def _locate(self, path: Path, content: bytes, hint: int) -> int:
+        """Аварийный поиск строки в сегменте (страховка сверки смещения)."""
+        found = -1
+        with open(path, "rb") as fh:
+            data = fh.read()
+        start = 0
+        while True:
+            idx = data.find(content, start)
+            if idx < 0:
+                break
+            found = idx
+            start = idx + 1
+        if found < 0:
+            raise InputError("журнал: не удалось подтвердить смещение записи")
+        print(f"hotmem: предупреждение: смещение записи уточнено "
+              f"({hint} → {found})", file=sys.stderr)
+        return found
+
+    # --- чтение ----------------------------------------------------------- #
+
+    def find_entry(self, key: str, scope: str | None = None) -> dict:
+        """Последняя запись по ключу: kind=state приоритетнее kind=put."""
+        latest_put: dict | None = None
+        for rec in iter_index_reverse(self.index_path):
+            if entry_kind(rec) != "e" or rec.get("k") != key:
+                continue
+            if scope and rec.get("s") != scope:
+                continue
+            if rec.get("kind") == "state":
+                return rec          # state приоритетнее: он и есть «последнее»
+            if latest_put is None:
+                latest_put = rec
+        if latest_put is not None:
+            return latest_put
+        raise NoData(f"нет данных по ключу {key}")
+
+    def read_entry_bytes(self, rec: dict) -> bytes:
+        """Байты строки журнала по записи индекса (seek на смещение)."""
+        seg = self.segment_path(rec["seg"])
+        if not seg.exists():
+            raise InputError(f"сегмент журнала отсутствует: {rec['seg']}")
+        raw = self._read_at(seg, rec["off"], rec["len"])
+        if len(raw) != rec["len"] or sha256_hex(raw) != rec.get("hash"):
+            raise InputError(
+                f"индекс расходится с журналом по ключу {rec.get('k')} "
+                f"(запустите: hotmem doctor --rebuild)"
+            )
+        return raw
+
+    def read_entry(self, rec: dict) -> dict:
+        """Разобранная строка журнала по записи индекса."""
+        return json.loads(self.read_entry_bytes(rec))
+
+    def read_all_puts(self, key: str, scope: str | None = None) -> list[dict]:
+        """Все записи индекса по ключу в порядке появления (для list/grep)."""
+        out = []
+        for rec, ok in iter_index_forward(self.index_path):
+            if not ok or entry_kind(rec) != "e":
+                continue
+            if rec.get("k") != key:
+                continue
+            if scope and rec.get("s") != scope:
+                continue
+            out.append(rec)
+        return out
+
+    def feed(self, tag: str | None = None, scope: str | None = None,
+             since: int | None = None) -> list[dict]:
+        """Лента: по одной записи на ключ (state приоритетнее), новые первыми."""
+        best: dict[str, dict] = {}
+        for rec, ok in iter_index_forward(self.index_path):
+            if not ok or entry_kind(rec) != "e":
+                continue
+            if scope and rec.get("s") != scope:
+                continue
+            if tag and tag not in (rec.get("tags") or []):
+                continue
+            if since is not None and int(rec.get("ts", 0)) < since:
+                continue
+            key = rec.get("k")
+            cur = best.get(key)
+            if cur is None:
+                best[key] = rec
+                continue
+            cur_state = cur.get("kind") == "state"
+            rec_state = rec.get("kind") == "state"
+            if rec_state and not cur_state:
+                best[key] = rec            # state приоритетнее
+            elif rec_state == cur_state and int(rec.get("ts", 0)) >= int(cur.get("ts", 0)):
+                best[key] = rec            # иначе побеждает более свежая
+        out = list(best.values())
+        out.sort(key=lambda r: (int(r.get("ts", 0)), str(r.get("k"))), reverse=True)
+        return out
+
+    # --- doctor ----------------------------------------------------------- #
+
+    def doctor(self, rebuild: bool = False) -> tuple[int, list[str]]:
+        """Сверка индекса с журналом. Возвращает (rc, строки отчёта)."""
+        if rebuild:
+            lines = self.rebuild()
+        else:
+            lines = []
+        problems = self._verify()
+        if problems and not rebuild:
+            # Транзиент: параллельный писатель мог ещё не дописать строку индекса.
+            time.sleep(DOCTOR_RETRY_DELAY)
+            again = self._verify()
+            if not again:
+                problems = []
+                lines.append("  повторная сверка: расхождений нет "
+                             "(первая прошла между записью и индексацией)")
+        lines.extend(problems or ["  расхождений между индексом и журналом нет"])
+        rc = EXIT_NODATA if problems else EXIT_OK
+        self._write_doctor_log(lines, "DRIFT" if problems else "OK")
+        return rc, lines
+
+    def _verify(self) -> list[str]:
+        """Полная сверка: каждая запись индекса против байт журнала."""
+        problems: list[str] = []
+        entries: dict[str, list[dict]] = {}
+        checkpoints: list[dict] = []
+        invalid = 0
+
+        for rec, ok in iter_index_forward(self.index_path):
+            if not ok:
+                invalid += 1
+                continue
+            kind = entry_kind(rec)
+            if kind == "ckpt":
+                checkpoints.append(rec)
+            elif kind == "e":
+                entries.setdefault(str(rec.get("seg")), []).append(rec)
+        if invalid:
+            problems.append(f"DRIFT: неразбираемых строк в индексе: {invalid}")
+
+        known = set(entries)
+        for rel in sorted(set(self.existing_segments()) | known | {
+                str(c.get("seg")) for c in checkpoints}):
+            path = self.segment_path(rel)
+            if not path.exists():
+                if entries.get(rel):
+                    problems.append(f"DRIFT: сегмент {rel} из индекса отсутствует на диске")
+                continue
+
+            actual = []
+            for off, length, digest, raw in iter_segment(path):
+                actual.append((off, length, digest))
+                try:
+                    json.loads(raw)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    problems.append(f"DRIFT: битая строка журнала {rel}@{off}")
+
+            indexed = sorted(entries.get(rel, []),
+                             key=lambda r: int(r.get("off", -1)))
+            if len(indexed) != len(actual):
+                problems.append(
+                    f"DRIFT: {rel}: в журнале {len(actual)} строк, в индексе "
+                    f"{len(indexed)}"
+                )
+            for i, (off, length, digest) in enumerate(actual):
+                if i >= len(indexed):
+                    break
+                rec = indexed[i]
+                if int(rec.get("off", -1)) != off or int(rec.get("len", -1)) != length:
+                    problems.append(
+                        f"DRIFT: {rel}@{off}: смещение/длина в индексе "
+                        f"{rec.get('off')}/{rec.get('len')}"
+                    )
+                elif rec.get("hash") != digest:
+                    problems.append(
+                        f"DRIFT: {rel}@{off}: хэш строки в индексе не совпадает "
+                        f"с журналом"
+                    )
+
+        for ck in checkpoints:
+            rel = str(ck.get("seg"))
+            path = self.segment_path(rel)
+            if not path.exists():
+                problems.append(f"DRIFT: чекпоинт ссылается на отсутствующий {rel}")
+                continue
+            raw = self._read_at(path, int(ck.get("off", -1)), int(ck.get("len", 0)))
+            if sha256_hex(raw) != ck.get("hash"):
+                problems.append(
+                    f"DRIFT: чекпоинт {rel}@{ck.get('off')} не совпадает с журналом"
+                )
+            else:
+                n = 0
+                for _, _, _, _ in iter_segment(path):
+                    n += 1
+                    if n >= int(ck.get("n", 0)):
+                        break
+                if n < int(ck.get("n", 0)):
+                    problems.append(
+                        f"DRIFT: чекпоинт {rel}: заявлено {ck.get('n')} строк, "
+                        f"в журнале {n}"
+                    )
+        return problems
+
+    def rebuild(self) -> list[str]:
+        """Пересобирает индекс по журналу: журнал — источник правды."""
+        lines = ["  индекс пересобран по журналу:"]
+        tmp = self.index_path.with_suffix(".jsonl.tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        total = 0
+        try:
+            for rel in self.existing_segments():
+                path = self.segment_path(rel)
+                n = 0
+                last = (0, 0, "")
+                for off, length, digest, raw in iter_segment(path):
+                    last = (off, length, digest)
+                    try:
+                        rec = json.loads(raw)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        lines.append(f"    пропущена битая строка {rel}@{off}")
+                        continue
+                    entry: dict = {
+                        "t": "e", "k": rec.get("key"), "s": rec.get("scope"),
+                        "ts": int(rec.get("ts", 0)), "kind": rec.get("kind"),
+                        "seg": rel, "off": off, "len": length, "hash": digest,
+                    }
+                    if rec.get("session"):
+                        entry["ses"] = rec["session"]
+                    if rec.get("tags"):
+                        entry["tags"] = rec["tags"]
+                    if rec.get("verbatim"):
+                        entry["v"] = True
+                    os.write(fd, json.dumps(entry, ensure_ascii=False,
+                                            separators=(",", ":")).encode() + b"\n")
+                    n += 1
+                    total += 1
+                if n:
+                    ckpt = {
+                        "t": "ckpt", "seg": rel, "n": n, "off": last[0],
+                        "len": last[1], "hash": last[2], "ts": now_ms(),
+                        "note": "rebuild",
+                    }
+                    os.write(fd, json.dumps(ckpt, ensure_ascii=False,
+                                            separators=(",", ":")).encode() + b"\n")
+                lines.append(f"    {rel}: {n} строк")
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, self.index_path)
+        lines.append(f"    всего записей: {total}")
+        return lines
+
+    def rotate(self, scope: str | None = None) -> list[str]:
+        """Закрывает текущий сегмент: чекпоинт сегмента в индекс, с fsync.
+
+        Месячная смена сегмента происходит автоматически (путь зависит от
+        месяца); rotate фиксирует учтённое состояние сегмента на диске.
+        """
+        self.ensure_dirs()
+        sealed = 0
+        lines: list[str] = []
+        for rel in self.existing_segments():
+            if scope and not rel.endswith(f"/{scope_slug(scope)}.jsonl"):
+                continue
+            path = self.segment_path(rel)
+            n = 0
+            last = (0, 0, "")
+            for off, length, digest, _raw in iter_segment(path):
+                last = (off, length, digest)
+                n += 1
+            if not n:
+                continue
+            self._append_index({
+                "t": "ckpt", "seg": rel, "n": n, "off": last[0],
+                "len": last[1], "hash": last[2], "ts": now_ms(),
+                "note": "rotate",
+            }, fsync=True)
+            sealed += 1
+            lines.append(f"  сегмент закрыт: {rel} ({n} строк, "
+                         f"{os.path.getsize(path)} байт)")
+        if not sealed:
+            lines.append("  активных сегментов нет — закрывать нечего")
+        return lines
+
+    def _write_doctor_log(self, lines: list[str], verdict: str) -> None:
+        """Результаты последней сверки (с историей, свежие — в конце)."""
+        self.ensure_dirs()
+        head = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(self.doctor_log, "a", encoding="utf-8") as fh:
+            fh.write(f"[{head}] doctor: {verdict}\n")
+            for line in lines:
+                fh.write(f"{line}\n")
+
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+
+class Parser(argparse.ArgumentParser):
+    """argparse с русскими сообщениями об ошибке ввода (rc=2)."""
+
+    def error(self, message: str) -> None:  # noqa: D102
+        print(f"hotmem: ошибка ввода: {message}", file=sys.stderr)
+        self.print_usage(sys.stderr)
+        raise SystemExit(EXIT_INPUT)
+
+
+def build_parser() -> Parser:
+    """Собирает аргументы по разделу 6 спеки."""
+    p = Parser(prog="hotmem",
+               description="Горячая память: append-only журнал + индекс.")
+    p.add_argument("--version", action="version", version=f"hotmem {VERSION}")
+    sub = p.add_subparsers(dest="cmd")
+
+    write_opts = "put/state: --key обязателен; тело — stdin или --body"
+
+    put = sub.add_parser("put", help="запись в историю (kind=put)",
+                         description=write_opts)
+    state = sub.add_parser("state", help="последнее состояние по ключу (kind=state, fsync)")
+    for sp in (put, state):
+        sp.add_argument("--key", required=True, help="стабильный адрес записи")
+        sp.add_argument("--tag", action="append", default=[], help="тег (можно несколько)")
+        sp.add_argument("--scope", help="host | vault | repo:<name> (по умолчанию host)")
+        sp.add_argument("--session", help="id сессии")
+        sp.add_argument("--body", help="тело вместо stdin")
+        sp.add_argument("--verbatim", action="store_true",
+                        help="дословные слова пользователя (иначе не пишутся как таковые)")
+        sp.add_argument("--fsync", action="store_true",
+                        help="сбросить на диск (на state всегда включён)")
+
+    get = sub.add_parser("get", help="последнее по ключу (state приоритетнее)")
+    get.add_argument("--key", required=True)
+    get.add_argument("--scope")
+    get.add_argument("--json", action="store_true", help="вывести строку целиком")
+
+    lst = sub.add_parser("list", help="лента ключей")
+    lst.add_argument("--tag")
+    lst.add_argument("--scope")
+    lst.add_argument("--since", type=int, help="ts в мс (или в секундах)")
+    lst.add_argument("--limit", type=int, default=0, help="0 — без лимита")
+    lst.add_argument("--json", action="store_true", help="записи индекса как JSON")
+
+    grep = sub.add_parser("grep", help="поиск по телу")
+    grep.add_argument("pattern")
+    grep.add_argument("--key")
+    grep.add_argument("--tag")
+    grep.add_argument("--scope")
+    grep.add_argument("--ignore-case", action="store_true")
+    grep.add_argument("--limit", type=int, default=0)
+    grep.add_argument("--json", action="store_true", help="строки журнала целиком")
+
+    doc = sub.add_parser("doctor", help="сверка индекса с журналом")
+    doc.add_argument("--rebuild", action="store_true", help="пересобрать индекс")
+    doc.add_argument("--quiet", action="store_true", help="только код возврата")
+
+    rot = sub.add_parser("rotate", help="закрыть текущий сегмент (месячная ротация)")
+    rot.add_argument("--scope")
+
+    return p
+
+
+def cmd_write(hm: Hotmem, args: argparse.Namespace, kind: str) -> int:
+    """put/state: валидация, проверка секрета, запись."""
+    key = args.key
+    if not VALID_KEY.match(key):
+        raise InputError(
+            "ключ задан неверно: допустимы латиница, цифры, _ . : / + @ # - "
+            "(до 200 символов, без пробелов)"
+        )
+    scope = args.scope or "host"
+    if not VALID_SCOPES.match(scope):
+        raise InputError("scope задан неверно: host | vault | repo:<name>")
+
+    if args.body is not None:
+        raw = args.body.encode("utf-8", "surrogateescape")
+    else:
+        if sys.stdin.isatty():
+            raise InputError("тело не задано: передайте --body или тело на stdin")
+        raw = sys.stdin.buffer.read()
+    try:
+        body = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise InputError("тело не является корректным UTF-8") from None
+
+    tags = args.tag or []
+    for tag in tags:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", tag):
+            raise InputError(f"тег задан неверно: {tag}")
+
+    secret = detect_secret(body, key, scope, args.session or "", *tags)
+    if secret:
+        raise Refused(
+            f"похоже на секрет ({secret}): секреты в горячий журнал не пишутся; "
+            f"журнал и индекс не тронуты"
+        )
+
+    if not args.verbatim and VERBATIM_HINT_RE.search(body):
+        print("hotmem: предупреждение: тело помечено как дословные слова "
+              "пользователя (basis: quoted) — для дословной записи нужен "
+              "--verbatim", file=sys.stderr)
+
+    rec = hm.write(
+        kind=kind, key=key, body=body, scope=scope, session=args.session,
+        tags=tags, verbatim=args.verbatim,
+        fsync=args.fsync or kind == "state",
+    )
+    print(f"{rec['kind']} {rec['key']} scope={rec['scope']} len={rec['len']} "
+          f"ts={rec['ts']}")
+    return EXIT_OK
+
+
+def cmd_get(hm: Hotmem, args: argparse.Namespace) -> int:
+    """get: последнее по ключу; без --json — только тело, байт в байт."""
+    rec = hm.find_entry(args.key, args.scope)
+    raw = hm.read_entry_bytes(rec)
+    if args.json:
+        sys.stdout.buffer.write(raw + b"\n")
+    else:
+        sys.stdout.buffer.write(json.loads(raw).get("body", "").encode("utf-8"))
+    sys.stdout.buffer.flush()
+    return EXIT_OK
+
+
+def cmd_list(hm: Hotmem, args: argparse.Namespace) -> int:
+    """list: лента по одной записи на ключ."""
+    since = args.since
+    if since is not None and since < 100_000_000_000:
+        since *= 1000                      # секунды → миллисекунды
+    feed = hm.feed(tag=args.tag, scope=args.scope, since=since)
+    if args.limit and args.limit > 0:
+        feed = feed[:args.limit]
+    if not feed:
+        print("hotmem: нет данных по запросу", file=sys.stderr)
+        return EXIT_NODATA
+    for rec in feed:
+        ts = int(rec.get("ts", 0))
+        tags = ",".join(rec.get("tags") or [])
+        if args.json:
+            print(json.dumps(rec, ensure_ascii=False, separators=(",", ":")))
+        else:
+            print(f"{ts}\t{rec.get('k')}\t{rec.get('kind')}\t{rec.get('s')}\t"
+                  f"{rec.get('len')}\t{tags}")
+    return EXIT_OK
+
+
+def cmd_grep(hm: Hotmem, args: argparse.Namespace) -> int:
+    """grep: поиск по телу; читаются только кандидаты по индексу."""
+    flags = re.MULTILINE | (re.IGNORECASE if args.ignore_case else 0)
+    try:
+        pattern = re.compile(args.pattern, flags)
+    except re.error as exc:
+        raise InputError(f"некорректное регулярное выражение: {exc}") from None
+
+    hits = 0
+    for rec, ok in iter_index_forward(hm.index_path):
+        if not ok or entry_kind(rec) != "e":
+            continue
+        if args.key and rec.get("k") != args.key:
+            continue
+        if args.tag and args.tag not in (rec.get("tags") or []):
+            continue
+        if args.scope and rec.get("s") != args.scope:
+            continue
+        try:
+            raw = hm.read_entry_bytes(rec)
+        except HotmemError as exc:
+            print(f"hotmem: {exc}", file=sys.stderr)
+            continue
+        record = json.loads(raw)
+        body = record.get("body", "")
+        match = pattern.search(body)
+        if not match:
+            continue
+        hits += 1
+        if args.json:
+            sys.stdout.buffer.write(raw + b"\n")
+        else:
+            line_no = body.count("\n", 0, match.start()) + 1
+            line = body.splitlines()[line_no - 1] if body.splitlines() else ""
+            snippet = line.replace("\t", " ")[:200]
+            print(f"{int(rec.get('ts', 0))}\t{rec.get('k')}\t{rec.get('kind')}\t"
+                  f"{line_no}\t{snippet}")
+        if args.limit and hits >= args.limit:
+            break
+    sys.stdout.buffer.flush()
+    if not hits:
+        print("hotmem: совпадений нет", file=sys.stderr)
+        return EXIT_NODATA
+    return EXIT_OK
+
+
+def cmd_doctor(hm: Hotmem, args: argparse.Namespace) -> int:
+    """doctor: сверка индекса с журналом (и --rebuild)."""
+    rc, lines = hm.doctor(rebuild=args.rebuild)
+    if not args.quiet:
+        for line in lines:
+            print(line)
+    return rc
+
+
+def cmd_rotate(hm: Hotmem, args: argparse.Namespace) -> int:
+    """rotate: чекпоинт текущих сегментов (закрытие месяца)."""
+    for line in hm.rotate(args.scope):
+        print(line)
+    return EXIT_OK
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Точка входа CLI: разбор аргументов и диспетчеризация."""
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if not args.cmd:
+        parser.error("команда не указана (put/state/get/list/grep/doctor/rotate)")
+    hm = Hotmem()
+    try:
+        if args.cmd in ("put", "state"):
+            return cmd_write(hm, args, args.cmd)
+        if args.cmd == "get":
+            return cmd_get(hm, args)
+        if args.cmd == "list":
+            return cmd_list(hm, args)
+        if args.cmd == "grep":
+            return cmd_grep(hm, args)
+        if args.cmd == "doctor":
+            return cmd_doctor(hm, args)
+        if args.cmd == "rotate":
+            return cmd_rotate(hm, args)
+        parser.error(f"неизвестная команда: {args.cmd}")
+    except BrokenPipeError:
+        return EXIT_OK
+    except HotmemError as exc:
+        print(f"hotmem: {exc}", file=sys.stderr)
+        return exc.code
+    except OSError as exc:
+        print(f"hotmem: ошибка ввода-вывода: {exc}", file=sys.stderr)
+        return EXIT_INPUT
+    except KeyboardInterrupt:
+        print("hotmem: прервано", file=sys.stderr)
+        return EXIT_INPUT
+    return EXIT_INPUT
+
+
+if __name__ == "__main__":
+    sys.exit(main())
