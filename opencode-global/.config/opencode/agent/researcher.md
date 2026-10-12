@@ -70,6 +70,16 @@ permission:
     "uname*": allow
     "hostnamectl*": allow
     "du -sh*": allow
+    "date*": allow
+    "md5sum*": allow
+    "sha1sum*": allow
+    "sort*": allow
+    "uniq*": allow
+    "cut*": allow
+    "jq*": allow
+    "sqlite3 -readonly *": allow
+    "python3 -m json.tool*": allow
+    "python3 -m py_compile*": allow
     "lsblk*": allow
     "ip addr*": allow
     "ss -tlnp*": allow
