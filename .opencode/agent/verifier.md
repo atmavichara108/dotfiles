@@ -1,10 +1,11 @@
 ---
-description: Верификатор dotfiles. Проверяет применимость изменений перед apply: синтаксис, dry-run stow, конфликты симлинков. Не редактирует, только вердикт PASS/FAIL.
+description: "Верификатор dotfiles. Проверяет применимость изменений перед apply: синтаксис, dry-run stow, конфликты симлинков. Не редактирует, только вердикт PASS/FAIL."
 mode: subagent
 model: nvidia/z-ai/glm-5.3-flash
 temperature: 0.1
 steps: 15
 permission:
+  task: deny
   doom_loop: allow
   external_directory: allow
   edit: deny

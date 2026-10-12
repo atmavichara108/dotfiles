@@ -21,7 +21,7 @@ permission:
   grep: allow
   webfetch: deny
   bash:
-    "*": ask
+    "*": deny
     "ls*": allow
     "cat*": allow
     "grep*": allow

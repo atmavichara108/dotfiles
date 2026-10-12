@@ -5,6 +5,7 @@ model: opencode-go/glm-5.3-flash
 temperature: 0.1
 steps: 15
 permission:
+  edit: deny
   task: deny
   read: allow
   glob: allow
@@ -12,7 +13,7 @@ permission:
   webfetch: allow
   websearch: allow
   bash:
-    "*": ask
+    "*": deny
     "sudo *": deny
     "chown *": deny
     "chmod *": deny
@@ -79,6 +80,7 @@ permission:
     "sqlite3 -readonly *": allow
     "python3 -m json.tool*": allow
     "python3 -m py_compile*": allow
+    "python -m py_compile*": allow
     "lsblk*": allow
     "ip addr*": allow
     "ss -tlnp*": allow
@@ -91,6 +93,7 @@ permission:
     "git symbolic-ref*": allow
     "git rev-parse*": allow
     "git ls-files*": allow
+    "git branch*": allow
     "python3 -m json.tool*": allow
     "python -m json.tool*": allow
     "node --check*": allow

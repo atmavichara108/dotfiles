@@ -7,7 +7,7 @@ steps: 20
 permission:
   edit: allow
   write: allow
-  webfetch: allow
+  webfetch: deny
   read: allow
   glob: allow
   grep: allow
@@ -22,15 +22,22 @@ permission:
     "mkfs*": deny
     "shutdown*": deny
     "reboot*": deny
+    "systemctl start*": deny
     "systemctl stop*": deny
+    "systemctl restart*": deny
+    "systemctl enable*": deny
     "systemctl disable*": deny
     "systemctl mask*": deny
+    "git push*": ask
     "git push --force*": deny
     "git push -f*": deny
     "git branch -D*": deny
     "git tag -d*": deny
+    "git reset*": deny
     "git reset --hard*": ask
-    "git clean*": ask
+    "git restore*": deny
+    "git rebase*": deny
+    "git clean*": deny
     "rm -rf*": deny
     "rm -fr*": deny
     "rm*": ask

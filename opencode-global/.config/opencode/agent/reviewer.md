@@ -13,7 +13,7 @@ permission:
   grep: allow
   webfetch: deny
   bash:
-    "*": ask
+    "*": deny
     "sudo *": deny
     "chown *": deny
     "chmod *": deny
@@ -51,6 +51,9 @@ permission:
     "git log*": allow
     "git show*": allow
     "git blame*": allow
+    "git rev-parse*": allow
+    "git ls-files*": allow
+    "git branch*": allow
     "head*": allow
     "tail*": allow
     "wc*": allow
@@ -58,6 +61,16 @@ permission:
     "readlink*": allow
     "realpath*": allow
     "which*": allow
+    "stat*": allow
+    "file*": allow
+    "python3 -m json.tool*": allow
+    "python -m json.tool*": allow
+    "python3 -m py_compile*": allow
+    "python -m py_compile*": allow
+    "node --check*": allow
+    "npm test*": allow
+    "npm run lint*": allow
+    "pytest --collect-only*": allow
     "stow -n*": allow
 ---
 
