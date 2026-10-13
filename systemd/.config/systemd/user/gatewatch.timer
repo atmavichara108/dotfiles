@@ -1,0 +1,10 @@
+[Unit]
+Description=Gatewatch — опрос лога OpenCode раз в минуту
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
