@@ -1,0 +1,12 @@
+{"name":"sysop","born":"2026-09-17","owner":"Макс","zone":"primary/orchestrator","model":"opencode/muse-spark-1.3-contributor-free","state":"active","last_used":"2026-10-14","notes":"единый primary после ADR-010"}
+{"name":"qtile-dev","born":"2026-09-17","owner":"Макс","zone":"qtile/","model":"justwoker/claude-opus-4-8#max","state":"reusable","last_used":"2026-10-13","notes":"WM, виджеты, Python"}
+{"name":"bash-dev","born":"2026-09-17","owner":"Макс","zone":"scripts/","model":"justwoker/claude-opus-4-8#max","state":"active","last_used":"2026-10-14","notes":"shell, хуки, cron, systemd; делал И-13/И-22"}
+{"name":"util-dev","born":"2026-09-17","owner":"Макс","zone":"rofi/dunst/macros","model":"justwoker/claude-opus-4-8#max","state":"reusable","last_used":"2026-10-13","notes":"утилиты UX; helpreg И-36"}
+{"name":"stow-ops","born":"2026-09-17","owner":"Макс","zone":"stow ops","model":"justwoker/claude-opus-4-8#max","state":"active","last_used":"2026-10-14","notes":"stow, реструктуризация, миграция"}
+{"name":"verifier","born":"2026-09-17","owner":"Макс","zone":"acceptance","model":"nvidia/z-ai/glm-5.3-flash","state":"active","last_used":"2026-10-14","notes":"единственный выносит PASS/FAIL"}
+{"name":"tree-cop","born":"2026-09-17","owner":"Макс","zone":"tree hygiene","model":"anymodel/cx/gpt-5.6-sol","state":"active","last_used":"2026-10-14","notes":"preflight, stash-foreign/pop"}
+{"name":"system-audit","born":"2026-09-17","owner":"Макс","zone":"system read-only audit","model":"justwoker/claude-opus-4-8#max","state":"reusable","last_used":"2026-10-12","notes":"глобальный read-only аудит"}
+{"name":"system-ops","born":"2026-09-17","owner":"Макс","zone":"high-risk apply","model":"justwoker/claude-opus-4-8#max","state":"frozen","last_used":"2026-08-30","notes":"bridge freeze; T-108/109/110 заморожены"}
+{"name":"reviewer","born":"2026-09-17","owner":"Макс","zone":"quality review","model":"justwoker/claude-opus-4-8#max","state":"active","last_used":"2026-10-14","notes":"findings, не acceptance"}
+{"name":"researcher","born":"2026-09-17","owner":"Макс","zone":"read-only research","model":"opencode-go/glm-5.3-flash","state":"active","last_used":"2026-10-14","notes":"read-only поиск; И-22 исследование"}
+{"name":"meta","born":"2026-09-17","owner":"Макс","zone":"opencode infra","model":"justwoker/claude-opus-4-8#max","state":"active","last_used":"2026-10-14","notes":"агентная инфраструктура"}
