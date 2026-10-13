@@ -287,10 +287,14 @@ export OPENCODE_EXPERIMENTAL_LSP_TOOL=true
 # service.restart: super+o перехвачен qtile (mod4+o = opencode-reload, keys.py:42),
 # поэтому ставим на <leader>shift+r.
 # OPENCODE_CLI_CONFIG_CONTENT merge'ится поверх cli.json (nested objects merge).
-# И-39: буквенные лидер-цепочки НЕ работают при русской раскладке (движок
-# получает кириллицу вместо латинской буквы, см. И-37). Дублируем их небуквенными
-# F-клавишами, которые работают в обеих раскладках. Латинские сохранены.
-export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"prompt.clear":"<leader>d,ctrl+shift+f7","app.exit":"ctrl+d,<leader>q","prompt.fullscreen":"<leader>p","prompt.stash":"<leader>z,f3","prompt.stash.pop":"<leader>shift+z,shift+f3","prompt.stash.list":"<leader>f,f4","service.restart":"<leader>shift+r,ctrl+shift+f6"}}'
+# И-39 + расширение юзеркейса (2026-10-14). Работает при русской раскладке:
+#   - простые F-клавиши (F2..F12) — раскладка-независимы;
+#   - Ctrl+буква (control-символы) — раскладка-независима;
+#   - <leader>+цифра — работает при ru.
+# НЕ работает при ru: лидер+буква (<leader>z) и модифицированные F (Shift+F3,
+# Ctrl+Shift+F7) — терминал не отдаёт их надёжно (см. И-37/И-39). Поэтому
+# буквенные и modified-F бинды заменены на простые F.
+export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"prompt.stash":"f3","prompt.stash.pop":"f5","prompt.stash.list":"f4","prompt.clear":"f6","prompt.editor":"f8","service.restart":"f7","session.new":"f9","session.list":"f10","session.compact":"f11","session.export":"f12","app.exit":"ctrl+d,<leader>q","prompt.fullscreen":"<leader>p"}}'
 
 # Провайдерные ключи для SDK с жёстким именем переменной.
 # @ai-sdk/anthropic (провайдер justwoker) требует именно ANTHROPIC_API_KEY
