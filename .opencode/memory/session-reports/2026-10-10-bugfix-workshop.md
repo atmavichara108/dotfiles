@@ -359,3 +359,21 @@ fix/workaround → evidence → status.
   хранилище CopyQ — персистентно ~31 запись, секретов 0.
 - **Status:** `open` (передано в мастерскую; если ремонт индекса не окончателен —
   завести отдельную задачу с ID).
+
+## INC-11 — decision-queue-hook: false-positive карточки на allow-события + NUL-коррупция
+
+- **Symptom:** в `OpenCode-Vault/control-plane/decision-queue/cards/` появляются карточки с `title: "Permission request"`, `status: "pending"` на КАЖДОЕ evaluate-событие, включая `effect: allow` (примеры: `2026-10-13-102150-{external-directory,shell}.json`, `2026-10-13-102207-{read,grep}.json`). Наблюдатель очереди принимает shadow-шум за живой ask → ложный рапорт «агент заблокирован пермишенами» (потрачен багфикс-цикл на несуществующую проблему). Дополнительно: `2026-10-13-102207-grep.json` бит — хвост из NUL-байтов, `jq: Invalid numeric literal at line 26`.
+- **Repro:** запуск любого субагента с read/grep → permission evaluate с effect allow → карточка pending в волте.
+- **Root cause:** плагин `decision-queue-hook.ts` (global) пишет карточку на каждое событие независимо от effect — нет фильтра `effect === "ask"`; записи не атомарны (гонка writer'ов → NUL-хвост).
+- **Fix (предложение):** фильтровать только ask-события; атомарная запись (temp+rename); allow-события не создавать (или отдельный журнал без статуса pending).
+- **Evidence:** диагноз мета-агента (сессия ses_ecbd5c45fffeXaz33p2JtXZicR, 2026-10-13): DB `session_v2.permission` пуст, config-слои чисты, hook `evaluate` не мутирует effect; битая карточка подтверждена jq.
+- **Status:** OPEN — на разбор Мастерской. (Тикет от сессии «Централизация», ses_eceb23a71ffeJO9QnFou8VngZC.)
+
+## INC-12 — delivery-check не видит письма, доставленные через `opencode run`
+
+- **Symptom:** письмо отправлено по канону peer-comms (`opencode run -s <ses> -m <model> "$(cat file)"`), ответ адресата получен, journal фиксирует `sent` (`receipts-out.jsonl`: `f47d2d01aa07ee23-20261013-…`), но `tools/peer-comms/delivery-check.sh <ses> <substring>` отвечает `NOT-DELIVERED: … (за 7 дней)`.
+- **Repro:** отправить письмо через `opencode run` в сессию-адресата, затем delivery-check по подстроке ответа → NOT-DELIVERED при фактической доставке.
+- **Root cause (гипотеза):** delivery-check ищет в хранилище одного канала (mail-storage letter.sh), а письма `opencode run` попадают в сообщения сессии адресата (session message API) — расхождение каналов проверки и доставки.
+- **Fix (предложение):** delivery-check должен читать messages сессии адресата (`GET /api/session/{id}/message` или storage) либо оба канала; задокументировать в `02-Methods/peer-comms.md` (OpenCode-Vault), какой канал чем проверяется.
+- **Evidence:** вывод сессии sysop/dotfiles 2026-10-13 (RECEIPT sent + NOT-DELIVERED на доставленное письмо; тест §4 пройден по содержанию).
+- **Status:** OPEN — на разбор Мастерской. (Тикет от сессии «Централизация».)
