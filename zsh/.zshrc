@@ -287,7 +287,10 @@ export OPENCODE_EXPERIMENTAL_LSP_TOOL=true
 # service.restart: super+o перехвачен qtile (mod4+o = opencode-reload, keys.py:42),
 # поэтому ставим на <leader>shift+r.
 # OPENCODE_CLI_CONFIG_CONTENT merge'ится поверх cli.json (nested objects merge).
-export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"prompt.clear":"<leader>d","app.exit":"ctrl+d,<leader>q","prompt.fullscreen":"<leader>p","prompt.stash":"<leader>z","prompt.stash.pop":"<leader>shift+z","prompt.stash.list":"<leader>f","service.restart":"<leader>shift+r"}}'
+# И-39: буквенные лидер-цепочки НЕ работают при русской раскладке (движок
+# получает кириллицу вместо латинской буквы, см. И-37). Дублируем их небуквенными
+# F-клавишами, которые работают в обеих раскладках. Латинские сохранены.
+export OPENCODE_CLI_CONFIG_CONTENT='{"keybinds":{"prompt.clear":"<leader>d,ctrl+shift+f7","app.exit":"ctrl+d,<leader>q","prompt.fullscreen":"<leader>p","prompt.stash":"<leader>z,f3","prompt.stash.pop":"<leader>shift+z,shift+f3","prompt.stash.list":"<leader>f,f4","service.restart":"<leader>shift+r,ctrl+shift+f6"}}'
 
 # Провайдерные ключи для SDK с жёстким именем переменной.
 # @ai-sdk/anthropic (провайдер justwoker) требует именно ANTHROPIC_API_KEY
