@@ -97,7 +97,7 @@ timestamp: 2026-10-13
 |---|---|---|---|
 | И-42 | `newapi-provider-onboarding` (ready) | в работе: код готов, PASS исполнителя, приёмка слетела в рестарт | **1 — разблокирует free-модели** |
 | И-09 | `orch-guard-v1` (approved) | код готов, verifier PASS, ждёт коммита | **2 — закрыть хвостом** |
-| И-43 | `maya-lint-v2` (draft, green-light) | draft, приёмка не закрыта | **в работе: артефакты на месте, на независимой приёмке** |
+| И-43 | `maya-lint-v2` (draft, green-light) | draft, приёмка не закрыта | **verifier PASS 2026-10-14 (словарь, report, gate выключен, изоляция); активация гейта — отдельно после 2-недельного digest** |
 | И-44 | `linaliapi-provider-canon` (implementation-done) | висит handoff | **DONE 2026-10-14: предпосылка спеки устарела — живой конфиг уже симлинк в канон с 09-06, diff пуст, 6/6 моделей, без ключа; менять нечего. Флаг закрыт: `apiKey` в блоке local-deepseek — заглушка локального бриджа, не секрет. Остаток за пользователем: рестарты TUI/GUI + проверка /models** |
 | И-45 | `ship-research-network` (proposed) | нужен reviewer → решение | **reviewer ISSUES 2026-10-14: 7 минорных (критично: provenance цитат + висячая ссылка R1–R12; остальное — frontmatter/related/DoD). Безопасность и scope чистые. Ждёт решения: кто правит текст** |
 | И-46 | `coordination-bridge-freeze` (frozen) | разобраться и закрыть/разморозить | **6** |
