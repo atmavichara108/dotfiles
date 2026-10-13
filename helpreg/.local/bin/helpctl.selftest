@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # helpctl.selftest — самопроверка helpreg v1 по пунктам приёмки спеки
-# docs/specs/help-registry-v1.md (раздел 7).
+# docs/specs/help-registry-v1.md (раздел 7) + волна 3 (hotkeys-подсказчик, тема).
 #
 # Запуск:  bash helpreg/.local/bin/helpctl.selftest
 # Работает на ВРЕМЕННОМ реестре и временном каталоге navi, репозиторный реестр
-# не трогает. Код возврата 0 — все проверки прошли.
+# не трогает. GUI (rofi) не запускается: проверяется только генерация вывода.
+# Код возврата 0 — все девять пунктов прошли.
 
 set -uo pipefail
 
@@ -27,21 +28,25 @@ export HELPREG_REGISTRY="$REG"
 echo "helpctl.selftest: CLI $CLI"
 echo "временный реестр: $REG"
 echo
-echo "[1/7] реестр валиден (check)"
+echo "[1/9] реестр валиден (check)"
 python3 "$CLI" check >"$TMP/check.out" 2>&1
 check "check на исходном реестре" "$?" "0"
-grep -q 'записей: 1[0-9]' "$TMP/check.out" && ok "в реестре больше 9 записей" \
-  || bad "в реестре меньше 10 записей: $(tail -2 "$TMP/check.out" | head -1)"
+grep -Eq 'записей: [0-9]{2,}' "$TMP/check.out" && ok "в реестре 10+ записей" \
+  || bad "мало записей: $(tail -2 "$TMP/check.out" | head -1)"
+python3 "$CLI" list --json 2>/dev/null | jq -e 'map(select(.source=="opencode-tui")) | length == 17' >/dev/null 2>&1
+check "записей с source=opencode-tui ровно 17" "$?" "0"
+python3 "$CLI" list --json 2>/dev/null | jq -e 'map(select(.source!="opencode-tui")) | length == 16' >/dev/null 2>&1
+check "не-TUI записей ровно 16 (qtile+manual)" "$?" "0"
 
 echo
-echo "[2/7] list и list --json"
+echo "[2/9] list и list --json"
 n_list=$(python3 "$CLI" list 2>/dev/null | grep -c ' — ')
 [ "$n_list" -ge 5 ] && ok "list отдаёт записи ($n_list строк)" || bad "list пуст ($n_list)"
 python3 "$CLI" list --json 2>/dev/null | jq -e 'length >= 5' >/dev/null 2>&1
 check "list --json — валидный JSON с >=5 записями" "$?" "0"
 
 echo
-echo "[3/7] add: добавляет одну строку; дубликат отклоняется"
+echo "[3/9] add: добавляет одну строку; дубликат отклоняется"
 before=$(wc -l < "$REG")
 python3 "$CLI" add --name "selftest: проба" --desc "проверка добавления" \
         --cmd "echo probe" --tags selftest >/dev/null 2>&1
@@ -51,14 +56,14 @@ python3 "$CLI" add --name "selftest: проба" --desc "дубль" --cmd "echo
 check "повторный add того же name → rc=3" "$?" "3"
 
 echo
-echo "[4/7] add: секретоподобная запись отклоняется и не попадает в реестр"
+echo "[4/9] add: секретоподобная запись отклоняется и не попадает в реестр"
 python3 "$CLI" add --name "selftest: секрет" --desc "секрет" \
         --cmd "token=SUPERSECRETVALUE123456" >/dev/null 2>&1
 check "секрет → rc=3" "$?" "3"
 if grep -q 'SUPERSECRETVALUE' "$REG"; then bad "секрет найден в реестре"; else ok "секрета в реестре нет"; fi
 
 echo
-echo "[5/7] navi: экспорт не ломает чужие cheat-файлы"
+echo "[5/9] navi: экспорт не ломает чужие cheat-файлы"
 before_cheats=$(ls -1 "$NAVI_CHEATS" 2>/dev/null | sort | md5sum | cut -d' ' -f1)
 python3 "$CLI" navi --out "$NAVI_OUT" >/dev/null 2>&1
 check "navi --out" "$?" "0"
@@ -69,14 +74,14 @@ after_cheats=$(ls -1 "$NAVI_CHEATS" 2>/dev/null | sort | md5sum | cut -d' ' -f1)
   || bad "каталог $NAVI_CHEATS изменился"
 
 echo
-echo "[6/7] keys: сопоставление с keys.py (только чтение)"
+echo "[6/9] keys: сопоставление с keys.py (только чтение)"
 python3 "$CLI" keys >"$TMP/keys.out" 2>&1
 check "keys" "$?" "0"
 grep -q '^  ключ: ' "$TMP/keys.out" && ok "минимум одна пара «команда — клавиша» найдена" \
   || bad "ни одной пары не сопоставлено"
 
 echo
-echo "[7/7] rofi-список и гигиена"
+echo "[7/9] rofi-список и гигиена"
 python3 "$CLI" rofi --print-list >"$TMP/rofi.out" 2>&1
 check "rofi --print-list" "$?" "0"
 grep -q 'добавить команду' "$TMP/rofi.out" && ok "в списке есть пункт добавления" \
@@ -86,16 +91,89 @@ n_rofi=$(grep -c ' — ' "$TMP/rofi.out")
 git -C "$REPO" status --porcelain > "$TMP/git_before"
 python3 "$CLI" list >/dev/null 2>&1
 git -C "$REPO" status --porcelain > "$TMP/git_after"
-if [ "$(grep -c 'help-registry' "$TMP/git_after" || true)" = "0" ]; then
-  ok "работа CLI не добавила путей реестра в git status"
+if cmp -s "$TMP/git_before" "$TMP/git_after"; then
+  ok "работа CLI не меняла ни одного git-пути (в т.ч. на грязном дереве)"
 else
-  bad "в git status появились пути help-registry (реестр в репозитории?)"
+  bad "за время работы CLI в git status добавились новые пути"
 fi
 if stow -n -t "$HOME" helpreg >"$TMP/stow.out" 2>&1; then ok "stow -n helpreg — чисто"; else
   bad "stow -n helpreg сообщает о конфликте: $(tail -2 "$TMP/stow.out" | tr '\n' ' ')"
 fi
 
 echo
+echo "[8/9] hotkeys-подсказчик: merge / system / tui, порядок групп, гигиена вывода"
+python3 "$CLI" rofi hotkeys --print-list >"$TMP/hotkeys.out" 2>&1
+check "hotkeys merged --print-list" "$?" "0"
+for frag in \
+  'F3 — положить' 'F5 — вернуть' 'F4 — показать' 'F6 — очистить' 'F8 — открыть' \
+  'F7 — перезапуск' 'F9 — новая' 'F10 — список' 'F11 — компакт' 'F12 — экспорт' \
+  'F2 — следующая' 'Shift+F2 — предыдущая' 'Ctrl+T — переключить' \
+  'Shift+Tab — следующий' 'Ctrl+D — выйти' 'Ctrl+P — палитра'; do
+  grep -qF "$frag" "$TMP/hotkeys.out" \
+    && ok "в merged-виде есть запись: $frag" \
+    || bad "в merged-виде нет записи: $frag"
+done
+ln_sys=$(grep -n '◼ Система' "$TMP/hotkeys.out" | head -1 | cut -d: -f1)
+ln_tui=$(grep -n '◼ OpenCode TUI' "$TMP/hotkeys.out" | head -1 | cut -d: -f1)
+[ -n "$ln_sys" ] && [ -n "$ln_tui" ] && [ "$ln_sys" -lt "$ln_tui" ] \
+  && ok "порядок групп: сначала система ($ln_sys), затем OpenCode TUI ($ln_tui)" \
+  || bad "порядок блоков нарушен: система=$ln_sys, TUI=$ln_tui"
+ln_draft=$(grep -n '▪ Черновики' "$TMP/hotkeys.out" | head -1 | cut -d: -f1)
+ln_sess=$(grep -n '▪ Сессии' "$TMP/hotkeys.out" | head -1 | cut -d: -f1)
+ln_model=$(grep -n '▪ Модели' "$TMP/hotkeys.out" | head -1 | cut -d: -f1)
+ln_agent=$(grep -n '▪ Агенты' "$TMP/hotkeys.out" | head -1 | cut -d: -f1)
+[ -n "$ln_draft" ] && [ -n "$ln_sess" ] && [ -n "$ln_model" ] && [ -n "$ln_agent" ] \
+  && [ "$ln_draft" -lt "$ln_sess" ] && [ "$ln_sess" -lt "$ln_model" ] && [ "$ln_model" -lt "$ln_agent" ] \
+  && ok "порядок TUI-групп: черновики → сессии → модели → агенты" \
+  || bad "порядок TUI-групп нарушен ($ln_draft/$ln_sess/$ln_model/$ln_agent)"
+n_tui_view=$(python3 "$CLI" rofi hotkeys tui --print-list 2>/dev/null | grep -c ' — ')
+check "tui-каталог: ровно 17 записей" "$n_tui_view" "17"
+n_sys_view=$(python3 "$CLI" rofi hotkeys system --print-list 2>/dev/null \
+  | grep -v 'selftest: проба' | grep -c ' — ')
+check "system-каталог: ровно 16 записей (без пробной)" "$n_sys_view" "16"
+if grep -Eq '(/home|dotfiles|\$ |PRIVATE KEY|token=|sk-)' "$TMP/hotkeys.out"; then
+  bad "в hotkeys-выводе утекли пути/команды/секреты"
+else
+  ok "hotkeys-вывод чист: только клавиши, имена команд и описания"
+fi
+f3_line='F3 — положить черновик на полку; проверка: F3 → черновик уйдёт с поля на полку'
+python3 "$CLI" rofi hotkeys tui --select "$f3_line" >"$TMP/sel.out" 2>&1
+if grep -q 'HINT: нажми F3 внутри OpenCode TUI' "$TMP/sel.out"; then
+  ok "--select по TUI-записи печатает подсказку и не запускает команд"
+else
+  bad "--select по TUI-записи не дал подсказку: $(head -2 "$TMP/sel.out" | tr '\n' ' ')"
+fi
+python3 "$CLI" rofi hotkeys tui --select "  ▪ Сессии" >"$TMP/sel_g.out" 2>&1
+check "--select по заголовку группы без ошибки" "$?" "0"
+
+echo
+echo "[9/9] тема rofi (dump/write) и целостность CLI"
+python3 -m py_compile "$CLI" 2>"$TMP/pyc.out"
+check "py_compile helpctl" "$?" "0"
+python3 "$CLI" rofi hotkeys --dump-theme >"$TMP/theme.out" 2>&1
+check "--dump-theme" "$?" "0"
+grep -Eq '^\* \{ .*bg:.*fg:.*' "$TMP/theme.out" && grep -Eq '#[0-9a-fA-F]{6,8}' "$TMP/theme.out" \
+  && ok "тема: строка * { ... } с hex-палитрой (wal или фолбэк)" \
+  || bad "тема без hex-палитры"
+python3 "$CLI" rofi hotkeys --write-theme --theme-out "$TMP/rofi.rasi" >/dev/null 2>&1
+check "--write-theme во временный каталог" "$?" "0"
+grep -Eq '^    bg\s*: #[0-9a-fA-F]{6,8};' "$TMP/rofi.rasi" && grep -c ';' "$TMP/rofi.rasi" >/dev/null \
+  && ok "rasi: поле bg с hex-значением" \
+  || bad "rasi без корректного bg"
+if grep -Eq '(/home|dotfiles|PRIVATE KEY|token=|sk-)' "$TMP/rofi.rasi"; then
+  bad "в rasi есть пути или секреты"
+else
+  ok "в rasi нет путей и секретов (только цветовые значения)"
+fi
+if command -v rofi >/dev/null 2>&1; then
+  ok "rofi найден — GUI-запуск остаётся пользователю (selftest окно не открывает)"
+else
+  ok "rofi не найден — selftest проверял только генерацию, GUI-гейт пропущен"
+fi
+python3 "$CLI" check >/dev/null 2>&1
+check "финальный check реестра" "$?" "0"
+
+echo
 echo "ИТОГ: пройдено $pass, провалено $fail (каталог $TMP)"
-[ "$fail" = "0" ] && echo "ВЕРДИКТ: все семь пунктов приёмки пройдены." || echo "ВЕРДИКТ: есть провалы."
+[ "$fail" = "0" ] && echo "ВЕРДИКТ: все девять пунктов приёмки пройдены." || echo "ВЕРДИКТ: есть провалы."
 [ "$fail" = "0" ]

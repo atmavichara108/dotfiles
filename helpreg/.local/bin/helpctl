@@ -5,6 +5,8 @@
 
   helpctl list [--tag T] [--json]   список записей (для конвейеров)
   helpctl rofi [--tag T]            rofi-меню: выбор запускает cmd; отдельный пункт — добавить
+  helpctl rofi hotkeys [system|tui] подсказчик хоткеев: группировка по тегам, тема wal;
+                                    выбор записи печатает в терминал «как проверять клавишу»
   helpctl add                       форма (rofi) -> валидация -> дозапись ОДНОЙ строки
   helpctl navi [--out DIR]          экспорт cheat-файлов для navi
   helpctl keys                      хоткеи из qtile keys.py рядом с записями (ТОЛЬКО чтение)
@@ -34,7 +36,147 @@ _REPO_CANDIDATE = _SELF.parent.parent.parent  # <pkg>/.local/bin/helpctl -> <pkg
 _ENV = os.environ
 
 DEFAULT_SOURCE = "manual"
-SOURCES = ("manual", "qtile-keys", "imported")
+SOURCES = ("manual", "qtile-keys", "opencode-tui", "imported")
+
+# --- тема hotkeys-меню -------------------------------------------------------
+
+WAL_DIR = "~/.cache/wal"
+WAL_RASI_CASCADE = ("colors.rasi", "colors-rofi.rasi")  # первый найденный wins
+PKG_RASI = (".config", "help-registry", "rofi.rasi")
+
+# Тёмный фолбэк, если палитра wal недоступна. Значения близки к нейтральной
+# палитре desktop-темы rofi.
+FALLBACK_THEME: dict[str, str] = {
+    "bg": "#1a1b26cc", "bg-alt": "#24283bcc", "fg": "#c0caf5",
+    "fg-dim": "#565f89cc", "accent": "#7aa2f7cc", "urgent": "#f7768ecc",
+    "border-c": "#3d59a1cc", "sel": "#283457cc",
+}
+
+# порядок полей в generated rasi
+THEME_ORDER = ("bg", "bg-alt", "fg", "fg-dim", "sel", "accent", "urgent", "border-c")
+
+# wal-имена -> имена переменных темы rofi (как в config.rasi)
+WAL_TO_THEME = {
+    "background": "bg",
+    "background-alt": "bg-alt",
+    "foreground": "fg",
+    "selected": "accent",
+    "active": "sel",
+    "urgent": "urgent",
+    "border": "border-c",
+}
+
+
+def _with_alpha(value: str, alpha: str = "8c") -> str:
+    """#RRGGBB -> #RRGGBBAA; уже-alpha значение не трогаем; не-hex возвращаем как есть."""
+    s = value.strip()
+    if re.fullmatch(r"#[0-9a-fA-F]{8}", s):
+        return s.lower()
+    if re.fullmatch(r"#[0-9a-fA-F]{6}", s):
+        return (s + alpha).lower()
+    return s
+
+
+def _rasi_theme_keys(path: Path) -> dict[str, str] | None:
+    """Разобрать rasi-палитру: строки «имя: цвет;» с тематическими ключами."""
+    if not path.exists():
+        return None
+    keys = "|".join(WAL_TO_THEME)
+    vals: dict[str, str] = {}
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        m = re.match(rf"\s*({keys})\s*:\s*([^;]+)\s*;", line)
+        if m:
+            vals[m.group(1)] = m.group(2).strip()
+    return vals or None
+
+
+def _wal_base16(wal: Path) -> dict[str, str] | None:
+    """Крайний случай: 16 hex-строк ~/.cache/wal/colors -> тематический набор."""
+    path = wal / "colors"
+    if not path.exists():
+        return None
+    hexes: list[str] = []
+    try:
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            t = line.strip()
+            if t and re.fullmatch(r"#?[0-9a-fA-F]{6}", t):
+                hexes.append(t if t.startswith("#") else "#" + t)
+    except OSError:
+        return None
+    if len(hexes) < 16:
+        return None
+    return {
+        "background": hexes[0], "background-alt": hexes[0],
+        "foreground": hexes[15], "selected": hexes[6],
+        "active": hexes[2], "urgent": hexes[1], "border": hexes[6],
+    }
+
+
+def wal_values(path: str | None = None) -> dict[str, str] | None:
+    """Палитра wal: colors.rasi → colors-rofi.rasi→ базовые 16 цветов; None — нет."""
+    if path:  # явный путь (тесты)
+        return _rasi_theme_keys(Path(path).expanduser())
+    wal = Path(WAL_DIR).expanduser()
+    for name in WAL_RASI_CASCADE:
+        vals = _rasi_theme_keys(wal / name)
+        if vals:
+            return vals
+    return _wal_base16(wal)
+
+
+def theme_values() -> tuple[dict[str, str], str]:
+    """Цветовые переменные темы + источник ('wal' | 'fallback') для отчёта."""
+    vals: dict[str, str] = {}
+    wal = wal_values()
+    if wal:
+        for src, dst in WAL_TO_THEME.items():
+            if src in wal:
+                vals[dst] = wal[src]
+        if "fg" in vals and "fg-dim" not in vals:
+            vals["fg-dim"] = _with_alpha(vals["fg"], "77")
+    origin = "wal" if wal else "fallback-dark"
+    for key, value in FALLBACK_THEME.items():
+        vals.setdefault(key, value)
+    return vals, origin
+
+
+def theme_str() -> str:
+    """Однострочная тема для -theme-str: переменные * перекрывают config.rasi по цвету."""
+    vals, _origin = theme_values()
+    body = " ".join(f"{key}: {value};" for key, value in sorted(vals.items()))
+    return "* { " + body + " }"
+
+
+def theme_pkg_path() -> Path | None:
+    """Канонический путь rofi.rasi внутри пакета helpreg (или None, если пакет не рядом)."""
+    pkg = Path(_REPO_CANDIDATE)
+    path = pkg.joinpath(*PKG_RASI)
+    return path if pkg.exists() else None
+
+
+def write_theme(target: Path, origin_default: str = "") -> Path:
+    """Записать rasi-файл темы: только цвета, никаких путей и секретов."""
+    vals, origin = theme_values()
+    if origin_default and origin == "fallback-dark":
+        origin = origin_default
+    header = [
+        "/* rofi.rasi — палитра для hotkeys-меню helpreg (объединяется темой config.rasi).",
+        " * Сгенерировано: helpctl rofi hotkeys --write-theme; происхождение палитры: "
+        + origin + ".",
+        " * Регенерация после смены схемы wal: та же команда. Руками не редактировать.",
+        ' * Шрифт задаётся в config.rasi rofi; строгий monospace-вариант, при желании:',
+        ' *     font: "JetBrainsMono Nerd Font 13";',
+        " */",
+    ]
+    body = [f"    {key:<10}: {vals[key]};" for key in THEME_ORDER if key in vals]
+    content = "\n".join(header) + "\n* {\n" + "\n".join(body) + "\n}\n"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    return target
 NAVI_SUBDIR = "rudra"
 NAVI_PREFIX = "helpreg-"
 NAVI_MARKER = "generated by helpctl"
@@ -70,6 +212,98 @@ def keys_py_path() -> Path:
 def navi_dir_default() -> Path:
     data = Path(_ENV.get("XDG_DATA_HOME") or (Path.home() / ".local" / "share"))
     return data / "navi" / "cheats" / NAVI_SUBDIR
+
+
+# --- группировка записей для hotkeys-меню -------------------------------------
+
+# Русские названия групп по первому тегу записи.
+TAG_RU: dict[str, str] = {
+    # OpenCode TUI
+    "draft": "Черновики (полка)",
+    "session": "Сессии",
+    "model": "Модели",
+    "agent": "Агенты",
+    "tab": "Вкладки/сессии по номеру",
+    "service": "Служба",
+    "exit": "Выход",
+    "palette": "Палитра команд",
+    # система (qtile/manual)
+    "qtile": "Оконный менеджер",
+    "wm": "Оконный менеджер",
+    "terminal": "Терминал",
+    "shell": "Терминал",
+    "rofi": "Rofi",
+    "launcher": "Rofi",
+    "pipboy": "Pip-Boy",
+    "wal": "Обои и палитра",
+    "wallpaper": "Обои и палитра",
+    "wallust": "Обои и палитра",
+    "theme": "Обои и палитра",
+    "ranger": "Файлы",
+    "files": "Файлы",
+    "nvim": "Редактор",
+    "editor": "Редактор",
+    "opencode": "OpenCode (backend)",
+    "flameshot": "Скриншоты",
+    "screenshot": "Скриншоты",
+    "x11": "Экран",
+    "lock": "Экран",
+    "translate": "Утилиты",
+    "utility": "Утилиты",
+    "system": "Система",
+    "diagnostics": "Система",
+    "ai": "Помощник",
+    "help": "Помощник",
+    "misc": "Разное",
+}
+
+# Порядок групп в hotkeys-виде: TUI-сюжеты первыми, остальное по своим сюжетам.
+TAG_ORDER = (
+    "draft", "session", "model", "agent", "tab", "service", "exit", "palette",
+    "qtile", "terminal", "rofi", "wal", "ranger", "nvim", "opencode",
+    "flameshot", "x11", "translate", "system", "ai", "misc",
+)
+
+SOURCE_HEADER = {
+    "system": "◼ Система — рабочий стол (qtile/manual)",
+    "tui": "◼ OpenCode TUI — клавиши нажимаются внутри OpenCode",
+}
+
+
+def group_tag(rec: dict) -> str:
+    """Ключ группировки записи: первый тег; без тегов — 'misc'."""
+    return rec["tags"][0] if rec["tags"] else "misc"
+
+
+def group_header(tag: str) -> str:
+    return f"  ▪ {TAG_RU.get(tag, tag)}"
+
+
+def hotkeys_record_line(rec: dict) -> str:
+    """Строка hotkeys-записи: сначала клавиша (hint), затем описание с проверкой."""
+    head = rec["hint"] or rec["name"]
+    return f"{head} — {rec['desc']}"
+
+
+def group_lines(records: list[dict]) -> list[tuple[str, dict | None]]:
+    """Группированный вид: заголовки групп + строки записей. Возвращает (строка, запись|None)."""
+    order = {tag: i for i, tag in enumerate(TAG_ORDER)}
+    buckets: dict[str, list[dict]] = {}
+    for rec in records:
+        buckets.setdefault(group_tag(rec), []).append(rec)
+    lines: list[tuple[str, dict | None]] = []
+    for tag in sorted(buckets, key=lambda t: (order.get(t, 999), t)):
+        lines.append((group_header(tag), None))
+        duplicate_names: dict[str, int] = {}
+        for rec in buckets[tag]:
+            line = hotkeys_record_line(rec)
+            seen = duplicate_names.get(line, 0)
+            duplicate_names[line] = seen + 1
+            if seen:  # одинаковые строки записей — различаем первым повтором
+                lines.append((f"{line} ·{seen + 1}", rec))
+            else:
+                lines.append((line, rec))
+    return lines
 
 
 # --- модель записи ------------------------------------------------------------
@@ -248,6 +482,15 @@ def cmd_list(args) -> int:
 # --- подкоманда: rofi ---------------------------------------------------------
 
 def cmd_rofi(args) -> int:
+    """rofi-виды: без токенов — классический список, иначе hotkeys-подсказчик."""
+    tokens = list(getattr(args, "catalog", None) or [])
+    if not tokens:
+        return cmd_rofi_classic(args)
+    return cmd_rofi_hotkeys(args, tokens)
+
+
+def cmd_rofi_classic(args) -> int:
+    """Классический вид: список записей, первый пункт — добавить новую."""
     records = filter_tag(load_registry(), args.tag)
     lines = rofi_lines(records)
     if args.print_list:
@@ -289,6 +532,97 @@ def cmd_rofi(args) -> int:
         print(f"{rec['name']}: команды нет (справочная запись) — {text}")
         return 0
 
+    print(f"$ {rec['cmd']}")
+    return subprocess.run(rec["cmd"], shell=True).returncode
+
+
+def cmd_rofi_hotkeys(args, tokens: list[str]) -> int:
+    """Hotkeys-подсказчик: сгруппированный по тегам вид (hotkeys=merge / system / tui).
+
+    Никаких команд не запускает: выбор записи выводит подсказку «понажимай такую-то
+    клавишу там-то» в терминал — меню ссылка, реальное тестирование идёт руками.
+    """
+    records = filter_tag(load_registry(), args.tag)
+    if "tui" in tokens and "system" in tokens:
+        cat = "hotkeys"  # противоречивые фильтры взаимно гасятся — merged
+    elif "tui" in tokens:
+        cat = "tui"
+    elif "system" in tokens:
+        cat = "system"
+    else:
+        cat = "hotkeys"
+    if cat == "tui":
+        records = [r for r in records if r["source"] == "opencode-tui"]
+    elif cat == "system":
+        records = [r for r in records if r["source"] != "opencode-tui"]
+
+    if args.dump_theme:
+        print(theme_str())
+        return 0
+    if getattr(args, "write_theme", False):
+        if args.theme_out:
+            target = Path(args.theme_out).expanduser()
+        else:
+            target = theme_pkg_path()
+            if target is None:
+                print("пакет helpreg недоступен рядом с helpctl — укажи --theme-out", file=sys.stderr)
+                return 2
+        path = write_theme(target)
+        print(f"тема записана: {path}")
+        return 0
+
+    pairs: list[tuple[str, dict | None]] = []
+    if cat == "hotkeys":
+        for src in ("system", "tui"):
+            bucket = [r for r in records if (r["source"] == "opencode-tui") == (src == "tui")]
+            if bucket:
+                pairs.append((SOURCE_HEADER[src], None))
+                pairs.extend(group_lines(bucket))
+    else:
+        pairs = group_lines(records)
+
+    if args.print_list:
+        print("\n".join(line for line, _ in pairs))
+        return 0
+    if not any(rec is not None for _, rec in pairs):
+        print("нет записей для такого каталога", file=sys.stderr)
+        return 1
+
+    n_entries = sum(1 for _, rec in pairs if rec)
+    if args.select:
+        choice = args.select
+    else:
+        if not have("rofi"):
+            print("rofi не найден в PATH", file=sys.stderr)
+            return 2
+        prompt = {"hotkeys": "help ▸ hotkeys",
+                  "system": "help ▸ система",
+                  "tui": "help ▸ OpenCode TUI"}[cat]
+        suffix = "" if cat == "hotkeys" else " · фильтр " + cat
+        mesg = f"{n_entries} записей{suffix} · Enter — подсказка в терминале · Esc — выход"
+        rc, choice = rofi_run(["-theme-str", theme_str()], prompt,
+                              "\n".join(line for line, _ in pairs), mesg)
+        if rc != 0 or not choice:
+            print("отменено", file=sys.stderr)
+            return 1
+
+    lookup = {line.strip(): payload for line, payload in pairs}
+    choice = choice.strip()
+    rec = lookup.get(choice)
+    if rec is None:
+        if choice in lookup:  # заголовок группы/источника
+            print(f"ℹ «{choice}» — заголовок группы, выбери запись под ним")
+            return 0
+        print(f"неизвестный пункт: {choice!r} (строки списка руками не редактируются)", file=sys.stderr)
+        return 2
+
+    if not rec["cmd"] and rec["source"] == "opencode-tui":
+        print(f"HINT: нажми {rec['hint'] or rec['name']} внутри OpenCode TUI · {rec['desc']}")
+        return 0
+    if not rec["cmd"]:
+        text = rec["hint"] or rec["desc"]
+        print(f"{rec['name']}: команды нет (справочная запись) — {text}")
+        return 0
     print(f"$ {rec['cmd']}")
     return subprocess.run(rec["cmd"], shell=True).returncode
 
@@ -679,9 +1013,20 @@ def build_parser() -> argparse.ArgumentParser:
     pl.set_defaults(func=cmd_list)
 
     pr = sub.add_parser("rofi", help="rofi-меню")
+    pr.add_argument("catalog", nargs="*", choices=("hotkeys", "system", "tui"), default=[],
+                    metavar="CATALOG",
+                    help="hotkeys — merged подсказчик хоткеев (система + TUI); "
+                         "system — только рабочий стол; tui — только OpenCode TUI; "
+                         "hotkeys system/tui — merged-подсказчик с фильтром "
+                         "(без каталога — классический список с пунктом «добавить»)")
     pr.add_argument("--tag", help="фильтр по тегу")
     pr.add_argument("--print-list", action="store_true",
                     help="не открывать rofi, напечатать строки dmenu-списка")
+    pr.add_argument("--dump-theme", action="store_true",
+                    help="не открывать rofi, напечатать строку темы (wal-палитра или фолбэк)")
+    pr.add_argument("--write-theme", action="store_true",
+                    help="записать rasi-тему: по умолчанию в пакет helpreg, иначе по --theme-out")
+    pr.add_argument("--theme-out", help="путь для --write-theme (для тестов)")
     pr.add_argument("--select", help="без GUI: выбрать пункт по строке/имени (для тестов)")
     pr.set_defaults(func=cmd_rofi)
 

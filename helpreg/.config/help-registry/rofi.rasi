@@ -1,0 +1,16 @@
+/* rofi.rasi — палитра для hotkeys-меню helpreg (объединяется темой config.rasi).
+ * Сгенерировано: helpctl rofi hotkeys --write-theme; происхождение палитры: wal.
+ * Регенерация после смены схемы wal: та же команда. Руками не редактировать.
+ * Шрифт задаётся в config.rasi rofi; строгий monospace-вариант, при желании:
+ *     font: "JetBrainsMono Nerd Font 13";
+ */
+* {
+    bg        : #211901e6;
+    bg-alt    : #211901cc;
+    fg        : #c5c4c1;
+    fg-dim    : #c5c4c177;
+    sel       : #8a4706;
+    accent    : #ce7c19cc;
+    urgent    : #6e6319;
+    border-c  : #ce7c19;
+}
