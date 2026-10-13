@@ -6,7 +6,9 @@ subtask: true
 
 # /vflight — preflight версионирования (И-30 Волна 3)
 
-Инструмент: `scripts/.local/bin/vflight`. Аргументы: $ARGUMENTS
+Инструмент: `python3 scripts/.local/bin/vflight`. Файл в репозитории не имеет
+executable-бита и `~/.local/bin/vflight` не установлен; запускать через Python,
+chmod/stow не требуется. Аргументы: $ARGUMENTS
 Режим выбирается по первому слову аргументов (пусто = preflight).
 
 ## Жёсткие запреты
@@ -24,7 +26,7 @@ subtask: true
 ### `/vflight` — preflight текущего репо (freed + tree-cop)
 
 ```
-vflight [--mine <свой-префикс>]...
+python3 scripts/.local/bin/vflight [--mine <свой-префикс>]...
 ```
 
 Прогнать preflight, human-отчёт primary: freed check, tree-cop ship-check
@@ -34,7 +36,7 @@ Exit: 0=GO, 1=STOP, 2=внутренняя ошибка.
 ### `/vflight full` — preflight + гейт памяти (часть B)
 
 ```
-vflight full [--mine <свой-префикс>]...
+python3 scripts/.local/bin/vflight full [--mine <свой-префикс>]...
 ```
 
 То же + `memscan --drill` (exit≠0 → STOP «состояние не выживает»). Порядок
@@ -44,7 +46,7 @@ vflight full [--mine <свой-префикс>]...
 ### `/vflight repo <path>` — кросс-репо стейт (часть C)
 
 ```
-vflight repo <path> [--json] [--no-fetch]
+python3 scripts/.local/bin/vflight repo <path> [--json] [--no-fetch]
 ```
 
 Универсальный preflight для ЛЮБОГО git-репо (Vault, SSA, future): fetch
