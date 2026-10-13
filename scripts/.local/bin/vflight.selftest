@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Selftest vflight: стабы freed/tree-cop через VFLIGHT_FREED/VFLIGHT_TREECOP."""
+"""Selftest vflight: стабы freed/tree-cop/memscan через VFLIGHT_FREED/VFLIGHT_TREECOP/
+VFLIGHT_MEMSCAN + repo-режим на фейковых git-репо в /tmp."""
 import json
 import os
 import subprocess
@@ -34,12 +35,55 @@ def stub_treecop(verdict: str, reasons=None, foreign=None, behind=0, ahead=0) ->
     return f"#!/usr/bin/env python3\nimport json\nprint(json.dumps({data!r}))\n"
 
 
-def run(env_extra: dict) -> tuple:
+def stub_memscan(rc: int, line: str = "ИТОГ: OK") -> str:
+    body = f"import sys\nprint({line!r})\nsys.exit({rc})\n"
+    return f"#!/usr/bin/env python3\n{body}"
+
+
+def run(env_extra: dict, extra_args=None) -> tuple:
     env = dict(os.environ)
     env.update(env_extra)
     proc = subprocess.run(
-        [sys.executable, VFLIGHT, "--json"],
-        capture_output=True, text=True, env=env, timeout=30, check=False,
+        [sys.executable, VFLIGHT] + (extra_args or ["--json"]),
+        capture_output=True, text=True, env=env, timeout=60, check=False,
+    )
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        data = {}
+    return proc.returncode, data
+
+
+def git(repo: str, *args: str) -> tuple:
+    proc = subprocess.run(["git", "-C", repo, *args],
+                          capture_output=True, text=True, check=False)
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def make_repo(tmp: str, name: str) -> str:
+    """Фейковое git-репо с origin (bare) и одним коммитом на main."""
+    repo = os.path.join(tmp, name)
+    subprocess.run(["git", "-c", "init.defaultBranch=main", "init", repo],
+                   capture_output=True, text=True, check=False)
+    git(repo, "config", "user.email", "selftest@example.invalid")
+    git(repo, "config", "user.name", "selftest")
+    with open(os.path.join(repo, "file.txt"), "w", encoding="utf-8") as fh:
+        fh.write("one\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-m", "init")
+    bare = os.path.join(tmp, name + ".origin.git")
+    subprocess.run(["git", "clone", "--bare", "--quiet", repo, bare],
+                   capture_output=True, text=True, check=False)
+    git(repo, "remote", "add", "origin", bare)
+    git(repo, "fetch", "origin", "--quiet")
+    git(repo, "branch", "--set-upstream-to=origin/main", "main")
+    return repo
+
+
+def vrepo(path: str, extra=None):
+    proc = subprocess.run(
+        [sys.executable, VFLIGHT, "repo", path] + (extra or ["--json"]),
+        capture_output=True, text=True, timeout=60, check=False,
     )
     try:
         data = json.loads(proc.stdout)
@@ -56,6 +100,8 @@ def main() -> int:
     go_treecop = os.path.join(tmp, "treecop_go.py")
     stop_treecop = os.path.join(tmp, "treecop_stop.py")
     behind_treecop = os.path.join(tmp, "treecop_behind.py")
+    ms_ok = os.path.join(tmp, "memscan_ok.py")
+    ms_fail = os.path.join(tmp, "memscan_fail.py")
     for path, body in [
         (ok_freed, stub_freed(0, "OK: no blocks")),
         (blocked_freed, stub_freed(2, "BLOCKED: main")),
@@ -63,6 +109,8 @@ def main() -> int:
         (go_treecop, stub_treecop("GO")),
         (stop_treecop, stub_treecop("STOP", ["чужая грязь (2): a, b"], foreign=["a", "b"])),
         (behind_treecop, stub_treecop("GO", behind=3, ahead=1)),
+        (ms_ok, stub_memscan(0, "ИТОГ: выживает")),
+        (ms_fail, stub_memscan(1, "ИТОГ: AT-RISK")),
     ]:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(body)
@@ -118,8 +166,125 @@ def main() -> int:
     env.update({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": go_treecop})
     proc = subprocess.run([sys.executable, VFLIGHT],
                           capture_output=True, text=True, env=env,
-                          timeout=30, check=False)
+                          timeout=60, check=False)
     check("ИТОГ: GO в выводе", "ИТОГ: GO" in proc.stdout, proc.stdout[:200])
+
+    # ------------------------------------------------- v2: full (memscan drill)
+    print("[9] full: memscan ok → GO")
+    rc, data = run({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": go_treecop,
+                    "VFLIGHT_MEMSCAN": ms_ok}, ["full", "--json"])
+    check("verdict GO", data.get("verdict") == "GO", repr(data.get("verdict")))
+    check("exit 0", rc == 0, f"rc={rc}")
+    check("memscan state ok", data.get("memscan", {}).get("state") == "ok")
+
+    print("[10] full: memscan rc=1 → STOP «состояние не выживает»")
+    rc, data = run({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": go_treecop,
+                    "VFLIGHT_MEMSCAN": ms_fail}, ["full", "--json"])
+    check("verdict STOP", data.get("verdict") == "STOP")
+    check("exit 1", rc == 1, f"rc={rc}")
+    check("причина drill", any("не выживает" in r for r in data.get("reasons", [])),
+          repr(data.get("reasons")))
+
+    print("[11] full: memscan отсутствует → STOP (fail-closed)")
+    rc, data = run({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": go_treecop,
+                    "VFLIGHT_MEMSCAN": os.path.join(tmp, "missing_ms.py")},
+                   ["full", "--json"])
+    check("verdict STOP", data.get("verdict") == "STOP")
+    check("причина: не найден", any("не найден" in r for r in data.get("reasons", [])))
+
+    print("[12] full: preflight STOP важнее — memscan не обязан падать, вердикт STOP")
+    rc, data = run({"VFLIGHT_FREED": blocked_freed, "VFLIGHT_TREECOP": go_treecop,
+                    "VFLIGHT_MEMSCAN": ms_ok}, ["full", "--json"])
+    check("verdict STOP", data.get("verdict") == "STOP")
+
+    # ------------------------------------------------------- v2: repo-режим
+    print("[13] repo: чистое фейковое репо → CLEAN, exit 0")
+    repo_clean = make_repo(tmp, "fake_clean")
+    rc, data = vrepo(repo_clean)
+    check("is_repo", data.get("is_repo") is True)
+    check("verdict CLEAN", data.get("verdict") == "CLEAN", repr(data.get("verdict")))
+    check("exit 0", rc == 0, f"rc={rc}")
+    check("dirty_count=0", data.get("dirty_count") == 0)
+    check("accepts_dirty_work=true", data.get("accepts_dirty_work") is True)
+    check("fetch ok", data.get("fetch") == "ok", repr(data.get("fetch")))
+
+    print("[14] repo: грязное (untracked) → DIRTY, exit 1")
+    repo_dirty = make_repo(tmp, "fake_dirty")
+    with open(os.path.join(repo_dirty, "notes.txt"), "w", encoding="utf-8") as fh:
+        fh.write("draft\n")
+    rc, data = vrepo(repo_dirty)
+    check("verdict DIRTY", data.get("verdict") == "DIRTY", repr(data.get("verdict")))
+    check("exit 1", rc == 1, f"rc={rc}")
+    check("dirty_count=1", data.get("dirty_count") == 1)
+    check("untracked=1", data.get("untracked") == 1)
+    check("accepts_dirty_work=false", data.get("accepts_dirty_work") is False)
+
+    print("[15] repo: секрет-маскирование dirty sample")
+    repo_secret = make_repo(tmp, "fake_secret")
+    os.makedirs(os.path.join(repo_secret, "secrets"), exist_ok=True)
+    with open(os.path.join(repo_secret, "secrets", "api-token.json"), "w",
+              encoding="utf-8") as fh:
+        fh.write("{}\n")
+    rc, data = vrepo(repo_secret)
+    sample = " ".join(data.get("dirty_sample", []))
+    check("имя-секрет замаскировано", "api-token.json" not in sample, sample)
+    check("sha256-метка присутствует", "sha256:" in sample, sample)
+
+    print("[16] repo: конфликт-сценарий (unmerged + MERGE_HEAD + маркеры) → DIRTY")
+    repo_conf = make_repo(tmp, "fake_conflict")
+    with open(os.path.join(repo_conf, "file.txt"), "w", encoding="utf-8") as fh:
+        fh.write("main side\n")
+    git(repo_conf, "add", ".")
+    git(repo_conf, "commit", "-m", "main side")
+    git(repo_conf, "checkout", "-q", "-b", "feature", "HEAD~1")
+    with open(os.path.join(repo_conf, "file.txt"), "w", encoding="utf-8") as fh:
+        fh.write("feature side\n")
+    git(repo_conf, "add", ".")
+    git(repo_conf, "commit", "-m", "feature side")
+    git(repo_conf, "checkout", "-q", "main")
+    git(repo_conf, "merge", "--no-edit", "feature")  # конфликт, не резолвим
+    rc, data = vrepo(repo_conf)
+    check("verdict DIRTY", data.get("verdict") == "DIRTY")
+    check("unmerged_count>0", (data.get("unmerged_count") or 0) > 0,
+          repr(data.get("unmerged_count")))
+    check("merge_in_progress", data.get("merge_in_progress") is True)
+    check("маркеры найдены", (data.get("conflict_markers") or 0) > 0,
+          repr(data.get("conflict_markers")))
+
+    print("[17] repo: behind → DIRTY, принимает работу=false")
+    repo_ahead = make_repo(tmp, "fake_ahead")
+    repo_base = make_repo(tmp, "fake_base")
+    # repo_base клонировали из своего bare; берём clone от repo_ahead и пушим туда
+    clone = os.path.join(tmp, "fake_pusher")
+    subprocess.run(["git", "clone", "--quiet", repo_ahead, clone],
+                   capture_output=True, text=True, check=False)
+    with open(os.path.join(clone, "file.txt"), "a", encoding="utf-8") as fh:
+        fh.write("new\n")
+    git(clone, "config", "user.email", "selftest@example.invalid")
+    git(clone, "config", "user.name", "selftest")
+    git(clone, "add", ".")
+    git(clone, "commit", "-m", "remote new commit")
+    # push в bare-origin repo_ahead (в non-bare push запрещён receive.denyCurrentBranch)
+    git(clone, "remote", "add", "bare", repo_ahead + ".origin.git")
+    push_rc, _, push_err = git(clone, "push", "-q", "bare", "HEAD:refs/heads/main")
+    check("push в bare удался", push_rc == 0, push_err[:120])
+    # repo_ahead ещё не знает о новом коммите → после fetch behind=1
+    rc, data = vrepo(repo_ahead)
+    check("behind=1", data.get("behind") == 1, repr(data.get("behind")))
+    check("verdict DIRTY", data.get("verdict") == "DIRTY", repr(data.get("verdict")))
+    check("accepts_dirty_work=false", data.get("accepts_dirty_work") is False)
+
+    print("[18] repo: не-репо → exit 2, NOT_A_REPO")
+    rc, data = vrepo(os.path.join(tmp, "not_a_repo_at_all"))
+    check("is_repo=false", data.get("is_repo") is False)
+    check("verdict NOT_A_REPO", data.get("verdict") == "NOT_A_REPO")
+    check("exit 2", rc == 2, f"rc={rc}")
+
+    print("[19] repo: human-вывод содержит вердикт")
+    proc = subprocess.run([sys.executable, VFLIGHT, "repo", repo_clean],
+                          capture_output=True, text=True, timeout=60, check=False)
+    check("CLEAN в human-выводе", "CLEAN" in proc.stdout, proc.stdout[:200])
+    check("принимает работу", "может принимать" in proc.stdout, proc.stdout[:300])
 
     print(f"\nSELFCHECK: {'OK' if FAIL == 0 else 'FAIL'} — PASS={PASS} FAIL={FAIL}")
     return 0 if FAIL == 0 else 1

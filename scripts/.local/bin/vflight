@@ -1,20 +1,32 @@
 #!/usr/bin/env python3
-"""vflight — единый preflight версионирования (И-30 Волна 3).
+"""vflight — единый preflight версионирования (И-30 Волна 3; v2: full + repo).
 
-Склеивает два существующих детектора в один вердикт STOP/GO, ничего не
+Склеивает существующие детекторы в один вердикт STOP/GO, ничего не
 переписывая:
   1. tools/git-agent/freed.py check   — владение деревом / leases / main-гейт
   2. tree-cop ship-check --mine ...   — атрибуция mine/foreign + origin_main
+  3. memscan --drill (только в full)  — durable-копии состояния выжили (И-32)
 
-GO только если ОБА чисты; STOP в худшем из вердиктов. Fail-closed: недоступный
+GO только если ВСЁ чисто; STOP в худшем из вердиктов. Fail-closed: недоступный
 инструмент = STOP, не молчаливый проход.
 
 Usage:
-  vflight [--json] [--mine PATH]... [--root DIR]
+  vflight [--json] [--mine PATH]... [--root DIR]     preflight (freed+tree-cop)
+  vflight full [--mine PATH]... [--root DIR] [--json]
+                                                     preflight + memscan drill
+  vflight repo <path> [--json] [--no-fetch]          кросс-репо стейт
 
-Exit: 0 = GO, 1 = STOP, 2 = внутренняя ошибка (инструмент не найден/упал).
-Только метаданные: пути, счётчики, вердикты. Содержимое файлов не читается.
-Секрет-подобные пути маскируются (sha256 имени, как в memscan).
+Режим `repo` — универсальный preflight для ЛЮБОГО git-репо (Vault, SSA,
+future): fetch origin (только remote-tracking refs, рабочее дерево не
+трогает; отключается --no-fetch), dirty-count, ahead/behind, конфликт-маркеры.
+Вердикт CLEAN/DIRTY + accepts_dirty_work (может ли репо принимать новую
+работу: дерево чистое, merge не висит, behind=0).
+vflight НИКОГДА сам не коммитит, не пушит и не чистит — только статус.
+
+Exit: 0 = GO/CLEAN, 1 = STOP/DIRTY, 2 = внутренняя ошибка (не репо, инструмент
+не найден/упал). Только метаданные: пути, счётчики, вердикты. Содержимое
+файлов не читается. Секрет-подобные пути маскируются (sha256 имени, как в
+memscan).
 """
 
 import argparse
@@ -22,6 +34,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -34,7 +47,7 @@ SECRET_MARKERS = re.compile(
 
 def mask_path(path: str) -> str:
     """Имя файла похоже на секрет → печатаем sha256-хэш имени, не имя."""
-    name = os.path.basename(path)
+    name = os.path.basename(path.rstrip("/"))
     if SECRET_MARKERS.search(name):
         digest = hashlib.sha256(name.encode()).hexdigest()[:12]
         return f"{os.path.dirname(path)}/<скрыто: похоже на секрет> sha256:{digest}"
@@ -51,6 +64,8 @@ def run_tool(cmd: list, timeout: int = 30):
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
         return None, "", f"{type(exc).__name__}: {exc}"
 
+
+# --------------------------------------------------------------- preflight
 
 def check_freed(root: str) -> dict:
     """freed.py check: exit 0=ok, 1=warn, 2=blocked. Любая ошибка запуска = blocked."""
@@ -107,6 +122,30 @@ def check_treecop(root: str, mine: list) -> dict:
     }
 
 
+def check_memscan(root: str) -> dict:
+    """memscan --drill: exit 0 = durable-копии состояния выжили. rc=None = blocked."""
+    memscan = os.environ.get("VFLIGHT_MEMSCAN",
+                             os.path.join(root, "scripts/.local/bin/memscan"))
+    if not os.path.isfile(memscan):
+        found = shutil.which("memscan")
+        if found:
+            memscan = found
+    if not os.path.isfile(memscan):
+        return {"tool": "memscan", "state": "blocked",
+                "reason": f"инструмент не найден: {memscan}"}
+    rc, out, err = run_tool([memscan, "--drill"], timeout=60)
+    tail = [ln for ln in (out or "").strip().splitlines() if ln.strip()][-8:]
+    if rc is None:
+        return {"tool": "memscan", "state": "blocked",
+                "reason": f"запуск не удался: {err}", "tail": tail}
+    if rc == 0:
+        return {"tool": "memscan", "state": "ok", "rc": 0,
+                "reason": "состояние выживает", "tail": tail}
+    return {"tool": "memscan", "state": "blocked", "rc": rc,
+            "reason": f"состояние не выживает (memscan --drill exit={rc})",
+            "tail": tail}
+
+
 def combine(freed: dict, treecop: dict) -> dict:
     """GO только если оба ok; иначе STOP с объединёнными причинами."""
     states = [freed["state"], treecop["state"]]
@@ -136,6 +175,12 @@ def print_human(result: dict) -> None:
     origin = tc.get("origin_main", {})
     if origin:
         print(f"    origin/main: ahead={origin.get('ahead', '?')} behind={origin.get('behind', '?')}")
+    ms = result.get("memscan")
+    if ms:
+        mark = "✓" if ms["state"] == "ok" else "✗"
+        print(f"[{mark}] memscan drill  — {ms['state']}: {ms['reason']}")
+        for line in ms.get("tail", []):
+            print(f"    | {line}")
     verdict = result["verdict"]
     icon = "✅" if verdict == "GO" else "⛔"
     print(f"{icon} ИТОГ: {verdict}")
@@ -143,19 +188,155 @@ def print_human(result: dict) -> None:
         print(f"  · {reason}")
 
 
-def main() -> int:
+# -------------------------------------------------------------------- repo
+
+def inspect_repo(path: str, fetch: bool = True) -> dict:
+    """Кросс-репо стейт: только метаданные, никаких изменяющих операций
+    (fetch обновляет лишь remote-tracking refs, рабочее дерево не трогает)."""
+    res = {"path": path, "is_repo": False, "verdict": "NOT_A_REPO",
+           "accepts_dirty_work": False, "reasons": []}
+
+    def git(args: list, timeout: int = 30):
+        return run_tool(["git", "-C", path] + args, timeout=timeout)
+
+    rc, out, err = git(["rev-parse", "--is-inside-work-tree"])
+    if rc != 0 or out.strip() != "true":
+        res["error"] = (err.strip().splitlines() or ["не git-репозиторий"])[0]
+        res["reasons"] = ["не git-репозиторий"]
+        return res
+    res["is_repo"] = True
+
+    # fetch origin (если есть) — до счётчиков, чтобы ahead/behind были свежими
+    rc_url, _, _ = git(["remote", "get-url", "origin"])
+    if rc_url != 0:
+        res["fetch"] = "no-origin"
+    elif fetch:
+        rc_f, _, err_f = git(["fetch", "origin", "--quiet"], timeout=60)
+        res["fetch"] = "ok" if rc_f == 0 else "error"
+        if rc_f != 0:
+            res["fetch_error"] = (err_f.strip().splitlines() or ["?"])[0][:120]
+    else:
+        res["fetch"] = "skipped"
+
+    rc, out, _ = git(["branch", "--show-current"])
+    res["branch"] = out.strip() or None
+    rc, out, _ = git(["rev-parse", "--short", "HEAD"])
+    res["head"] = out.strip() or None
+
+    rc, _, _ = git(["rev-parse", "-q", "--verify", "MERGE_HEAD"])
+    res["merge_in_progress"] = rc == 0
+
+    rc, out, err = git(["status", "--porcelain=v1"])
+    lines = [ln for ln in (out or "").splitlines() if ln.strip()]
+    staged = unstaged = untracked = 0
+    paths = []
+    for ln in lines:
+        x, y, p = ln[0], ln[1], ln[3:]
+        paths.append(p)
+        if x == "?":
+            untracked += 1
+        else:
+            if x != " ":
+                staged += 1
+            if y != " ":
+                unstaged += 1
+    res["dirty_count"] = len(lines)
+    res["staged"], res["unstaged"], res["untracked"] = staged, unstaged, untracked
+    res["dirty_sample"] = [mask_path(p) for p in paths[:5]]
+
+    rc, out, _ = git(["ls-files", "-u"])
+    um_lines = [ln for ln in (out or "").splitlines() if ln.strip()]
+    um_paths = sorted({ln.rsplit("\t", 1)[-1] for ln in um_lines})
+    res["unmerged_count"] = len(um_lines)
+    res["unmerged_paths"] = [mask_path(p) for p in um_paths[:5]]
+
+    rc, out, _ = git(["diff", "--check"])
+    mk_lines = [ln for ln in (out or "").splitlines() if "conflict marker" in ln]
+    mk_paths = sorted({ln.split(":", 1)[0] for ln in mk_lines if ":" in ln})
+    res["conflict_markers"] = len(mk_lines)
+    res["marker_paths"] = [mask_path(p) for p in mk_paths[:5]]
+
+    rc, out, _ = git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"])
+    if rc == 0 and out.strip():
+        res["upstream"] = out.strip()
+        rc, out, _ = git(["rev-list", "--left-right", "--count", "@{upstream}...HEAD"])
+        if rc == 0:
+            parts = out.split()
+            res["behind"], res["ahead"] = int(parts[0]), int(parts[1]) if len(parts) > 1 else 0
+        else:
+            res["behind"] = res["ahead"] = None
+    else:
+        res["upstream"] = None
+        res["behind"] = res["ahead"] = None
+
+    reasons = []
+    if res["dirty_count"]:
+        reasons.append(f"грязное дерево: {res['dirty_count']} пут(ей) "
+                       f"(staged={staged} unstaged={unstaged} untracked={untracked})")
+    if res["unmerged_count"]:
+        reasons.append(f"незавершённый merge: {res['unmerged_count']} unmerged-записей")
+    if res["conflict_markers"]:
+        reasons.append(f"конфликт-маркеры: {res['conflict_markers']} мест")
+    if res["merge_in_progress"]:
+        reasons.append("MERGE_HEAD присутствует — merge не завершён")
+    if res.get("behind"):
+        reasons.append(f"behind {res.get('upstream', 'origin')} на {res['behind']} — сначала merge")
+    res["reasons"] = reasons
+    res["verdict"] = "CLEAN" if not reasons else "DIRTY"
+    res["accepts_dirty_work"] = res["verdict"] == "CLEAN" and not res.get("behind")
+    return res
+
+
+def print_repo_human(res: dict) -> None:
+    if not res["is_repo"]:
+        print(f"⛔ {res['path']} — не git-репозиторий: {res.get('error', '?')}")
+        return
+    print(f"[✓] git-репо: {res['path']} (ветка {res['branch']}, head {res['head']})")
+    print(f"    dirty: {res['dirty_count']} (staged={res['staged']} "
+          f"unstaged={res['unstaged']} untracked={res['untracked']})")
+    for p in res["dirty_sample"]:
+        print(f"      {p}")
+    print(f"    unmerged: {res['unmerged_count']}  конфликт-маркеры: {res['conflict_markers']}"
+          f"  merge in progress: {'да' if res['merge_in_progress'] else 'нет'}")
+    up = res.get("upstream")
+    ahead, behind = res.get("ahead"), res.get("behind")
+    print(f"    upstream: {up or '—'}  ahead={'—' if ahead is None else ahead} "
+          f"behind={'—' if behind is None else behind}  fetch: {res.get('fetch', '?')}")
+    verdict = res["verdict"]
+    icon = "🧹" if verdict == "CLEAN" else "⚠️"
+    print(f"{icon} {verdict}: "
+          f"{'может принимать новую работу' if res['accepts_dirty_work'] else 'грязную работу не принимать'}")
+    for reason in res["reasons"]:
+        print(f"  · {reason}")
+
+
+# -------------------------------------------------------------------- main
+
+def main_preflight(argv: list) -> int:
+    full = bool(argv) and argv[0] == "full"
+    if full:
+        argv = argv[1:]
     parser = argparse.ArgumentParser(
-        description="vflight — единый preflight версионирования (freed + tree-cop)"
+        description="vflight — единый preflight версионирования (freed + tree-cop"
+                    + (" + memscan drill" if full else "") + ")"
     )
     parser.add_argument("--mine", action="append", default=[],
                         help="свой путь/префикс сессии для tree-cop (можно несколько)")
     parser.add_argument("--root", default=os.environ.get("VFLIGHT_ROOT", DEFAULT_ROOT))
     parser.add_argument("--json", action="store_true", help="JSON-вывод вместо человеческого")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     freed = check_freed(args.root)
     treecop = check_treecop(args.root, args.mine)
     result = combine(freed, treecop)
+    if full:
+        memscan = check_memscan(args.root)
+        result["memscan"] = memscan
+        if memscan["state"] != "ok":
+            result["verdict"] = "STOP"
+            reason = f"memscan: {memscan['reason']}"
+            if reason not in result["reasons"]:
+                result["reasons"].append(reason)
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -163,6 +344,34 @@ def main() -> int:
         print_human(result)
 
     return 0 if result["verdict"] == "GO" else 1
+
+
+def main_repo(argv: list) -> int:
+    parser = argparse.ArgumentParser(
+        description="vflight repo — кросс-репо preflight (только статус, без изменений)"
+    )
+    parser.add_argument("path", help="путь до git-репозитория")
+    parser.add_argument("--json", action="store_true", help="JSON-вывод вместо человеческого")
+    parser.add_argument("--no-fetch", action="store_true",
+                        help="не делать fetch origin (чисто пассивный статус)")
+    args = parser.parse_args(argv)
+
+    res = inspect_repo(args.path, fetch=not args.no_fetch)
+    if args.json:
+        print(json.dumps(res, ensure_ascii=False, indent=2))
+    else:
+        print_repo_human(res)
+
+    if not res["is_repo"]:
+        return 2
+    return 0 if res["verdict"] == "CLEAN" else 1
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    if argv and argv[0] == "repo":
+        return main_repo(argv[1:])
+    return main_preflight(argv)
 
 
 if __name__ == "__main__":
