@@ -101,8 +101,8 @@ timestamp: 2026-10-13
 | И-44 | `linaliapi-provider-canon` (implementation-done) | висит handoff | **DONE 2026-10-14: предпосылка спеки устарела — живой конфиг уже симлинк в канон с 09-06, diff пуст, 6/6 моделей, без ключа; менять нечего. Флаг закрыт: `apiKey` в блоке local-deepseek — заглушка локального бриджа, не секрет. Остаток за пользователем: рестарты TUI/GUI + проверка /models** |
 | И-45 | `ship-research-network` (proposed) | автор правит по handoff | **reviewer ISSUES 2026-10-14: 7 замечаний. Макс выбрал A: автору через Vault. Авторская сессия подтвердила получение handoff и планирует внести все 7 правок; ждём результат, затем повторный review/решение** |
 | И-46 | `coordination-bridge-freeze` (frozen) | проверить переносимое без возобновления | **Макс подтвердил оставить frozen. T-108/109/110 и permission execution не возобновлять. Сессия `Создание task-ветки по теме запроса` получила handoff; ответ о проверенном артефакте/переносимом принципе ожидается после её правок И-45. До этого ничего не портировать** |
-| И-47 | `bugfix-failure-rule` (proposed) | runtime запрещён до approval | **reviewer ISSUES 2026-10-14: 5 findings — rollback/fail-visible gate, B18 unknown/no-resend, status enum, redaction полей, hook coverage matrix. Runtime не тронут; текстовая правка остаётся отдельным шагом** |
-| И-48 | `bugfix-proactive-plugin` (draft) | реализация запрещена до reviewer→verifier | **reviewer ISSUES 2026-10-14: 6 findings — статус/approval, listener-vs-primary, V2 hooks, redaction, B18 receipts, coverage. Runtime не реализовывать; согласовать текст с BF-20261010-01** |
+| И-47 | `bugfix-failure-rule` (proposed) | runtime запрещён до approval | **текстовая ревизия по 5 findings завершена; reviewer CLEAR, verifier PASS 2026-10-14. Runtime не тронут, отдельный approval gate сохранён** |
+| И-48 | `bugfix-proactive-plugin` (draft) | реализация запрещена до reviewer→verifier | **reviewer ISSUES 2026-10-14: 6 findings — статус/approval, listener-vs-primary, V2 hooks, redaction, B18 receipts, coverage. В работе: согласованная текстовая ревизия; runtime не реализовывать** |
 
 ## Вынесено из очереди этого центра (решение пользователя)
 
