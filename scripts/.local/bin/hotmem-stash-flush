@@ -1,0 +1,142 @@
+#!/bin/bash
+# hotmem-stash-flush — перенос полки черновиков prompt.stash в горячую память.
+#
+# Полка: ~/.local/state/opencode/prompt-stash.jsonl (JSONL, по строке на
+# черновик: {"prompt":{"text":"..."},"timestamp":...}).
+# Приёмник: hotmem state --key "draft:<id>", где id = timestamp записи
+# (или порядковый номер, если timestamp нет).
+#
+# Правила:
+#   - пустой текст пропускается;
+#   - тело длиннее MAX_BODY байт режется с пометкой [обрезано];
+#   - строки, похожие на секреты, никогда не пишутся (пропуск + предупреждение).
+#
+# Использование:
+#   hotmem-stash-flush [--file PATH] [--session ID] [-n|--dry-run] [--limit N]
+#
+# Коды возврата: 0 успех (в т.ч. «полка пуста — писать нечего»),
+# 1 нет файла полки / нет записей, 2 ошибка ввода.
+
+set -euo pipefail
+
+STASH_DEFAULT="${HOME}/.local/state/opencode/prompt-stash.jsonl"
+HOTMEM="${HOTMEM:-${HOME}/.local/bin/hotmem}"
+MAX_BODY=3500
+DRY_RUN=0
+STASH_FILE="${STASH_FILE:-$STASH_DEFAULT}"
+SESSION_ID="${HOTMEM_SESSION:-}"
+LIMIT=0
+
+die() { echo "Ошибка: $*" >&2; exit 1; }
+log() { echo "[$(date +%H:%M:%S)] $*"; }
+
+usage() {
+    cat <<'EOF'
+hotmem-stash-flush — полка prompt.stash → hotmem draft:<id>
+
+Флаги:
+  --file PATH    файл полки (по умолчанию ~/.local/state/opencode/prompt-stash.jsonl)
+  --session ID   session id для hotmem state
+  --limit N      обработать не более N записей (0 = все)
+  -n, --dry-run  только показать, что было бы записано
+  -h, --help     эта справка
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --file) STASH_FILE="${2:?нужен путь}"; shift 2 ;;
+        --file=*) STASH_FILE="${1#--file=}"; shift ;;
+        --session) SESSION_ID="${2:?нужен id}"; shift 2 ;;
+        --session=*) SESSION_ID="${1#--session=}"; shift ;;
+        --limit) LIMIT="${2:?нужно число}"; shift 2 ;;
+        --limit=*) LIMIT="${1#--limit=}"; shift ;;
+        -n|--dry-run) DRY_RUN=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) die "неизвестный флаг: $1 (см. --help)" ;;
+    esac
+done
+
+[ -f "${STASH_FILE}" ] || { log "Полка не найдена: ${STASH_FILE} — писать нечего"; exit 1; }
+command -v python3 >/dev/null || die "нужен python3"
+[ "${DRY_RUN}" -eq 1 ] || [ -x "${HOTMEM}" ] || die "hotmem не найден: ${HOTMEM}"
+
+# Выгружаем записи полки в TSV: id \t text_b64. Пустые отсеиваются в python.
+dump_entries() {
+    python3 - "$STASH_FILE" "$LIMIT" <<'PYEOF'
+import base64, json, sys
+path, limit = sys.argv[1], int(sys.argv[2])
+n = 0
+with open(path, encoding="utf-8") as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        text = (obj.get("prompt") or {}).get("text", "") if isinstance(obj.get("prompt"), dict) else obj.get("text", "")
+        if not isinstance(text, str):
+            text = str(text)
+        if not text.strip():
+            continue
+        ts = obj.get("timestamp") or ""
+        n += 1
+        ident = str(ts) if ts else str(n)
+        if limit and n > limit:
+            break
+        print(f"{ident}\t{base64.b64encode(text.encode('utf-8')).decode('ascii')}")
+PYEOF
+}
+
+# Эвристика секрета: грубая, hotmem сверху всё равно откажет (rc=3).
+looks_like_secret() {
+    local text="$1"
+    grep -qiE '(api[_-]?key|secret|password|passwd|passphrase|token)[[:space:]]*[:=]|sk-(ant|openai|live)|gh[pousr]_|xox[bap]-|AKIA[0-9A-Z]{16}|Bearer [A-Za-z0-9._~+/-]+' <<<"${text}"
+}
+
+written=0
+skipped_empty=0
+skipped_secret=0
+total=0
+
+while IFS=$'\t' read -r ident b64; do
+    [ -n "${ident:-}" ] || continue
+    total=$((total + 1))
+    text="$(printf '%s' "${b64}" | base64 -d 2>/dev/null)" || { log "Запись ${ident}: не декодировалась — пропуск"; continue; }
+    [ -n "$(printf '%s' "${text}" | tr -d '[:space:]')" ] || { skipped_empty=$((skipped_empty + 1)); continue; }
+    if looks_like_secret "${text}"; then
+        log "Запись ${ident}: похоже на секрет — пропуск (секреты не пишем)"
+        skipped_secret=$((skipped_secret + 1))
+        continue
+    fi
+    # Режем тело больше MAX_BODY байт (журнал hotmem ≤ 4 КБ на строку с обвязкой).
+    if [ "$(printf '%s' "${text}" | wc -c)" -gt "${MAX_BODY}" ]; then
+        text="$(printf '%s' "${text}" | head -c "${MAX_BODY}")"$'\n[обрезано: исходник длиннее 3500 байт]'
+        log "Запись ${ident}: обрезана до ${MAX_BODY} байт"
+    fi
+    key="draft:${ident}"
+    if [ "${DRY_RUN}" -eq 1 ]; then
+        log "[dry-run] ${key}: ${text:0:80}..."
+        written=$((written + 1))
+        continue
+    fi
+    args=(state --key "${key}" --tag stash-flush)
+    [ -n "${SESSION_ID}" ] && args+=(--session "${SESSION_ID}")
+    if printf '%s' "${text}" | "${HOTMEM}" "${args[@]}" >/dev/null 2>&1; then
+        log "Записано: ${key}"
+        written=$((written + 1))
+    else
+        rc=$?
+        if [ "${rc}" -eq 3 ]; then
+            log "Запись ${ident}: hotmem отказал (секрет/длина) — пропуск"
+            skipped_secret=$((skipped_secret + 1))
+        else
+            log "Запись ${ident}: hotmem вернул ${rc} — пропуск"
+        fi
+    fi
+done < <(dump_entries)
+
+log "Готово: всего ${total}, записано ${written}, пропущено секретов ${skipped_secret}, пустых ${skipped_empty}"
+[ "${total}" -gt 0 ] || exit 1
