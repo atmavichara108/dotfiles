@@ -102,8 +102,8 @@ handoff куратору Vault.
 |---|---|---|
 | Потерянные черновики | Инцидент закрыт; оба восстановленных текста сохранены | [`docs/handoffs/2026-10-12-recovered-drafts.md`](handoffs/2026-10-12-recovered-drafts.md), [отчёт инцидента](../.opencode/memory/session-reports/2026-10-12-draft-loss-recovery.md) |
 | Причина `Unknown agent: researcher` | Закрыто, независимая приёмка PASS | [отчёт и диагностика](../.opencode/memory/session-reports/2026-10-13-agent-registry-stale-after-reload.md) |
-| `hotmem` v1 | Реализован, самопроверка и независимая приёмка PASS; **пока не установлен как команда** | [спека](specs/hot-memory-v1.md); файлы `scripts/.local/bin/hotmem*` |
-| `helpctl` / `helpreg` v1 | Самопроверка и независимая приёмка PASS; пакет застоуен, `helpctl` доступен | [спека](specs/help-registry-v1.md); реестр содержит 16 записей |
+| `hotmem` v1 | Реализован, самопроверка и независимая приёмка PASS; **пока не установлен как команда** | [спека](specs/hot-memory-v1.md); [evidence приёмки](../.opencode/memory/session-reports/2026-10-13-hotmem-helpreg-acceptance.md); файлы `scripts/.local/bin/hotmem*` |
+| `helpctl` / `helpreg` v1 | Самопроверка и независимая приёмка PASS; пакет застоуен, `helpctl` доступен | [спека](specs/help-registry-v1.md); [evidence приёмки](../.opencode/memory/session-reports/2026-10-13-hotmem-helpreg-acceptance.md); реестр содержит 16 записей |
 | Основная волна | 43 коммита выложены в `main` и `origin/main` (на 2026-10-13, `fc009ff`) | Текущая рабочая ветка — `task/next-20261013` |
 | Роль `tree-cop` | Уточнено: коп делает preflight; switch/merge/push — primary | Коммит `5dd7664` в текущей task-ветке; ещё не выложен в `main` |
 
@@ -119,6 +119,9 @@ handoff куратору Vault.
 2. Установить `hotmem` отдельной Stow-операцией, исключив чужие `tg-*.py`.
 3. И-13: автосохранение черновика TUI; И-14: оптимизация и корректные замеры
    «ока» на большом журнале — преимущество на текущем объёме не доказано.
+4. И-41: восстановить контекст почтовой работы; в Vault уже есть ручной
+   `email-capture`, но Gmail-подключение не подтверждено. Подробный кандидат
+   передан куратору через [handoff](handoffs/2026-10-13-email-assistant-candidate.md).
 
 ## Как поддерживать ранбук
 
