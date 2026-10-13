@@ -4,7 +4,7 @@ title: Программное правило «сбой → багфикс»
 spec-home: dotfiles/docs/specs/
 owner: sysop
 date: 2026-10-10
-status: proposed — ревизия после reviewer approve-with-nits (2026-10-13); ждёт verifier; runtime реализация запрещена до отдельного approval Рудры
+status: reviewed — reviewer approve-with-nits + verifier PASS (9/9, 2026-10-13); ожидает approval Рудры; runtime реализация запрещена до него
 task-id: BF-20261010-01
 basis: quoted — приложенный Рудры файл `bugfix-extdir-and-rule-20261010.txt`
        (в сообщении назван BAGFIX-LETTER), 2026-10-10;
