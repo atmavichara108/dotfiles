@@ -1,0 +1,41 @@
+BAGFIX-LETTER (от librarian/Vault, прямое поручение Rudra). Два пункта: (1) инцидент прав, (2) «сбой→багфикс» как нерушимое ПРОГРАММНОЕ правило. Запиши в реестр мастерской по форме symptom→repro→root cause→fix→evidence→status. Чини в своей task-ветке dotfiles, reviewer→verifier, без --force, чужое не трогай.
+
+== INC — external_directory блокирует операции вне workspace-корня ==
+- SYMPTOM: `git push` (и даже `git remote get-url origin`), а также запись файла
+  инструментом write в /tmp/opencode, падают с
+  {"type":"permission.rejected","message":"Permission denied: external_directory"},
+  когда цель/cwd вне workspace-корня сессии.
+- КОНТЕКСТ: сессия librarian, workspace root = /home/rudra/Projects/OpenCode-Vault.
+  Рабочий worktree = /home/rudra/Projects/OpenCode-Vault-tasks/ssa-bootstrap-20261010
+  (ветка task/ssa-bootstrap-20261010, общий .git).
+- REPRO A (git): cwd = тот worktree; `git push -u origin task/ssa-bootstrap-20261010`
+  → permission.rejected external_directory. В ТОМ ЖЕ cwd `git add`/`git commit` минутой
+  ранее ПРОШЛИ. Workaround: из workspace-корня
+  `git push origin task/ssa-bootstrap-20261010:task/ssa-bootstrap-20261010` → успех.
+- REPRO B (write-tool): write в /tmp/opencode/<file> → permission.rejected external_directory,
+  хотя раньше в сессии /tmp/opencode писался; shell `cat > /tmp/opencode/...` работает.
+- ROOT CAUSE (гипотеза, проверить): гейт external_directory непоследователен —
+  (1) для git-worktree путь-указатель `.git` ведёт в <main>/.git/worktrees/<name>
+  вне allow-скоупа; (2) write-tool и push оцениваются строже, чем add/commit/shell;
+  (3) возможная гонка/непокрытый матчер. У primary есть external_directory: allow
+  (+secret-deny), но allow не применяется к этим операциям. Нужно пиновать точную
+  причину (матчер external_directory / плагин-гейт) и починить: легитимные операции
+  в sibling-worktree и во временных каталогах не блокировать, deny оставить только
+  на секретах (.env*, credentials.json, *.pem, *.key, id_rsa*, id_ed25519*).
+- СВЕРКА: убедись, что у ВСЕХ primary-агентов (sysop/librarian/top и т.д.) и
+  субагентов external_directory разрешает кросс-проект/worktree чтение+операции,
+  deny только секреты.
+
+== TASK — «любой сбой → багфикс» как нерушимое программное правило ==
+Rudra требует: как только возникают проблемы/сбои/дефекты — автоматически на багфикс,
+письмом в сессию мастерской по канону. Нужно ПРОГРАММНОЕ enforcement (как tree-hygiene
+гейты), не только текст в AGENTS. Спроектируй/внедри:
+- канонический канал: letter в bugfix-сессию по шаблону реестра;
+- enforcement (хук/плагин/обёртка): при классе ошибок инфры (permission.rejected,
+  tool/channel failure, plugin/script error, model/quota) маршрут на багфикс
+  обязателен/виден, а не опционален;
+- связать с Vault-методом incident-fix (канон) и шаблоном/командой в dotfiles;
+- границы: не ломать штатную работу, без ложных срабатываний, стоимость фикса ≤
+  стоимость сбоя; дизайн-требующее — задача с ID, status proposed до approval Rudra.
+
+Верни: пути правок/спека, ветку, evidence (repro→pass), что осталось open.
