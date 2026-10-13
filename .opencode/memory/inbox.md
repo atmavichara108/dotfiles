@@ -38,7 +38,7 @@ timestamp: 2026-10-13
 | И-10 | **Исследование до спеки**: сочетание с существующим, выгоды, риски, узкие места, варианты | researcher | ✔ `2026-10-13-hot-memory-viability.md` |
 | И-11 | Спека v1: журнал (append-only, fsync) + индекс (ключ/путь/тег/время) + CLI (put/get/list/grep); RAM — только кеш | sysop | ✔ `docs/specs/hot-memory-v1.md` |
 | И-12 | Реализация v1 + приёмка верификатором | bash-dev → verifier | ✔ 7/7, 52/52; verifier PASS; **ещё не установлен как команда** — evidence: `session-reports/2026-10-13-hotmem-helpreg-acceptance.md` |
-| И-13 | Автосейв черновика TUI в журнал | bash-dev | **СТОП канала: 3 вызова упали `tool_choice` (2 до + 1 после рестарта); задача не начиналась; нужен workaround с approval** |
+| И-13 | Автосейв черновика TUI в журнал | bash-dev | **BLOCKED как плагин: текста неотправленного поля ввода нет в API V2 (проверены event-manifest ~100 типов, TUI-SDK, session API; `session.idle` несёт только ID). Нужен workaround: полка prompt.stash на диске + периодический flush в hotmem** |
 | И-14 | Замеры «ока»: поиск и выдача против чтения реестров целиком | verifier | **PASS: оптимизация find_entry (байтовый предфильтр), selftest 51/52, round-trip/scope/doctor на изолированном корне PASS; like-for-like ~11-12x правдоподобен, но независимо не измерен (баг бенч-скрипта verifier) + doctor штатного корня — оговорки постфактум** |
 
 ## Волна 2 — агентский слой: «Формовочная»
