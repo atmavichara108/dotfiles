@@ -7,7 +7,14 @@ steps: 15
 permission:
   task: deny
   doom_loop: allow
-  external_directory: allow
+  external_directory:
+    "*": allow
+    "**/.env*": deny
+    "**/credentials.json": deny
+    "**/*.pem": deny
+    "**/*.key": deny
+    "**/id_rsa*": deny
+    "**/id_ed25519*": deny
   edit: deny
   webfetch: allow
   read: allow

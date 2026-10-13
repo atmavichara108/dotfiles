@@ -6,7 +6,14 @@ temperature: 0.2
 steps: 30
 permission:
   doom_loop: ask
-  external_directory: allow
+  external_directory:
+    "*": allow
+    "**/.env*": deny
+    "**/credentials.json": deny
+    "**/*.pem": deny
+    "**/*.key": deny
+    "**/id_rsa*": deny
+    "**/id_ed25519*": deny
   edit: allow
   bash:
     "*": allow

@@ -8,7 +8,14 @@ permission:
   edit: deny
   task: deny
   read: allow
-  external_directory: allow
+  external_directory:
+    "*": allow
+    "**/.env*": deny
+    "**/credentials.json": deny
+    "**/*.pem": deny
+    "**/*.key": deny
+    "**/id_rsa*": deny
+    "**/id_ed25519*": deny
   webfetch: allow
   glob: allow
   grep: allow

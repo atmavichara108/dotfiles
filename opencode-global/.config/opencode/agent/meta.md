@@ -14,6 +14,15 @@ permission:
   task:
     reviewer: allow
     verifier: allow
+  external_directory:
+    "*": allow
+    "**/.env*": deny
+    "**/credentials.json": deny
+    "**/*.pem": deny
+    "**/*.key": deny
+    "**/id_rsa*": deny
+    "**/id_ed25519*": deny
+
   bash:
     "*": allow
     "sudo*": deny

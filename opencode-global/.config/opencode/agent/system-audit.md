@@ -11,6 +11,15 @@ permission:
   glob: allow
   grep: allow
   webfetch: deny
+  external_directory:
+    "*": allow
+    "**/.env*": deny
+    "**/credentials.json": deny
+    "**/*.pem": deny
+    "**/*.key": deny
+    "**/id_rsa*": deny
+    "**/id_ed25519*": deny
+
   bash:
     "*": ask
     "sudo *": deny

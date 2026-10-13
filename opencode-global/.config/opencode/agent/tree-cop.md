@@ -7,6 +7,15 @@ steps: 20
 permission:
   edit: deny
   task: deny
+  external_directory:
+    "*": allow
+    "**/.env*": deny
+    "**/credentials.json": deny
+    "**/*.pem": deny
+    "**/*.key": deny
+    "**/id_rsa*": deny
+    "**/id_ed25519*": deny
+
   bash:
     "*": deny
     "python3 *": allow
