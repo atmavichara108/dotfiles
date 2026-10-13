@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""vflight — единый preflight версионирования (И-30 Волна 3).
+
+Склеивает два существующих детектора в один вердикт STOP/GO, ничего не
+переписывая:
+  1. tools/git-agent/freed.py check   — владение деревом / leases / main-гейт
+  2. tree-cop ship-check --mine ...   — атрибуция mine/foreign + origin_main
+
+GO только если ОБА чисты; STOP в худшем из вердиктов. Fail-closed: недоступный
+инструмент = STOP, не молчаливый проход.
+
+Usage:
+  vflight [--json] [--mine PATH]... [--root DIR]
+
+Exit: 0 = GO, 1 = STOP, 2 = внутренняя ошибка (инструмент не найден/упал).
+Только метаданные: пути, счётчики, вердикты. Содержимое файлов не читается.
+Секрет-подобные пути маскируются (sha256 имени, как в memscan).
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+
+DEFAULT_ROOT = "/home/rudra/dotfiles"
+SECRET_MARKERS = re.compile(
+    r"(token|key|password|secret|\.env|credentials|cookie|id_rsa|id_ed25519|\.pem)",
+    re.IGNORECASE,
+)
+
+
+def mask_path(path: str) -> str:
+    """Имя файла похоже на секрет → печатаем sha256-хэш имени, не имя."""
+    name = os.path.basename(path)
+    if SECRET_MARKERS.search(name):
+        digest = hashlib.sha256(name.encode()).hexdigest()[:12]
+        return f"{os.path.dirname(path)}/<скрыто: похоже на секрет> sha256:{digest}"
+    return path
+
+
+def run_tool(cmd: list, timeout: int = 30):
+    """Запускает инструмент, возвращает (rc, stdout, stderr). Fail-closed снаружи."""
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, check=False
+        )
+        return proc.returncode, proc.stdout, proc.stderr
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as exc:
+        return None, "", f"{type(exc).__name__}: {exc}"
+
+
+def check_freed(root: str) -> dict:
+    """freed.py check: exit 0=ok, 1=warn, 2=blocked. Любая ошибка запуска = blocked."""
+    freed = os.environ.get("VFLIGHT_FREED", os.path.join(root, "tools/git-agent/freed.py"))
+    if not os.path.isfile(freed):
+        return {"tool": "freed", "state": "blocked",
+                "reason": f"инструмент не найден: {freed}"}
+    rc, out, err = run_tool(["python3", freed, "check"])
+    if rc is None:
+        return {"tool": "freed", "state": "blocked", "reason": f"запуск не удался: {err}"}
+    line = (out or err or "").strip().splitlines()[0] if (out or err).strip() else ""
+    state = {0: "ok", 1: "warn"}.get(rc, "blocked")
+    return {"tool": "freed", "state": state, "rc": rc, "reason": line or f"exit={rc}"}
+
+
+def check_treecop(root: str, mine: list) -> dict:
+    """tree-cop ship-check --mine ...: JSON verdict GO/STOP."""
+    treecop = os.environ.get(
+        "VFLIGHT_TREECOP",
+        os.path.join(root, "opencode-global/.config/opencode/tools/tree-cop/tree-cop.py"),
+    )
+    if not os.path.isfile(treecop):
+        return {"tool": "tree-cop", "state": "blocked",
+                "reason": f"инструмент не найден: {treecop}"}
+    cmd = ["python3", treecop, "ship-check"]
+    for path in mine:
+        cmd += ["--mine", path]
+    rc, out, err = run_tool(cmd)
+    if rc is None:
+        return {"tool": "tree-cop", "state": "blocked", "reason": f"запуск не удался: {err}"}
+    try:
+        data = json.loads(out)
+    except json.JSONDecodeError:
+        return {"tool": "tree-cop", "state": "blocked",
+                "reason": f"не-JSON вывод: {(out or err)[:120]}"}
+    verdict = data.get("verdict", "STOP")
+    reasons = list(data.get("reasons", []))
+    foreign = list(data.get("foreign", []))
+    origin = data.get("origin_main", {})
+    if origin.get("behind", 0) > 0:
+        merge_reason = f"origin/main ушёл вперёд на {origin['behind']} — сначала merge"
+        if merge_reason not in reasons:
+            reasons.append(merge_reason)
+        verdict = "STOP"
+    state = "ok" if verdict == "GO" else "blocked"
+    return {
+        "tool": "tree-cop",
+        "state": state,
+        "verdict": verdict,
+        "reasons": reasons,
+        "foreign_count": len(foreign),
+        "foreign_sample": [mask_path(p) for p in foreign[:5]],
+        "origin_main": origin,
+    }
+
+
+def combine(freed: dict, treecop: dict) -> dict:
+    """GO только если оба ok; иначе STOP с объединёнными причинами."""
+    states = [freed["state"], treecop["state"]]
+    verdict = "GO" if all(s == "ok" for s in states) else "STOP"
+    reasons = []
+    if freed["state"] != "ok":
+        reasons.append(f"freed [{freed['state']}]: {freed['reason']}")
+    if treecop["state"] != "ok":
+        for r in treecop.get("reasons", []):
+            if r not in reasons:
+                reasons.append(f"tree-cop: {r}")
+        if not treecop.get("reasons"):
+            reasons.append(f"tree-cop [{treecop['state']}]: {treecop['reason']}")
+    return {"verdict": verdict, "reasons": reasons, "freed": freed, "tree_cop": treecop}
+
+
+def print_human(result: dict) -> None:
+    freed, tc = result["freed"], result["tree_cop"]
+    mark = "✓" if freed["state"] == "ok" else "✗"
+    print(f"[{mark}] freed check    — {freed['state']}: {freed['reason']}")
+    mark = "✓" if tc["state"] == "ok" else "✗"
+    print(f"[{mark}] tree-cop        — {tc['state']}: verdict={tc.get('verdict', '—')}")
+    if tc.get("foreign_count"):
+        print(f"    чужих путей: {tc['foreign_count']}")
+        for path in tc["foreign_sample"]:
+            print(f"      {path}")
+    origin = tc.get("origin_main", {})
+    if origin:
+        print(f"    origin/main: ahead={origin.get('ahead', '?')} behind={origin.get('behind', '?')}")
+    verdict = result["verdict"]
+    icon = "✅" if verdict == "GO" else "⛔"
+    print(f"{icon} ИТОГ: {verdict}")
+    for reason in result["reasons"]:
+        print(f"  · {reason}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="vflight — единый preflight версионирования (freed + tree-cop)"
+    )
+    parser.add_argument("--mine", action="append", default=[],
+                        help="свой путь/префикс сессии для tree-cop (можно несколько)")
+    parser.add_argument("--root", default=os.environ.get("VFLIGHT_ROOT", DEFAULT_ROOT))
+    parser.add_argument("--json", action="store_true", help="JSON-вывод вместо человеческого")
+    args = parser.parse_args()
+
+    freed = check_freed(args.root)
+    treecop = check_treecop(args.root, args.mine)
+    result = combine(freed, treecop)
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print_human(result)
+
+    return 0 if result["verdict"] == "GO" else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

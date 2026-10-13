@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""Selftest vflight: стабы freed/tree-cop через VFLIGHT_FREED/VFLIGHT_TREECOP."""
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+VFLIGHT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vflight")
+PASS, FAIL = 0, 0
+
+
+def check(name, cond, evidence=""):
+    global PASS, FAIL
+    if cond:
+        PASS += 1
+        print(f"  [PASS] {name}")
+    else:
+        FAIL += 1
+        print(f"  [FAIL] {name} {evidence}")
+
+
+def stub_freed(rc: int, line: str) -> str:
+    return f"#!/usr/bin/env python3\nimport sys\nprint({line!r})\nsys.exit({rc})\n"
+
+
+def stub_treecop(verdict: str, reasons=None, foreign=None, behind=0, ahead=0) -> str:
+    data = {
+        "ok": verdict == "GO", "verdict": verdict,
+        "reasons": reasons or [], "foreign": foreign or [],
+        "skip_worktree": [], "mode_changes": [],
+        "origin_main": {"ahead": ahead, "behind": behind},
+    }
+    return f"#!/usr/bin/env python3\nimport json\nprint(json.dumps({data!r}))\n"
+
+
+def run(env_extra: dict) -> tuple:
+    env = dict(os.environ)
+    env.update(env_extra)
+    proc = subprocess.run(
+        [sys.executable, VFLIGHT, "--json"],
+        capture_output=True, text=True, env=env, timeout=30, check=False,
+    )
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        data = {}
+    return proc.returncode, data
+
+
+def main() -> int:
+    tmp = tempfile.mkdtemp(prefix="vflight-selftest.")
+    ok_freed = os.path.join(tmp, "freed_ok.py")
+    blocked_freed = os.path.join(tmp, "freed_blocked.py")
+    warn_freed = os.path.join(tmp, "freed_warn.py")
+    go_treecop = os.path.join(tmp, "treecop_go.py")
+    stop_treecop = os.path.join(tmp, "treecop_stop.py")
+    behind_treecop = os.path.join(tmp, "treecop_behind.py")
+    for path, body in [
+        (ok_freed, stub_freed(0, "OK: no blocks")),
+        (blocked_freed, stub_freed(2, "BLOCKED: main")),
+        (warn_freed, stub_freed(1, "WARN: lease")),
+        (go_treecop, stub_treecop("GO")),
+        (stop_treecop, stub_treecop("STOP", ["чужая грязь (2): a, b"], foreign=["a", "b"])),
+        (behind_treecop, stub_treecop("GO", behind=3, ahead=1)),
+    ]:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(body)
+        os.chmod(path, 0o755)
+
+    print("[1] оба ok → GO, exit 0")
+    rc, data = run({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": go_treecop})
+    check("verdict GO", data.get("verdict") == "GO", repr(data.get("verdict")))
+    check("exit 0", rc == 0, f"rc={rc}")
+
+    print("[2] freed blocked → STOP, exit 1")
+    rc, data = run({"VFLIGHT_FREED": blocked_freed, "VFLIGHT_TREECOP": go_treecop})
+    check("verdict STOP", data.get("verdict") == "STOP")
+    check("exit 1", rc == 1, f"rc={rc}")
+    check("freed state blocked", data.get("freed", {}).get("state") == "blocked")
+
+    print("[3] tree-cop STOP → STOP")
+    rc, data = run({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": stop_treecop})
+    check("verdict STOP", data.get("verdict") == "STOP")
+    check("reasons включают чужую грязь",
+          any("чужая грязь" in r for r in data.get("reasons", [])))
+
+    print("[4] расхождение: freed warn + tree-cop GO → STOP (худший)")
+    rc, data = run({"VFLIGHT_FREED": warn_freed, "VFLIGHT_TREECOP": go_treecop})
+    check("verdict STOP (warn не проход)", data.get("verdict") == "STOP")
+
+    print("[5] origin behind>0 → причина merge в STOP-причинах")
+    rc, data = run({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": behind_treecop})
+    check("verdict STOP (behind)", data.get("verdict") == "STOP",
+          repr(data.get("verdict")))
+    check("причина merge присутствует",
+          any("merge" in r for r in data.get("reasons", [])))
+
+    print("[6] инструмент отсутствует → fail-closed STOP")
+    rc, data = run({"VFLIGHT_FREED": os.path.join(tmp, "missing.py"),
+                    "VFLIGHT_TREECOP": go_treecop})
+    check("verdict STOP", data.get("verdict") == "STOP")
+    check("причина: инструмент не найден",
+          any("не найден" in r for r in data.get("reasons", [])))
+
+    print("[7] секрет-маскирование чужих путей")
+    secret_tc = os.path.join(tmp, "treecop_secret.py")
+    with open(secret_tc, "w", encoding="utf-8") as fh:
+        fh.write(stub_treecop("STOP", ["чужая грязь (1)"],
+                              foreign=["secrets/prod-api-token.json"]))
+    rc, data = run({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": secret_tc})
+    sample = " ".join(data.get("tree_cop", {}).get("foreign_sample", []))
+    check("имя-секрет замаскировано", "prod-api-token.json" not in sample, sample)
+    check("sha256-метка присутствует", "sha256:" in sample, sample)
+
+    print("[8] человеческий вывод содержит ИТОГ")
+    env = dict(os.environ)
+    env.update({"VFLIGHT_FREED": ok_freed, "VFLIGHT_TREECOP": go_treecop})
+    proc = subprocess.run([sys.executable, VFLIGHT],
+                          capture_output=True, text=True, env=env,
+                          timeout=30, check=False)
+    check("ИТОГ: GO в выводе", "ИТОГ: GO" in proc.stdout, proc.stdout[:200])
+
+    print(f"\nSELFCHECK: {'OK' if FAIL == 0 else 'FAIL'} — PASS={PASS} FAIL={FAIL}")
+    return 0 if FAIL == 0 else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
