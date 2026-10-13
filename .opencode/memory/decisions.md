@@ -658,3 +658,65 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 поздно; спасение делается до drop, а не после.
 **Последствия:** работа мёртвых сессий перестаёт теряться; цена — 5 минут на спасение
 в конце сессии. Дешевле, чем повторная работа. `AGENTS.md` § tree-hygiene дополнен п.8.
+
+---
+
+### Flush 2026-10-13: BF-приёмка + Phase 1 capture-плагина, INC-5 residual закрыт
+**Контекст:** веха 2 — реализация BF-20261010-01 после approval («реализуй»); инженерный
+центр (`ses_ece7b76c8…`) на этой же сессии shipshop ship-research-network; параллельно
+И-39/И-39+ хоткеи. Волна 2 (И-20..И-23) смержена роутом wave-галереи.
+**Решения:**
+- **BF-20261010-01 прошла полный state-цикл приёмки текстовой ревизией:**
+  reviewer → approve-with-nits (BLOCKER нет; ISSUE-1..4: deadline 600 с константой
+  спеки, честный программный охват = capture+сигнал, basis-архив BAGFIX-LETTER в
+  `docs/specs/basis/`, замещение резолюции 2 draft-спеки для канала «сбой→мастерская»)
+  → verifier **PASS 9/9** (YAML, секреты, непротиворечивость 600с vs 360с/TTL 30мин,
+  закрытый список переходов статуса, sha256 basis==источнику, garbage-guard, границы).
+  Статус: `reviewed — ожидает approval`. Approval получен этой сессией («реализуй»).
+- **Фаза 1 capture-плагина реализована** (зона opencode-global):
+  `plugins/bugfix-capture.ts` + `lib/bugfix-capture-helpers.js` + selftest 13/13.
+  Источники — только подтверждённые V2 hooks: `tool.execute.after status=error`,
+  `session.hook("retry")`, stream `permission.replied reply=reject` (`[проверить]`
+  — точное значение reply отказа в рантайме, пока не смоукено рестартом).
+  Закреплено: zero-LLM, metadata-only, fail-closed redaction (код отказа без значения),
+  Scope Guard по резолюции 8 репо, атомарная запись tmp+rename (урок T-180),
+  ротация >1МБ/>5000 строк, retention 90 дней в `_archive/`. `BUGFIX_PLUGIN=off` →
+  полная пассивность (требование S13 отключаемости без слома сессии). Плагин НИКОГО
+  не уведомляет и не dispatch-ит — маршрут=обязанность primary workflow.
+- **Канон оформления сбоя, зафиксирован в шаблоне** `docs/incident-record-template.md`
+  и действующем `.opencode/command/bugfix.md`: capture-сигнал → incident record →
+  route из S6 → verifier приёмка. `deadline` квитанции B18 = 600 с константой.
+  Инвариант: `status: open` ≠ `fixed`, dispatch статус не путаем с fixed.
+- **INC-5 residual (1) закрыт живым прогоном**: write/push из корня волта работает
+  (python-write+unlink OK, `git push --dry-run` rc=0). Исключение: chained shell rm
+  в корне волта штатно отбит гейтом (не дефект). Остался (2): conflict-check при
+  merge `pipboy-rebuild`, чтобы не откатить `cac2a00`.
+- **Скоуп-гейт пересёк мою ветку**: параллельная сессия закоммитила свой `8850320`
+  (zsh И-39) + `ca3132f` (И-39+) прямо поверх `task/bf-accept-20261013`. При ship их
+  увезёт в main — в merge сообщении пометить чужие; зонный гейт это пропустит
+  (fix(zsh) — отдельный коммит, ok), но убедиться, что их zsh/.zshrc закоммичен и
+  в дереве чисто до merge. Чужие файлы в дереве (`.opencode/command/inbox.md`,
+  `scripts/.local/bin/memscan*`) — рассматривать только при ship (tree-cop preflight).
+- **OpenCode plugin API (V2) — подтверждённые каноны, взятые в расчёт:**
+  - плагины загружаются из `~/.config/opencode/plugins/` (у нас = stow-symlink на
+    `opencode-global/.config/opencode/plugins/`); формат `Plugin.define({id, setup(ctx)})`;
+  - `ctx.storage` — durable scalar storage, append-only; приемлем для capture только
+    как последний критический буфер, не как полноценный capture-log;
+  - `ctx.event.subscribe()` — реальные типы: `session.created`, `message.updated`,
+    `permission.asked`/`permission.replied`; `requestID` только на asked, correlate
+    по нему; на replied поля `reply` и `sessionID` моим плагином не прочитаны
+    полностью; `context`/`compaction`/`generate` session hooks подтверждены;
+  - plugin API не маскирует отсутствие hook'а события как «заглушка»:
+    нет typed API → события нет → честный `[проверить]` + workflow fallback (по BF §3).
+**Evidence:** fixtures-selftest 13/13 (`node lib/bugfix-capture-helpers.test.mjs`);
+bun build ок; secrets/latin-cyrillic-mix scan чисто; шаги ship до PASS не проходить.
+**Open (resume на новом заходе, приоритет как в продолжении):**
+1. smoke smoke live после рестарта TUI (плагин стартует с сессией): спровоцировать
+   tool-отказ → проверить файл `~/.local/state/opencode/incidents/`, задокументировать
+   `[проверить]`-поля, иначе у задания BF-20261010-01 все source НЕ подтверждены live.
+2. ADR-021 (проактивный capture) + строка в AGENTS-кратке для агентов (S16.4) —
+   пуст в очереди; обязательные deliverables S16.
+3. Коммиты по зонам: opencode (плагин+helpers+tests), command (bugfix.md), docs
+   (incident-record-template). `verifier` это всё должно отпроводить, пока НЕ UP.
+4. Фаза 2/3 (route/notify, ack-conformance) — НЕ реализовано; своего scope'а.
+5. Ship: preflight tree-cop; чужой WIP `.opencode/*-stash-foreign + pop`.
