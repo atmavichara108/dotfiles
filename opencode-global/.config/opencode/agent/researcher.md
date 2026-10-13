@@ -10,6 +10,14 @@ permission:
   read: allow
   glob: allow
   grep: allow
+  external_directory:
+    "*": allow
+    "**/.env*": deny
+    "**/credentials.json": deny
+    "**/*.pem": deny
+    "**/*.key": deny
+    "**/id_rsa*": deny
+    "**/id_ed25519*": deny
   webfetch: allow
   websearch: allow
   bash:
