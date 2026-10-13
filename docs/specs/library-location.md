@@ -8,7 +8,7 @@ title: Библиотека (NotebookLM) — оформление как лок�
 status: proposed
 related:
   - docs/specs/ship-research-network.md
-  - docs/specs/engineering-center-location.md
+  - docs/specs/done/engineering-center-location.md
 timestamp: 2026-10-13
 ---
 
@@ -23,9 +23,7 @@ timestamp: 2026-10-13
 
 ## Существующая база (что закрепляется, а не строится)
 
-- Слово Rudra 2026-10-13: «Библиотека с интеграцией памяти, предположительно
-  второй brain — NotebookLM» (кандидат-локация; реестр исследований
-  OpenCode-Vault, `06-Audits/2026-10-13-ship-research-registry.md`).
+- Пересказ слова Rudra 2026-10-13 (недословно; источники: реестр OpenCode-Vault 06-Audits/2026-10-13-ship-research-registry.md — «интеграция памяти, предположительно второй brain на NotebookLM (Google)», и session-log волта 2026-10-13): Библиотека — локация с интеграцией памяти, предположительно второй brain на NotebookLM (Google). Кандидат-локация.
 - NotebookLM — внешний сервис Google (notebooklm.google.com); «второй brain» —
   роль инструмента, не лор.
 - Память экосистемы: `04-Memory/` волта — SSOT памяти; Библиотека — слой
@@ -74,6 +72,6 @@ timestamp: 2026-10-13
 
 - [ ] файл в `spec-home` (`docs/specs/library-location.md`);
 - [ ] имя, компетенция, статус кандидата закреплены;
-- [ ] граница «хранит и находит; не исследует и не внедряет» закреплена;
+- [ ] граница «хранит и находит; не исследует, не внедряет, не канонизирует» закреплена;
 - [ ] `kind: task`, `status: proposed`, реализацию сверх описанного не разрешает;
 - [ ] после verifier PASS + commit/merge в main — перенос в `docs/specs/done/`.
