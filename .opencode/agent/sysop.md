@@ -112,15 +112,21 @@ permission:
     "xinput*": allow
     "xmodmap*": allow
     "rm*": deny
-    "sudo*": deny
+    "sudo*": ask
+    "sudo pacman *": deny
+    "sudo systemctl start*": ask
+    "sudo systemctl enable*": ask
+    "sudo systemctl stop*": deny
+    "sudo systemctl restart*": deny
+    "sudo systemctl disable*": deny
     "pacman -S*": deny
     "pacman -R*": deny
     "yay*": deny
     "paru*": deny
-    "systemctl start*": deny
+    "systemctl start*": ask
     "systemctl stop*": deny
     "systemctl restart*": deny
-    "systemctl enable*": deny
+    "systemctl enable*": ask
     "systemctl disable*": deny
     "chmod*": deny
     "chown*": deny

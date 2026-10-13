@@ -10,6 +10,8 @@ permission:
     "/home/rudra/Projects/AndroidOS/coordination/bridge/evidence/**": allow
   external_directory:
     "*": deny
+    "/home/rudra/Projects/AndroidOS/coordination/bridge": allow
+    "/home/rudra/Projects/AndroidOS/coordination/bridge/**": allow
     "/home/rudra/Projects/AndroidOS/coordination/bridge/tasks/**": allow
     "/home/rudra/Projects/AndroidOS/coordination/bridge/handoffs/**": allow
     "/home/rudra/Projects/AndroidOS/coordination/bridge/evidence/**": allow
