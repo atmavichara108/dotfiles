@@ -1,6 +1,14 @@
 {
   "$schema": "https://raw.githubusercontent.com/UltraDeepAutomation/M-Code/main/MCodeDesktop/schema/config.json",
   "provider": {
+    "newapi": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "New API Gateway",
+      "options": {
+        "baseURL": "http://localhost:3000/v1"
+      },
+      "models": ["free-code", "free-general", "free-vision"]
+    },
     "linaliapi": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "LinaliAPI",
