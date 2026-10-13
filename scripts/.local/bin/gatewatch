@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""gatewatch — внешний наблюдатель гейтов OpenCode (bootstrap-дыра BF-20261010-01).
+
+Падающий плагин не может поймать собственное падение: gatewatch — процесс ВНЕ
+OpenCode, читает серверный лог incremental (позиция в state-файле), ловит классы
+сбоев, дедуплицирует, пишет metadata-only JSONL, шлёт notify-send.
+
+zero-LLM, metadata-only: excerpt режется, абсолютные пути заменяются <path>,
+секрет-подобные строки не пишутся (fail-closed как в bugfix-capture-helpers).
+
+Correlation_id = sha256(class|slug|hint)[:24] — та же схема, что у capture-журнала.
+"""
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+LOG_CANDIDATES = [
+    Path.home() / ".local/share/opencode/log/opencode.log",
+]
+STATE_DIR = Path.home() / ".local/state/opencode/incidents"
+CURSOR = STATE_DIR / "gatewatch.cursor"
+GATE_FILE = STATE_DIR / "gatewatch.djsonl"
+DEDUP_FILE = STATE_DIR / "gatewatch.dedup.json"
+MAX_EXCERPT = 200
+
+SECRET_RE = re.compile(
+    r"sk-[A-Za-z0-9_]{8,}|gh[pousr]_[A-Za-z0-9]{10,}|xox[bap]-[A-Za-z0-9-]{10,}|"
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----|"
+    r"\b(api[_-]?key|token|secret|password|authorization)\b\s*[:=]\s*\S|"
+    r"\bbearer\s+[A-Za-z0-9._~+/-]{12,}", re.I)
+ABS_PATH_RE = re.compile(r"(^|\s)(~?/(?:home|root|tmp|etc|var|usr|proc|dev|mnt|media|run|opt|srv|nix|snap|boot|lib|bin|sbin)\b|[A-Za-z]:\\+)")
+
+GATES = ["failed to load plugin", "loaded plugin failed", "plugin.*failed",
+         "Panic", "panic:", "fatal", "spawning process.*rc=[1-9]"]
+
+CLASSES = [
+    ("plugin-load-fail", re.compile(r"failed to load plugin", re.I)),
+    ("panic", re.compile(r"\bpanic\b", re.I)),
+    ("spawn-fail", re.compile(r"(spawn|spawned).*(fail|error)|process.*failed to start", re.I)),
+    ("fatal", re.compile(r"\bfatal\b", re.I)),
+]
+DEDUP_WINDOW_S = 3600
+
+
+def scrub(s: str) -> str:
+    s = SECRET_RE.sub("<secret>", s)
+    s = ABS_PATH_RE.sub(lambda m: m.group(1) + "<path>", s)
+    return s[:MAX_EXCERPT]
+
+
+def slug_from_path(p: str) -> str:
+    part = p.strip("/").split("/")[-1] if p else ""
+    return part if re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", part) else ""
+
+
+def main():
+    log = None
+    for c in LOG_CANDIDATES:
+        if c.exists():
+            log = c
+            break
+    if not log:
+        return 0
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        cursor = int(CURSOR.read_text().strip()) if CURSOR.exists() else 0
+    except ValueError:
+        cursor = 0
+
+    size = log.stat().st_size
+    if size < cursor:  # ротация/усечение
+        cursor = 0
+    if size == cursor:
+        return 0
+
+    dedup = {}
+    if DEDUP_FILE.exists():
+        try:
+            dedup = json.loads(DEDUP_FILE.read_text())
+        except Exception:
+            dedup = {}
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    events = []
+    with log.open("r", errors="replace") as f:
+        f.seek(cursor)
+        for line in f:
+            for cls, rx in CLASSES:
+                if rx.search(line):
+                    m = re.search(r'(target|path|file|module)=("?[^\s"]+)', line)
+                    slug = slug_from_path(m.group(1).strip('"')) if m else ""
+                    hint = cls + ("-" + slug if slug else "")
+                    cid = hashlib.sha256(f"gatewatch|{cls}|{hint}".encode()).hexdigest()[:24]
+                    last = int(dedup.get(cid, 0))
+                    if now - last < DEDUP_WINDOW_S:
+                        break  # дедуп в окне
+                    events.append({
+                        "ts": now, "error_class": "gate-" + cls,
+                        "source_class": "gatewatch", "safe_hint": hint[:64],
+                        "correlation_id": cid, "excerpt": scrub(line.strip()),
+                    })
+                    dedup[cid] = now
+                    break
+        new_cursor = f.tell()
+
+    if events:
+        with GATE_FILE.open("a") as f:
+            for ev in events:
+                f.write(json.dumps(ev, ensure_ascii=False) + "\n")
+        DEDUP_FILE.write_text(json.dumps(dedup))
+        # Notify: одно на прогон, самое свежее
+        try:
+            subprocess.run(
+                ["notify-send", "gatewatch", f"гейт-сбой OpenCode: {events[-1]['safe_hint']}"],
+                timeout=5, check=False)
+        except Exception:
+            pass
+
+    CURSOR.write_text(str(new_cursor))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

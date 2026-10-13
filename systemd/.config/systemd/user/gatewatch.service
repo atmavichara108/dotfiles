@@ -1,0 +1,6 @@
+[Unit]
+Description=Gatewatch — внешний наблюдатель гейтов OpenCode (plugin-load/panic/spawn)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/gatewatch

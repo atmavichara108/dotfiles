@@ -53,7 +53,7 @@ packages=(
   "ranger"
   "git" "lazygit"
   "htop" "btop" "bat" "neofetch" "shell"
-  "wal" "wallust" "tinted-theming"
+  "wal" "wallust"
   "flameshot" "copyq" "nitrogen" "thefuck" "weathr" "screenlayout"
   "taskwarrior" "task-tools" "calcurse"
   "xdg" "environment.d" "systemd" "proxyctl"
