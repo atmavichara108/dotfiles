@@ -165,10 +165,11 @@ def iter_index_forward(path: Path):
                 yield raw, False
 
 
-def iter_index_reverse(path: Path):
-    """Читает index.jsonl с конца блоками; yield dict (свежие — первыми).
+def iter_index_reverse_raw(path: Path):
+    """Сырые строки index.jsonl с конца (свежие — первыми); yield bytes.
 
-    Нужен для get: свежая запись по ключу находится без чтения всего индекса.
+    Нужен для get: предфильтр по байтам отсекает чужые ключи без разбора
+    JSON (И-14: разбор каждой строки был узким местом — O(N) json.loads).
     """
     if not path.exists():
         return
@@ -193,18 +194,24 @@ def iter_index_reverse(path: Path):
                 raw = raw.strip()
                 if not raw:
                     continue
-                try:
-                    yield json.loads(raw)
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    continue
+                yield raw
             pos = start
         if tail.strip():
-            try:
-                yield json.loads(tail)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                return
+            yield tail.strip()
     finally:
         os.close(fd)
+
+
+def iter_index_reverse(path: Path):
+    """Читает index.jsonl с конца блоками; yield dict (свежие — первыми).
+
+    Нужен для get: свежая запись по ключу находится без чтения всего индекса.
+    """
+    for raw in iter_index_reverse_raw(path):
+        try:
+            yield json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            continue
 
 
 def iter_segment(path: Path):
@@ -217,8 +224,26 @@ def iter_segment(path: Path):
             off += len(raw)
 
 
+def key_needle(key: str) -> bytes:
+    """Байтовый маркер ключа в строке индекса: `"k":"<key>"` (точное совпадение).
+
+    Ключ сериализуется тем же json.dumps, что и запись индекса, поэтому
+    экранирование совпадает; закрывающая кавычка исключает совпадение
+    по префиксу (bench:1 не цепляет bench:10).
+    """
+    return b'"k":' + json.dumps(key, ensure_ascii=False,
+                                separators=(",", ":")).encode("utf-8")
+
+
+def scope_needle(scope: str) -> bytes:
+    """Байтовый маркер scope в строке индекса: `"s":"<scope>"`."""
+    return b'"s":' + json.dumps(scope, ensure_ascii=False,
+                                separators=(",", ":")).encode("utf-8")
+
+
 def entry_kind(rec: dict) -> str:
     """Тип записи индекса: 'e' — запись, 'ckpt' — чекпоинт сегмента."""
+    return rec.get("t", "e")
     return rec.get("t", "e")
 
 
@@ -387,9 +412,24 @@ class Hotmem:
     # --- чтение ----------------------------------------------------------- #
 
     def find_entry(self, key: str, scope: str | None = None) -> dict:
-        """Последняя запись по ключу: kind=state приоритетнее kind=put."""
+        """Последняя запись по ключу: kind=state приоритетнее kind=put.
+
+        Семантика требует прохода до начала (state побеждает даже более
+        свежий put), но JSON разбирается только у строк-кандидатов: чужие
+        ключи и чекпоинты отсекаются байтовым предфильтром (И-14).
+        """
+        needle = key_needle(key)
+        sneedle = scope_needle(scope) if scope else None
         latest_put: dict | None = None
-        for rec in iter_index_reverse(self.index_path):
+        for raw in iter_index_reverse_raw(self.index_path):
+            if needle not in raw:
+                continue
+            if sneedle is not None and sneedle not in raw:
+                continue
+            try:
+                rec = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
             if entry_kind(rec) != "e" or rec.get("k") != key:
                 continue
             if scope and rec.get("s") != scope:
