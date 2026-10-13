@@ -3,7 +3,8 @@ type: Spec
 kind: contract
 project: dotfiles
 title: Сеть исследований Корабля — контракт: вход, компетенции локаций и порядок
-status: proposed
+status: approved
+approval: Rudra, 2026-10-13
 timestamp: 2026-10-13
 basis: synthesis
 spec-home: docs/specs/
