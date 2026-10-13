@@ -183,6 +183,16 @@
       "models": {
         "google/gemini-2.5-flash-lite": { "name": "Gemini 2.5 Flash Lite", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
+    },
+    // NOTE 2026-10-08 (спасено из stash@{4}): jev-1.13/jev-1.13-free включены Рудрой в консоли
+    // opencode.ai (org SERP), в models.dev их нет. Декларация ждёт propagated каталога Zen;
+    // runtime может резолвить встроенный opencode-go и без конфига — проверено smoke
+    // (см. README tools/model-watch).
+    "opencode-go": {
+      "models": {
+        "jev-1.13-free": { "name": "Jev 1.13 Free (Zen)" },
+        "jev-1.13": { "name": "Jev 1.13 (Zen, cents)" }
+      }
     }
   },
   "providers": {
