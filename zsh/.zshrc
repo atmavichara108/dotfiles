@@ -129,7 +129,7 @@ alias termxm="ssh -p 8022 '10.192.172.83'"
 alias ccb="xclip -sel c"
 alias to-dv="ssh -i /home/rudra/.ssh/id_ed25519 -p 28108 'dv@re-search.wiki'"
 alias to-s="ssh root@167.235.252.4"
-alias to-serp="ssh -i ~/Temp/sdk-log deploy@167.235.252.4"
+alias to-serp="ssh -i ~/.ssh/serp-deploy deploy@167.235.252.4"
 alias opc="opencode"
 
 export PATH="$HOME/bin:$PATH"
