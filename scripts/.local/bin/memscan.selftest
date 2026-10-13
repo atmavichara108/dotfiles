@@ -1,0 +1,253 @@
+#!/bin/bash
+#
+# memscan.selftest — самопроверка memscan (И-32, Волна 3, правка классов).
+#
+# Что проверяется:
+#   1. синтаксис: bash -n + shellcheck;
+#   2. живой прогон (read-only): memscan и memscan --drill на реальных путях;
+#   3. фейковый корень «всё OK»: все статусы OK, drill exit 0;
+#   4. фейковый корень «только не-critical проблемы»: OPTIONAL-MISSING,
+#      опциональная деградация и отсутствие полки черновиков (черновиков
+#      не было) НЕ роняют drill (exit 0, строка «опционально: нет …»);
+#   5. фейковый корень «CRITICAL-риск»: AT-RISK/MISSING среди critical
+#      дают drill exit 1 (в т.ч. пустая полка при существующем файле —
+#      были черновики, состояние потеряно);
+#   6. секрет-детектор: секрет-похожие имена не попадают в вывод;
+#   7. сентинел: содержимое файлов не попадает в вывод ни при каких условиях;
+#   8. read-only: memscan ничего не пишет в сканируемые деревья.
+#
+# Артефакты (отчёты, фейковые корни) остаются в /tmp/memscan-selftest.<pid>/.
+# Расписание (cron/systemd) НЕ проверяется и НЕ ставится — отдельный шаг.
+
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MEMSCAN="${HERE}/memscan"
+ART="/tmp/memscan-selftest.$$"
+
+PASS=0
+FAIL=0
+
+ok()  { PASS=$((PASS + 1)); echo "  [PASS] $*"; }
+bad() { FAIL=$((FAIL + 1)); echo "  [FAIL] $*"; }
+
+assert_eq() { # <ожидали> <получили> <сообщение>
+  if [[ "$1" == "$2" ]]; then ok "$3"; else bad "$3 (ожидали='$1', получили='$2')"; fi
+}
+
+assert_contains() { # <содержимое> <подстрока> <сообщение>
+  if [[ "$1" == *"$2"* ]]; then ok "$3"; else bad "$3 (нет подстроки '$2')"; fi
+}
+
+assert_not_contains() { # <содержимое> <подстрока> <сообщение>
+  if [[ "$1" != *"$2"* ]]; then ok "$3"; else bad "$3 (подстрока '$2' утёкла в вывод)"; fi
+}
+
+line_has_status() { # <файл-вывод> <подстрока-метки> <статус>
+  grep -F -- "$2" "$1" | grep -qF -- "[$3]"
+}
+
+has_critical_risk() { # <файл-вывод> — 0 если среди строк critical есть AT-RISK/MISSING
+  grep -F -- "critical" "$1" | grep -qE -- '\[(AT-RISK|MISSING)\]'
+}
+
+SENTINEL="SENTINEL-8f3a-content"
+
+# fake_ok <корень> <состояние> — фейковое дерево, где все пункты в порядке
+fake_ok() {
+  local root="$1" state="$2"
+  mkdir -p "${root}/.opencode/memory" "${root}/tools/peer-comms" \
+           "${state}/hotmem/journal/2026-10" "${state}/orch-guard"
+  printf 'память: тестовая запись %s\n' "${SENTINEL}" > "${root}/.opencode/memory/notes.md"
+  printf '{"event":"lifecycle","s":"%s"}\n' "${SENTINEL}" > "${root}/.opencode/memory/agent-lifecycle.jsonl"
+  printf '{"claim":"c1","s":"%s"}\n' "${SENTINEL}" > "${root}/tools/peer-comms/claims.jsonl"
+  printf 'journal line %s\n' "${SENTINEL}" > "${state}/hotmem/journal/2026-10/host.jsonl"
+  printf '{"obs":"o1","s":"%s"}\n' "${SENTINEL}" > "${state}/command-observations.jsonl"
+  printf '{"draft":"d1","s":"%s"}\n' "${SENTINEL}" > "${state}/prompt-stash.jsonl"
+  printf '{"dispatch":"x","s":"%s"}\n' "${SENTINEL}" > "${state}/orch-guard/ledger.jsonl"
+  printf '{"dispatch":"y","s":"%s"}\n' "${SENTINEL}" > "${state}/orch-guard/plugin-ledger.jsonl"
+}
+
+# fake_opt_gaps <корень> <состояние> — critical цел, проблемы ТОЛЬКО вне critical:
+#   command-observations и оба ledger отсутствуют, claims пуст (деградация),
+#   полки черновиков нет вовсе (черновиков не было — это норма).
+fake_opt_gaps() {
+  local root="$1" state="$2"
+  fake_ok "${root}" "${state}"
+  rm -f "${state}/command-observations.jsonl"                   # optional: нет
+  rm -f "${state}/orch-guard/ledger.jsonl"                      # optional: нет
+  rm -f "${state}/orch-guard/plugin-ledger.jsonl"               # optional: нет
+  : > "${root}/tools/peer-comms/claims.jsonl"                   # optional: деградировал (пуст)
+  rm -f "${state}/prompt-stash.jsonl"                           # полки не было = норма
+}
+
+# fake_risk <корень> <состояние> — деградация CRITICAL + секрет-имена
+fake_risk() {
+  local root="$1" state="$2"
+  fake_ok "${root}" "${state}"
+  : > "${root}/.opencode/memory/notes.md"                       # critical AT-RISK: пуст
+  rm -f "${root}/.opencode/memory/agent-lifecycle.jsonl"        # critical MISSING
+  : > "${state}/prompt-stash.jsonl"                             # critical AT-RISK: файл есть, но пуст (были черновики — потеря)
+  rm -f "${state}/command-observations.jsonl"                   # optional: нет
+  rm -f "${state}/orch-guard/ledger.jsonl"                      # optional: нет
+  : > "${root}/tools/peer-comms/claims.jsonl"                   # optional: деградировал
+  # секрет-похожие имена: значения не должны попасть в вывод
+  printf 'содержимое %s\n' "${SENTINEL}" > "${root}/.opencode/memory/token-ghp_ABCDEF1234567890abcd.md"
+  printf 'содержимое %s\n' "${SENTINEL}" > "${root}/.opencode/memory/Xk9Qm2ZaB7Yc1WdRfTgHjLpNvSxU4KbQwErTy.md"
+}
+
+main() {
+  [[ -x "${MEMSCAN}" ]] || { echo "memscan не найден: ${MEMSCAN}" >&2; exit 2; }
+  mkdir -p "${ART}"
+  echo "memscan.selftest — артефакты: ${ART}"
+  echo
+
+  # ---- 1. синтаксис -------------------------------------------------
+  echo "1. синтаксис"
+  if bash -n "${MEMSCAN}" 2>"${ART}/bash-n.err"; then
+    ok "bash -n"
+  else
+    bad "bash -n: $(cat "${ART}/bash-n.err")"
+  fi
+  if command -v shellcheck >/dev/null 2>&1; then
+    if shellcheck "${MEMSCAN}" >"${ART}/shellcheck.out" 2>&1; then
+      ok "shellcheck"
+    else
+      bad "shellcheck: $(head -5 "${ART}/shellcheck.out")"
+    fi
+  else
+    ok "shellcheck пропущен (не установлен)"
+  fi
+
+  # ---- 2. живой прогон (read-only) ----------------------------------
+  echo "2. живой прогон (read-only, реальные пути)"
+  local rc=0
+  "${MEMSCAN}" >"${ART}/live.out" 2>&1 || rc=$?
+  assert_eq 0 "${rc}" "memscan (без флагов) завершается с exit 0"
+  assert_contains "$(cat "${ART}/live.out")" "hotmem-журнал" "в живом отчёте есть пункт hotmem-журнал"
+  assert_contains "$(cat "${ART}/live.out")" "сводка:" "в живом отчёте есть сводка"
+  assert_contains "$(cat "${ART}/live.out")" "critical" "в живом отчёте есть метка класса critical"
+  assert_contains "$(cat "${ART}/live.out")" "optional" "в живом отчёте есть метка класса optional"
+  rc=0
+  "${MEMSCAN}" --drill >"${ART}/live-drill.out" 2>&1 || rc=$?
+  # инвариант: drill падает <=> среди critical есть AT-RISK/MISSING
+  if has_critical_risk "${ART}/live.out"; then
+    assert_eq 1 "${rc}" "drill: есть critical-риск => exit 1"
+  else
+    assert_eq 0 "${rc}" "drill: critical-рисков нет => exit 0"
+  fi
+
+  # ---- 3. фейковый корень «всё OK» ----------------------------------
+  echo "3. фейковый корень «всё OK»"
+  local ok_root="${ART}/ok-root" ok_state="${ART}/ok-state"
+  fake_ok "${ok_root}" "${ok_state}"
+  rc=0
+  "${MEMSCAN}" --root "${ok_root}" --state "${ok_state}" \
+    >"${ART}/fake-ok.out" 2>&1 || rc=$?
+  assert_eq 0 "${rc}" "memscan на фейковом корне OK: exit 0"
+  rc=0
+  "${MEMSCAN}" --drill --root "${ok_root}" --state "${ok_state}" \
+    >"${ART}/fake-ok-drill.out" 2>&1 || rc=$?
+  assert_eq 0 "${rc}" "drill на фейковом корне OK: exit 0"
+  assert_contains "$(cat "${ART}/fake-ok-drill.out")" "состояние выживает" "drill: вердикт «состояние выживает»"
+  assert_not_contains "$(cat "${ART}/fake-ok.out")" "[AT-RISK]" "на корне OK нет статуса AT-RISK"
+  assert_not_contains "$(cat "${ART}/fake-ok.out")" "[MISSING]" "на корне OK нет статуса MISSING"
+  assert_not_contains "$(cat "${ART}/fake-ok.out")" "опционально: нет" "на корне OK нет строк «опционально: нет»"
+
+  # ---- 4. только не-critical проблемы: drill НЕ падает ---------------
+  echo "4. фейковый корень «только не-critical проблемы» (drill не падает)"
+  local opt_root="${ART}/opt-root" opt_state="${ART}/opt-state"
+  fake_opt_gaps "${opt_root}" "${opt_state}"
+  rc=0
+  "${MEMSCAN}" --drill --root "${opt_root}" --state "${opt_state}" \
+    >"${ART}/fake-opt-drill.out" 2>&1 || rc=$?
+  assert_eq 0 "${rc}" "OPTIONAL-MISSING/деградация не роняют drill: exit 0"
+  assert_contains "$(cat "${ART}/fake-opt-drill.out")" "состояние выживает" "вердикт при optional-проблемах: «состояние выживает»"
+  assert_contains "$(cat "${ART}/fake-opt-drill.out")" "опционально: нет" "OPTIONAL-MISSING показан строкой «опционально: нет»"
+  assert_contains "$(cat "${ART}/fake-opt-drill.out")" "опционально: деградировал" "опциональная деградация показана"
+  assert_not_contains "$(cat "${ART}/fake-opt-drill.out")" "[MISSING]" "нет статуса MISSING при одних optional-проблемах"
+  if line_has_status "${ART}/fake-opt-drill.out" "command-observations" "НЕТ"; then
+    ok "отсутствующий optional-пункт даёт статус НЕТ"
+  else
+    bad "отсутствующий optional-пункт не дал статус НЕТ"
+  fi
+  if line_has_status "${ART}/fake-opt-drill.out" "реестр claims" "AT-RISK"; then
+    ok "пустой optional-файл показан как AT-RISK (без влияния на exit)"
+  else
+    bad "пустой optional-файл не показан как AT-RISK"
+  fi
+  if line_has_status "${ART}/fake-opt-drill.out" "полка черновиков" "НЕТ"; then
+    ok "отсутствие полки черновиков = норма: статус НЕТ (drill exit 0)"
+  else
+    bad "отсутствие полки черновиков не дало статус НЕТ"
+  fi
+  assert_contains "$(cat "${ART}/fake-opt-drill.out")" "опционально: нет (черновиков не было)" \
+    "отсутствие полки объяснено строкой «черновиков не было»"
+
+  # ---- 5. CRITICAL-риск: drill падает -------------------------------
+  echo "5. фейковый корень «CRITICAL-риск» (drill падает)"
+  local risk_root="${ART}/risk-root" risk_state="${ART}/risk-state"
+  fake_risk "${risk_root}" "${risk_state}"
+  rc=0
+  "${MEMSCAN}" --drill --root "${risk_root}" --state "${risk_state}" \
+    >"${ART}/fake-risk-drill.out" 2>&1 || rc=$?
+  assert_eq 1 "${rc}" "CRITICAL-MISSING/AT-RISK дают drill exit 1"
+  assert_contains "$(cat "${ART}/fake-risk-drill.out")" "состояние НЕ выживает" "drill: вердикт «состояние НЕ выживает»"
+  if line_has_status "${ART}/fake-risk-drill.out" "notes.md" "AT-RISK"; then
+    ok "пустой critical-файл даёт AT-RISK"
+  else
+    bad "пустой critical-файл не дал AT-RISK"
+  fi
+  if line_has_status "${ART}/fake-risk-drill.out" "память agent-lifecycle" "MISSING"; then
+    ok "удалённый agent-lifecycle даёт MISSING (critical)"
+  else
+    bad "удалённый agent-lifecycle не дал MISSING"
+  fi
+  if line_has_status "${ART}/fake-risk-drill.out" "полка черновиков" "AT-RISK"; then
+    ok "пустая полка (файл есть, 0 байт) даёт AT-RISK — были черновики, потеря"
+  else
+    bad "пустая полка (файл есть, 0 байт) не дала AT-RISK"
+  fi
+
+  # ---- 6. секрет-детектор -------------------------------------------
+  echo "6. секрет-детектор (имена не печатаются)"
+  local risk_out
+  risk_out="$(cat "${ART}/fake-risk-drill.out")"
+  assert_not_contains "${risk_out}" "ghp_ABCDEF" "имя с token/ghp не утекло в вывод"
+  assert_not_contains "${risk_out}" "Xk9Qm2ZaB7Yc1WdRfTgHjLpNvSxU4KbQwErTy" "энтропийное имя не утекло в вывод"
+  assert_contains "${risk_out}" "скрыто (похоже на секрет)" "секрет-похожие имена заменены на sha256"
+
+  # ---- 7. сентинел: содержимое не печатается ------------------------
+  echo "7. сентинел содержимого"
+  local f all_out=""
+  for f in "${ART}"/*.out; do all_out="${all_out}$(cat "${f}")"; done
+  assert_not_contains "${all_out}" "${SENTINEL}" "содержимое файлов не попало ни в один отчёт"
+
+  # ---- 8. read-only --------------------------------------------------
+  echo "8. read-only (memscan ничего не пишет в сканируемые деревья)"
+  local marker="${ART}/marker"
+  touch "${marker}"
+  "${MEMSCAN}" --root "${risk_root}" --state "${risk_state}" >/dev/null 2>&1 || true
+  "${MEMSCAN}" --root "${opt_root}" --state "${opt_state}" >/dev/null 2>&1 || true
+  local newer
+  newer="$(find "${risk_root}" "${risk_state}" "${opt_root}" "${opt_state}" \
+    -newer "${marker}" -print 2>/dev/null || true)"
+  if [[ -z "${newer}" ]]; then
+    ok "после memscan в фейковых деревьях нет новых/изменённых файлов"
+  else
+    bad "memscan записал в дерево: ${newer}"
+  fi
+
+  # ---- итог -----------------------------------------------------------
+  echo
+  echo "итог selftest: PASS=${PASS} FAIL=${FAIL}"
+  echo "артефакты: ${ART} (отчёты live/fake, фейковые корни)"
+  if [[ ${FAIL} -eq 0 ]]; then
+    echo "SELFCHECK: OK"
+    exit 0
+  fi
+  echo "SELFCHECK: FAIL"
+  exit 1
+}
+
+main "$@"

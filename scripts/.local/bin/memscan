@@ -1,0 +1,426 @@
+#!/bin/bash
+#
+# memscan — проверка durable-копий критического состояния (И-32, Волна 3).
+#
+# Правило: важное состояние обязано иметь копию на диске (инцидент потери
+# черновиков 2026-10-12). memscan НЕ заменяет hotmem — он проверяет, что
+# durable-копии состояния существуют, непусты и читаемы.
+#
+# Вывод — только метаданные (статус, путь, размер, mtime, счётчик строк).
+# Содержимое файлов НИКОГДА не печатается (там могут быть секреты/черновики).
+# Имена/пути, похожие на секрет, печатаются скрытыми (sha256-хэш).
+#
+# Использование:
+#   memscan                 отчёт по каждому пункту (всегда exit 0)
+#   memscan --drill         учебная тревога: отчёт + ИТОГ
+#                           (exit 0 = состояние выживает, 1 = есть AT-RISK/MISSING
+#                            среди CRITICAL)
+#   memscan --root DIR      корень репозитория (по умолчанию ~/dotfiles)
+#   memscan --state DIR     корень состояния (по умолчанию ~/.local/state/opencode)
+#   memscan --version       версия
+#   memscan --help          справка
+#
+# Классы пунктов (метка печатается у каждого пункта):
+#   critical — важное состояние, обязано иметь durable-копию:
+#              hotmem-журнал, память .opencode/memory/*.md, agent-lifecycle,
+#              полка черновиков prompt-stash (отсутствие = норма «черновиков
+#              не было», пустой/нечитаемый файл = потеря). Проблема = падение drill.
+#   optional — производная телеметрия (счётчики/метаданные), не критичное
+#              состояние: command-observations, orch-guard CLI/plugin ledgers,
+#              peer-comms claims. Проблема НЕ влияет на ИТОГ и exit-код.
+#
+# Статусы пунктов:
+#   OK      — есть непустая читаемая копия
+#   AT-RISK — копия деградировала: пуста или нечитаема
+#   MISSING — копии нет (путь отсутствует)
+#   НЕТ     — пункта нет, и это норма: опциональный пункт либо полка
+#             без черновиков; на ИТОГ не влияет
+#
+# Drill падает (exit 1) ТОЛЬКО на реальной потере важного состояния:
+# AT-RISK/MISSING среди CRITICAL. Fail-closed: любая ошибка чтения/статуса
+# пункта даёт AT-RISK, но не крэш. Расписание (cron/systemd) ставится
+# отдельным шагом — здесь только протокол.
+
+set -euo pipefail
+
+VERSION="1.0"
+
+# ---------------------------------------------------------------- утилиты
+
+die() { echo "memscan: ошибка: $*" >&2; exit 2; }
+
+usage() {
+  cat <<'EOF'
+memscan — проверка durable-копий критического состояния (только метаданные).
+
+Использование:
+  memscan                отчёт по каждому пункту с меткой класса (всегда exit 0)
+  memscan --drill        учебная тревога: отчёт + ИТОГ
+                         (exit 0 = состояние выживает, 1 = есть AT-RISK/MISSING
+                          среди класса critical)
+  memscan --root DIR     корень репозитория (по умолчанию ~/dotfiles)
+  memscan --state DIR    корень состояния (по умолчанию ~/.local/state/opencode)
+  memscan --version      версия
+  memscan --help         эта справка
+
+Классы: critical — важное состояние, его потеря роняет drill (полка
+черновиков: отсутствие = норма «черновиков не было», пустой файл = потеря);
+optional — производная телеметрия, проблемы показаны, но на exit не влияют
+(строкой «опционально: нет»).
+
+Статусы: OK — непустая читаемая копия; AT-RISK — пуста/нечитаема;
+MISSING — копии нет; НЕТ — пункта нет, и это норма (не влияет на ИТОГ).
+
+Вывод — только метаданные (путь, размер, mtime, строки). Содержимое файлов
+не печатается; имена, похожие на секрет, скрываются (sha256-хэш).
+EOF
+}
+
+# ------------------------------------------- детектор секретов (по именам)
+
+# Имя/путь, похожее на секрет, не печатается — вместо значения хэш.
+SECRET_RE='(secret|token|passw(or)?d|credential|api[-_]?key|private[-_]?key|ssh[-_]?key|id_(rsa|ed25519|dsa|ecdsa)|(^|[/._-])\.?env([/._-]|$)|cookie|bearer|oauth|passphrase|session[-_]?key|auth[-_]?token|mnemonic|keystore)'
+
+# looks_secret <имя или путь> — 0 если похоже на секрет
+looks_secret() {
+  local full="$1"
+  local part lower stem
+  local IFS='/'
+  for part in ${full}; do
+    [[ -n "${part}" ]] || continue
+    lower="${part,,}"
+    [[ "${lower}" =~ ${SECRET_RE} ]] && return 0
+    # энтропийная эвристика: токен-подобный идентификатор без расширения
+    stem="${part%.jsonl}"; stem="${stem%.md}"; stem="${stem%.txt}"
+    stem="${stem%.log}"; stem="${stem%.json}"; stem="${stem%.key}"
+    if [[ ${#stem} -ge 32 && "${stem}" =~ ^[A-Za-z0-9+/=_-]+$ \
+          && "${stem}" =~ [0-9] && "${stem}" =~ [A-Z] && "${stem}" =~ [a-z] ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+# sha12 <строка> — короткий хэш вместо значения
+sha12() { printf '%s' "$1" | sha256sum | cut -c1-12; }
+
+# redact_path <путь> — путь для печати: секрет-похожее скрыто, $HOME -> ~
+redact_path() {
+  local path="$1"
+  if looks_secret "${path}"; then
+    printf 'путь скрыт (похоже на секрет) sha256:%s' "$(sha12 "${path}")"
+    return 0
+  fi
+  if [[ "${path}" == "${HOME}"* ]]; then
+    printf '~%s' "${path#"${HOME}"}"
+  else
+    printf '%s' "${path}"
+  fi
+}
+
+# safe_name <имя> — имя файла для печати с той же защитой
+safe_name() {
+  local name="$1"
+  if looks_secret "${name}"; then
+    printf 'имя скрыто (похоже на секрет) sha256:%s' "$(sha12 "${name}")"
+  else
+    printf '%s' "${name}"
+  fi
+}
+
+# ------------------------------------------------------- метаданные/отчёт
+
+fmt_size() {
+  if command -v numfmt >/dev/null 2>&1; then
+    numfmt --to=iec --suffix=B "$1" 2>/dev/null || printf '%sB' "$1"
+  else
+    printf '%sB' "$1"
+  fi
+}
+
+fmt_time() {
+  date -d "@$1" '+%Y-%m-%d %H:%M' 2>/dev/null || printf 'mtime=?'
+}
+
+# Счётчики разделены по классам: drill падает только по критическим.
+COUNT_OK=0
+COUNT_AT_RISK=0
+COUNT_MISSING=0
+COUNT_OPT_OK=0
+COUNT_OPT_ABSENT=0
+COUNT_OPT_RISK=0
+
+# dwidth <строка> — видимая ширина (кириллица = 2 колонки)
+dwidth() {
+  local chars=${#1} cyr
+  cyr="$(printf '%s' "$1" | { grep -o '[А-Яа-яЁё]' || true; } | wc -l)"
+  cyr="${cyr// /}"
+  echo $((chars + cyr))
+}
+
+# pad_to <строка> <колонки> — строка, дополненная пробелами до видимой ширины
+pad_to() {
+  local s="$1" want="$2" w
+  w="$(dwidth "${s}")"
+  if [[ ${w} -lt ${want} ]]; then
+    printf '%s%*s' "${s}" $((want - w)) ""
+  else
+    printf '%s ' "${s}"
+  fi
+}
+
+# report <класс> <статус> <метка> <детали> — строка отчёта + счётчики
+report() {
+  local class="$1" status="$2" label="$3" detail="$4"
+  if [[ "${status}" == "НЕТ" ]]; then
+    # отсутствие = норма (на ИТОГ не влияет) — независимо от класса пункта
+    COUNT_OPT_ABSENT=$((COUNT_OPT_ABSENT + 1))
+  elif [[ "${class}" == "critical" ]]; then
+    case "${status}" in
+      OK)      COUNT_OK=$((COUNT_OK + 1)) ;;
+      AT-RISK) COUNT_AT_RISK=$((COUNT_AT_RISK + 1)) ;;
+      MISSING) COUNT_MISSING=$((COUNT_MISSING + 1)) ;;
+    esac
+  else
+    case "${status}" in
+      OK) COUNT_OPT_OK=$((COUNT_OPT_OK + 1)) ;;
+      *)  COUNT_OPT_RISK=$((COUNT_OPT_RISK + 1)) ;;
+    esac
+  fi
+  printf '%s%s%s %s\n' "$(pad_to "[${status}]" 9)" "$(pad_to "${class}" 10)" \
+    "$(pad_to "${label}" 36)" "${detail}"
+}
+
+# ------------------------------------------------------------- проверки
+
+# check_file <класс critical|optional> <метка> <путь> [отсутствие=норма]
+# OK = файл есть, непуст, читается. Пустой/нечитаемый = AT-RISK (fail-closed).
+# У опционального класса проблемы показаны, но помечены «не влияет на ИТОГ».
+# Если задан 4-й аргумент, отсутствие файла = норма: строка с этим текстом
+# (статус НЕТ) и никакого влияния на drill. Пример: полка черновиков —
+# файла может не быть вовсе (черновиков не было), но пустой/нечитаемый
+# существующий файл = потеря (critical AT-RISK).
+check_file() {
+  local class="$1" label="$2" path="$3" absent_norm="${4:-}"
+  local shown size mtime lines note=""
+
+  shown="$(redact_path "${path}")"
+  if [[ "${class}" != "critical" ]]; then
+    note=" (не влияет на ИТОГ)"
+  fi
+
+  if [[ ! -e "${path}" ]]; then
+    if [[ -n "${absent_norm}" ]]; then
+      report "${class}" "НЕТ" "${label}" "${absent_norm} — на ИТОГ не влияет: ${shown}"
+    elif [[ "${class}" == "critical" ]]; then
+      report critical MISSING "${label}" "нет файла: ${shown}"
+    else
+      report optional "НЕТ" "${label}" "опционально: нет${note}: ${shown}"
+    fi
+    return 0
+  fi
+  if [[ -d "${path}" ]]; then
+    report "${class}" AT-RISK "${label}" "ожидался файл, найдена директория${note}: ${shown}"
+    return 0
+  fi
+  if [[ ! -r "${path}" ]]; then
+    report "${class}" AT-RISK "${label}" "файл нечитаем${note}: ${shown}"
+    return 0
+  fi
+
+  size="$(stat -c '%s' "${path}" 2>/dev/null || echo '?')"
+  if [[ "${size}" == "?" ]]; then
+    report "${class}" AT-RISK "${label}" "не удалось прочитать метаданные${note}: ${shown}"
+    return 0
+  fi
+  if [[ "${size}" == "0" ]]; then
+    if [[ "${class}" == "critical" ]]; then
+      report critical AT-RISK "${label}" "файл пуст (0 байт): ${shown}"
+    else
+      report optional AT-RISK "${label}" "опционально: деградировал — файл пуст${note}: ${shown}"
+    fi
+    return 0
+  fi
+
+  mtime="$(stat -c '%Y' "${path}" 2>/dev/null || echo '?')"
+  lines="$(wc -l < "${path}" 2>/dev/null || echo '?')"
+  lines="${lines// /}"
+  report "${class}" OK "${label}" \
+    "строк=${lines} размер=$(fmt_size "${size}") mtime=$(fmt_time "${mtime}")"
+}
+
+# check_journal_dir <класс> <метка> <директория> — сегменты журнала *.jsonl
+check_journal_dir() {
+  local class="$1" label="$2" dir="$3"
+  local shown f sz mt ln
+  local total_bytes=0 total_lines=0 newest=0 good=0 bad=0
+  local -a files=()
+
+  shown="$(redact_path "${dir}")"
+
+  if [[ ! -d "${dir}" ]]; then
+    if [[ "${class}" == "critical" ]]; then
+      report critical MISSING "${label}" "нет директории журнала: ${shown}"
+    else
+      report optional "НЕТ" "${label}" "опционально: нет (не влияет на ИТОГ): ${shown}"
+    fi
+    return 0
+  fi
+  if [[ ! -r "${dir}" || ! -x "${dir}" ]]; then
+    report "${class}" AT-RISK "${label}" "директория недоступна для чтения: ${shown}"
+    return 0
+  fi
+
+  while IFS= read -r -d '' f; do files+=("${f}"); done \
+    < <(find "${dir}" -type f -name '*.jsonl' -print0 2>/dev/null | sort -z)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    report "${class}" AT-RISK "${label}" "журнал пуст: нет сегментов *.jsonl в ${shown}"
+    return 0
+  fi
+
+  for f in "${files[@]}"; do
+    if [[ ! -r "${f}" ]]; then
+      bad=$((bad + 1))
+      continue
+    fi
+    sz="$(stat -c '%s' "${f}" 2>/dev/null || echo '?')"
+    mt="$(stat -c '%Y' "${f}" 2>/dev/null || echo '?')"
+    if [[ "${sz}" == "?" || "${sz}" == "0" ]]; then
+      bad=$((bad + 1))
+      continue
+    fi
+    ln="$(wc -l < "${f}" 2>/dev/null || echo '?')"
+    ln="${ln// /}"
+    [[ "${ln}" == "?" ]] || total_lines=$((total_lines + ln))
+    total_bytes=$((total_bytes + sz))
+    if [[ "${mt}" != "?" && "${mt}" -gt "${newest}" ]]; then newest="${mt}"; fi
+    good=$((good + 1))
+  done
+
+  local detail="сегментов=${#files[@]} живых=${good} битых=${bad}"
+  detail="${detail} строк=${total_lines} размер=$(fmt_size "${total_bytes}")"
+  [[ "${newest}" == "0" ]] || detail="${detail} mtime=$(fmt_time "${newest}")"
+
+  if [[ ${bad} -gt 0 || ${good} -eq 0 ]]; then
+    report "${class}" AT-RISK "${label}" "${detail}"
+  else
+    report "${class}" OK "${label}" "${detail}"
+  fi
+}
+
+# check_glob <класс> <метка-префикс> <директория> <маска>
+# Каждый найденный файл — своя строка отчёта; нет ни одного = MISSING/НЕТ.
+check_glob() {
+  local class="$1" label="$2" dir="$3" pattern="$4"
+  local f name shown
+  local -a files=()
+
+  shown="$(redact_path "${dir}")"
+
+  if [[ ! -d "${dir}" ]]; then
+    if [[ "${class}" == "critical" ]]; then
+      report critical MISSING "${label}" "нет директории памяти: ${shown}"
+    else
+      report optional "НЕТ" "${label}" "опционально: нет (не влияет на ИТОГ): ${shown}"
+    fi
+    return 0
+  fi
+
+  while IFS= read -r -d '' f; do files+=("${f}"); done \
+    < <(find "${dir}" -maxdepth 1 -type f -name "${pattern}" -print0 2>/dev/null | sort -z)
+
+  if [[ ${#files[@]} -eq 0 ]]; then
+    if [[ "${class}" == "critical" ]]; then
+      report critical MISSING "${label}" "нет ни одного файла по маске ${pattern} в ${shown}"
+    else
+      report optional "НЕТ" "${label}" "опционально: нет (не влияет на ИТОГ): ${shown}"
+    fi
+    return 0
+  fi
+
+  for f in "${files[@]}"; do
+    name="$(safe_name "${f##*/}")"
+    check_file "${class}" "${label}: ${name}" "${f}"
+  done
+}
+
+# ------------------------------------------------------------------ main
+
+ROOT="${DOTFILES_ROOT:-${HOME}/dotfiles}"
+STATE="${OPENCODE_STATE:-${HOME}/.local/state/opencode}"
+DRILL=0
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --drill)   DRILL=1; shift ;;
+      --root)    [[ $# -ge 2 ]] || die "--root требует аргумент"
+                 ROOT="$2"; shift 2 ;;
+      --root=*)  ROOT="${1#*=}"; shift ;;
+      --state)   [[ $# -ge 2 ]] || die "--state требует аргумент"
+                 STATE="$2"; shift 2 ;;
+      --state=*) STATE="${1#*=}"; shift ;;
+      --version) echo "memscan ${VERSION}"; exit 0 ;;
+      -h|--help) usage; exit 0 ;;
+      *)         die "неизвестный аргумент: $1 (см. --help)" ;;
+    esac
+  done
+  [[ -n "${ROOT}" ]] || die "--root: пустой путь"
+  [[ -n "${STATE}" ]] || die "--state: пустой путь"
+}
+
+main() {
+  parse_args "$@"
+
+  if [[ "${DRILL}" == "1" ]]; then
+    echo "=== УЧЕБНАЯ ТРЕВОГА (memscan --drill) ==="
+  fi
+  echo "memscan ${VERSION} — проверка durable-копий (только метаданные)"
+  echo "корень:    $(redact_path "${ROOT}")"
+  echo "состояние: $(redact_path "${STATE}")"
+  echo "классы: critical=важное состояние · optional=производная телеметрия (на ИТОГ не влияет)"
+  echo "статусы: OK=копия есть · AT-RISK=пуста/нечитаема · MISSING=копии нет · НЕТ=опционального нет"
+  echo
+
+  [[ -d "${ROOT}" ]]  || echo "предупреждение: корень репозитория не найден — пункты будут MISSING"
+  [[ -d "${STATE}" ]] || echo "предупреждение: корень состояния не найден — пункты будут MISSING"
+
+  # 1. hotmem-журнал (critical) и наблюдения за командами (optional, телеметрия)
+  check_journal_dir critical "hotmem-журнал" "${STATE}/hotmem/journal"
+  check_file optional "command-observations" "${STATE}/command-observations.jsonl"
+
+  # 2. память проекта (critical)
+  check_glob critical "память .md" "${ROOT}/.opencode/memory" "*.md"
+  check_file critical "память agent-lifecycle" "${ROOT}/.opencode/memory/agent-lifecycle.jsonl"
+
+  # 3. полка черновиков (critical при наличии: пуст/нечитаем = потеря;
+  #    отсутствие = норма — черновиков не было)
+  check_file critical "полка черновиков" "${STATE}/prompt-stash.jsonl" \
+    "опционально: нет (черновиков не было)"
+
+  # 4. реестры (optional: производная телеметрия)
+  check_file optional "реестр claims" "${ROOT}/tools/peer-comms/claims.jsonl"
+  check_file optional "orch-guard ledger (CLI)" "${STATE}/orch-guard/ledger.jsonl"
+  check_file optional "orch-guard ledger (plugin)" "${STATE}/orch-guard/plugin-ledger.jsonl"
+
+  echo
+  echo "сводка: critical OK=${COUNT_OK} AT-RISK=${COUNT_AT_RISK} MISSING=${COUNT_MISSING} · optional OK=${COUNT_OPT_OK} нет=${COUNT_OPT_ABSENT} деградировало=${COUNT_OPT_RISK}"
+
+  if [[ "${DRILL}" == "1" ]]; then
+    if [[ ${COUNT_AT_RISK} -gt 0 || ${COUNT_MISSING} -gt 0 ]]; then
+      echo "ИТОГ: есть AT-RISK/MISSING — состояние НЕ выживает (critical: AT-RISK=${COUNT_AT_RISK}, MISSING=${COUNT_MISSING})"
+      exit 1
+    fi
+    local opt_note=""
+    if [[ ${COUNT_OPT_ABSENT} -gt 0 || ${COUNT_OPT_RISK} -gt 0 ]]; then
+      opt_note=" (опционально: нет=${COUNT_OPT_ABSENT}, деградировало=${COUNT_OPT_RISK} — на ИТОГ не влияет)"
+    fi
+    echo "ИТОГ: состояние выживает (critical: OK=${COUNT_OK})${opt_note}"
+    exit 0
+  fi
+
+  exit 0
+}
+
+main "$@"
