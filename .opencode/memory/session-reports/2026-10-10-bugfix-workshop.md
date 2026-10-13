@@ -155,9 +155,13 @@ fix/workaround → evidence → status.
   HEAD↔origin/main показала регрессию файла именно в отошедшей ветке.
   Live permission-repro после apply не запускался.
 - **Status:** fixed (apply выполнен, файл рабочего дерева == origin/main).
-  Residual `[проверить]`: (1) live-прогон `git push`/`write` из корня Vault;
-  (2) при будущем merge `pipboy-rebuild` в main — conflict-check по
-  `opencode.json`, чтобы не откатить `cac2a00`.
+  Residual: (1) **закрыт 2026-10-13, live-прогон из корня волта
+  `/home/rudra/Projects/OpenCode-Vault` (workdir, ветка `task/pipboy-rebuild-20261009`):**
+  `write`-инструмент создаёт файл в корне — OK; python write+unlink — OK;
+  `git push --dry-run origin HEAD` rc=0 (`* [new branch]`) локальные git-команды из
+  корня волта работают — push к волту жив. Тестовые артефакты `.inc5-*` убраны.
+  (2) остаётся `[проверить]`: при будущем merge `pipboy-rebuild` в main —
+  conflict-check по `opencode.json`, чтобы не откатить `cac2a00`.
 
 ---
 
