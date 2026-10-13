@@ -5,7 +5,8 @@ project: dotfiles
 spec-home: docs/specs/
 owner: librarian
 title: Ability Lab / Лаборатория — оформление как локация-сессия сети
-status: proposed
+status: approved
+approval: Rudra, 2026-10-13
 related:
   - docs/specs/ship-research-network.md
   - docs/specs/engineering-center-location.md
