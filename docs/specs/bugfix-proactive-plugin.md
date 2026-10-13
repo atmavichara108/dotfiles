@@ -39,46 +39,67 @@ OpenCode V2-плагин (dotfiles-домен; канон в
    кодов, без LLM (S5);
 3. **группирует повторы** (дедуп по correlation-id в окне) — счётчик, а не
    независимые инциденты (S4);
-4. **уведомляет Дирижёра** (librarian) — metadata-сигнал с рекомендуемым
-   именованным fix-route по таблице (S6);
-5. **открывает incident/handoff файл** (append-only) в зоне проекта с формой
-   §incident-fix: symptom / repro / root-cause-гипотеза / evidence / статус.
-   Плагин фиксирует только обнаружение — не «fix»;
+4. **создаёт локальный metadata-сигнал** с рекомендуемым именованным
+   fix-route по таблице (S6); сам не уведомляет Дирижёра и не пишет в проект;
+5. **не создаёт project incident/handoff-файлы.** Их создаёт primary workflow
+   после проверки сигнала по форме §incident-fix. Listener фиксирует только
+   обнаружение — не «fix» и не ownership transfer;
 6. **не правит код, не вызывает task, не запускает subagent'ов и LLM.**
 
-## S3. Источники события (перехват)
+## S3. Источники события (кандидаты, не runtime-гарантия)
 
-| Источник | Что ловим | Сбор (metadata-only) |
+Эта таблица описывает желаемое покрытие, а не утверждает наличие всех hooks в
+OpenCode V2. До реализации каждый кандидат сверяется с установленными типами и
+реальным payload; неподтверждённый источник остаётся gap, не PASS.
+
+| Класс | V2-кандидат и наблюдаемое поле | Состояние / fallback |
 |---|---|---|
-| tool.execute.after | exit != 0; stderr-патерны (timeout, 451, ECONNREFUSED, EACCES, unmatched-quote); «мягкий сбой» = команда прошла, результат не тот | tool name, exit code, до 2 строк stderr (redacted), ts, session, project |
-| provider/API | HTTP 4xx/5xx (включая 451), stream hang/timeout | provider id, response code, elapsed; без тела ответа |
-| permission.ask | отказ или невыдача разрешения (агент запросил — не получил) | gate/plugin name, действие, решение |
-| session | таймаут хода; отсутствие подтверждения письма (sent без started в окне) | session id адресата, elapsed, kind |
-| write-channel | deadline истёк без ack → статус `unknown`; read-gate/double-ack | message_id, адресат, elapsed |
+| tool failure | `ctx.tool.hook(...)` candidate; tool name + result/error fields | не подтверждён для всех failure-классов; primary фиксирует видимый результат |
+| provider/quota/timeout | provider API event | hook/payload не подтверждены; failed dispatch видит primary |
+| permission | `ctx.permission.hook("evaluate")` или stream `permission.asked`/`permission.replied`; только action/effect/source metadata | частично представлен в соседних плагинах; соответствие каждому отказу verifier проверяет по факту |
+| session timeout | `session.idle` несёт `sessionID`, но не причину timeout | timeout не выводить из idle; primary фиксирует только реально наблюдаемое |
+| peer-comms receipts | `letter.sh` receipts + `delivery-check.sh` read-gate | plugin hook/polling не заявлен; receipts проверяет primary workflow |
+| мягкий сбой / wrong-result | нет детерминированного события | только явный report пользователем/primary; автоматическое покрытие не обещается |
 
-Запрещено в записи: prompts, секреты, полные tool outputs (см. S7).
+Для каждого включаемого источника acceptance фиксирует точные V2 hook/event,
+payload, fixture и ограничения. Если hook недоступен или shape расходится,
+источник исключается из listener coverage, а primary обязан fail-visible
+обработать известный сбой по BF-20261010-01. Healthy вызовы не создают incident.
 
 ## S4. Модель записи (djsonl)
 
-Файлы: `~/.local/state/opencode/incidents/<project>.djsonl` (append-only,
-строка = запись) + агрегат `incidents-index.jsonl` (группировка повторов).
+Локальный capture ledger: `~/.local/state/opencode/incidents/<project>.djsonl`
+(append-only, строка = metadata event) + агрегат `incidents-index.jsonl`
+(группировка повторов). Это только сигнал плагина, не project incident или
+handoff; primary создаёт такие артефакты отдельно после проверки сигнала.
 
-Схема записи:
+Плагин вправе записать только capture-поля:
 
 ```
-bug_id (short uuid)        correlation_id
-ts (epoch)                 class: tiny | medium | design
-error_class (S5)           status: open|reported|dispatch|fixed|rejected|deferred|deferred-after-B9
-session (id)               task (id | none)
-project (slug)             owner (named agent, если известен)
-symptom (≤200 chars)       repro (≤300 chars, минимальная команда/шаги)
-evidence (redacted head)   fix_route (рекомендация, S6)
-count (повторы)            first_ts / last_ts
+capture_id (opaque ID)       ts (epoch)
+error_class (S5 enum)        source_class (fixed enum)
+session_id (validated ID)    project_slug (ALLOWED_REPOS enum)
+safe_hint (fixed enum)       count / first_ts / last_ts
+recommended_route (S6 enum)
 ```
 
-- **correlation_id** — обязателен (research §5): `project/error_class/hint`;
-  hint — короткое имя сбоя, например `verifier-provider-451`,
+`status`, `route_state`, `notification_state` и `notification_flag` принадлежат
+primary workflow и записываются только в project incident/handoff после проверки
+сигнала. Они не входят в capture ledger и не заполняются listener'ом.
+`status` имеет enum `open|reported|dispatch|fixed|rejected|deferred`; `dispatch`
+значит, что именованный исполнитель принял маршрут, не что фикс завершён.
+`route_state: ready|blocked|unknown` отражает доступность маршрута.
+`notification_state: not_required|pending|sent|started|finished|cannot|unknown`
+принадлежит B18 workflow. `notification_flag=deferred-after-B9` — только метка
+отложенного уведомления, не incident status.
+
+- **correlation_id** для дедупликации собирается из `project_slug`,
+  `error_class` и `safe_hint` только после allowlist-проверок; сам hint — значение
+  фиксированного словаря, например `verifier-provider-451`,
   `peer-write-self-echo`, `stale-status-claim`, `shell-quote-bug`;
+- B18 transport rc не является notification state: `delivery-check.sh` rc 0/1/2
+  — результат команды; только отсутствие `started` после deadline переводит
+  workflow notification state в `unknown`. Тот же `message_id` не отправляется повторно;
 - классификация размера: tiny (однострочная точечная), medium (локальная
   правка), design (требует решения — становится задачей с ID);
 - ротация: файл >1 МБ или >5000 записей → `_archive/`; решённые баги не
@@ -90,7 +111,8 @@ count (повторы)            first_ts / last_ts
 
 ```
 tool-fail             — нулевой exit не получен от tool
-provider-451          — HTTP 451 / «model unavailable»
+provider-unavailable  — «model unavailable» / provider сообщает unavailable
+provider-quota        — quota/balance exhausted
 provider-timeout      — hang/таймаут апстрима
 permission-blocked    — отказ permissions-гейта (ask без выдачи)
 peer-write-timeout    — write-channel: ack не пришёл в окне
@@ -113,25 +135,34 @@ unknown               — fallback-класс, не попал ни в один 
 | error_class | recommended fix_route |
 |---|---|
 | tool-fail | named executor зоны виновного инструмента (bash-dev / util-dev / stow-ops) |
-| provider-451 / provider-timeout | повтор с моделью отправителя (≤2 повторов суммарно), затем STOP и рапорт |
+| provider-unavailable / provider-quota / provider-timeout | workflow применяет актуальное правило retry/лимит из orchestration; затем STOP и рапорт |
 | permission-blocked | meta (обновление permissions), затем рестарт сессии |
 | peer-write-timeout / peer-self-echo | фикс peer-comms-инструментов (bash-dev); discovery-канон по fe66edd уже покрывает часть |
 | stale-status-claim | sysop — немедленное устранение (workflow-гейт), не Дирижёр |
 | shell-quote-bug | bash-dev (канон: текст письма в файл, вызов через `$(cat файл)`) |
-| model-overwrite | capture с флагом `deferred-after-B9`; уведомление Дирижёру — после закрытия B9 (см. S10-split) |
+| model-overwrite | рекомендация primary выставить `notification_flag=deferred-after-B9` в project incident; capture ledger этот workflow-флаг не содержит |
 | unknown | sysop — рапорт, route не выбран |
 
-Уведомление Дирижёру: плагин не шлёт письма сам — пишет сигнал в handoff-файл
-и (опционально, фаза 2) показывает сигнал в канале; Дирижёр берёт, когда хочет.
+Плагин не шлёт письма и не создаёт проектный handoff. Он пишет только локальный
+metadata signal. Primary проверяет сигнал, выбирает маршрут и создаёт
+incident/handoff. При отсутствии active `bugfix` claim primary выставляет
+`route_state=blocked`, сохраняет инцидент/handoff или останавливает orchestration
+с `BLOCKED`; fallback на `general` запрещён (см. BF-20261010-01 §5).
 
 ## S7. Redaction & Scope Guard
 
-1. Патерны секретов (token/key/private/ssh/password и похожие) — если
-   сработали: запись НЕ создаётся, FAIL-closed, строка с стоп-сигналом в лог
-   плагина без содержимого.
-2. Prompts, LLM-ответы, полные tool outputs — никогда не записываются.
-3. Head stderr: ≤2 строк, ≤200 символов суммарно, после redaction.
-4. Scope Guard: запись создаётся только для `project` из константы
+1. До записи применяется fail-closed проверка ко всем исходным и производным
+   полям. Если secret/path detector сработал или проверка упала — запись НЕ
+   создаётся; лог содержит только код отказа, без совпавшего фрагмента.
+2. Prompts, LLM-ответы, полные tool outputs, произвольный stderr, команды и
+   абсолютные пути никогда не записываются. Исключения по длине не делают
+   свободный текст безопасным.
+3. `symptom` и `repro_hint` — только enum/шаблон из кода; `evidence_ref` —
+   непрозрачный ID, без пути или содержимого. Для каждого поля есть fixtures
+   на секреты, credential-like substrings и path traversal.
+4. Не логировать сырые exception/error text: только error class и безопасный
+   числовой код, если его поле подтверждено API.
+5. Scope Guard: запись создаётся только для `project` из константы
    `ALLOWED_REPOS` (dotfiles + проекты Рудры). Репо вне списка — запись не
    создаётся, в stderr плагина — метка NO_CREATE (никакого молчаливого
    подавления).
@@ -150,53 +181,62 @@ false — нормальный ответ (если фикс исчерпал в
 сбой peer-comms self-echo дал фикс discovery (fe66edd), из которого выросла
 `find --role` как фича-обёртка handshake-реестра.
 
-## S9. Double-ack / read-gate (связь с mailing-protocol-proto)
+## S9. Double-ack / read-gate (интерфейс primary с B18)
 
-Родительская спека: `docs/specs/mailing-protocol-proto.md` (автор igraphv2,
-коммит f748ee1, proto-draft). Плагин не дублирует почтовую реализацию —
-использует её события:
+Канон: `docs/specs/mailing-protocol-proto.md` (B18 materialized) и
+`docs/specs/done/peer-comms-handshake.md` S7. Плагин не читает receipts,
+не опрашивает state и не отправляет письма: B18 выполняет primary workflow
+через `tools/peer-comms/letter.sh` и `delivery-check.sh`.
 
-1. перед письмом Дирижёру — `sent{message_id, digest, ts}` в receipts;
+1. `letter.sh` пишет `sent{message_id, digest, ts}` в receipts; metadata signal
+   плагина не считается `sent` и не подтверждает доставку;
 2. read-gate: получатель пишет `started` при первом контакте без оценки
    качества — это «сообщение прочитано»;
 3. double-ack: `finished` обязателен с артефакт-ссылкой (SHA, путь);
    `cannot` допустим с одним конкретным блокером — не штраф;
-4. deadline истёк устойчиво: `unknown`, не «failed»; продление = новое
-   письмо (новый message_id), повторная отправка того же message_id запрещена;
+4. `delivery-check.sh` rc=0/1/2 означает соответственно доставлено / пока не
+   доставлено / ошибка проверки. Это не notification state. Только отсутствие
+   `started` после deadline переводит notification state в `unknown`, не
+   `failed`; повторная отправка того же `message_id` запрещена. Новое письмо
+   требует нового ID и отдельного решения primary;
 5. receipts — только метаданные (id/digest/ts/scope/session), без тела письма
    (тело — секрет, чат; сверки digest).
-6. state-path: `~/.local/state/opencode/mail/` — рекомендация (финальное
-   размещение — решается при реализации, не в этой спеке).
+6. Канонический state-path: `~/.local/state/opencode/mail/` (см. B18).
 
 ## S10. Обязательные кейсы (capture-тесты)
 
-Порядок: спека → reviewer → verifier → approval → реализация (Phase 1:
-capture + rotation; Phase 2: routing + notify; Phase 3: ack/receipts).
+Порядок: текстовая спека → reviewer → verifier → отдельный approval → реализация
+(Phase 1: только подтверждённые capture источники + rotation; Phase 2: primary
+workflow route/notify; Phase 3: B18 ack/receipts). Каждый шаг имеет собственный
+scope и verifier-gate; текущее одобрение содержания не разрешает runtime-код.
 
-### Кейс 1 (peer-write-timeout / модель адресата изменена)
-Симптом: письмо соседу отправлено, но окно ack истекло. Особый вариант:
-адресат сменил модель (явный `--model` обязателен — модель отправителя, иначе
-маршрутизация не гарантирована). repro:
-`tools/peer-comms/hello.sh find --role librarian` — сосед stale. Плагин
-ловит: sent без started в окне → запись peer-write-timeout.
+### Кейс 1 (peer-write-timeout / receipts)
+Это workflow/read-gate кейс, не listener hook. Primary вызывает
+`delivery-check.sh`; rc=0/1/2 трактуются только как результат проверки. Если
+после deadline нет `started`, primary фиксирует notification state `unknown`,
+не повторяет прежний `message_id`, а создаёт безопасный handoff либо после
+проверки риска дубля инициирует новое письмо с новым ID. Изменение модели
+адресата не является поводом молча переопределять model или обходить B18.
 
-### Кейс 2 (verifier provider 451/hang)
-Симптом: verifier dispatch → HTTP 451, повтор с той же моделью — та же
-ошибка; ход висит до таймаута. Причина: провайдер недоступен. Плагин ловит:
-provider-451 через S3 provider слой; рекомендация — fallback повтор с
-моделью отправителя (≤2) и STOP.
+### Кейс 2 (provider unavailable/quota/hang)
+Fixtures отдельно покрывают provider unavailable, quota/balance и timeout.
+Provider hook пока не подтверждён; до доказательства конкретного V2 payload
+эти сбои фиксирует primary при failed dispatch. Listener не заявляет автоматический
+capture и не инициирует retry; лимит повторов берётся из действующего orchestration
+контракта, затем STOP и отчёт.
 
-### Кейс 3 (stale-status claim)
+### Кейс 3 (stale-status claim; workflow-only)
 Симптом: старый статус (например устаревший PASS из собственной истории)
 подан как текущая информация — сверяющий видит «done» по записи, хотя диск
-это не подтверждает. Плагин фиксирует через session-слой (S3).
-Это немедленное устранение (не deferred): рабочий шаг — сверка «статус ↔
-факт на диске» в workflow рапорта, не в плагине (см. S10-split).
+это не подтверждает. Подтверждённого session hook для проверки истины по диску
+нет. Primary сверяет «статус ↔ факт на диске» и при расхождении создаёт incident;
+плагин не выводит stale-status из текста сессии.
 
 ### Кейс 4 (shell-quote bug)
-Симптом: `zsh: unmatched "` при передаче текста с кавычками/скобками напрямую
-в CLI-команде; ловится патерном S3 (tool.execute.after). fix_route bash-dev:
-канон «текст письма в файл, вызов через `$(cat файл)`» (см. peer-comms).
+Fixture может проверить классификатор на безопасном коде/enum, но автоматический
+перехват `tool.execute.after` остаётся `[не подтверждён]`. Пока hook/payload не
+подтверждён, primary отмечает этот сбой workflow-путём; сырая команда в запись
+не попадает.
 
 ### Split: immediate vs deferred-after-B9
 
@@ -205,17 +245,17 @@ provider-451 через S3 provider слой; рекомендация — fallb
 > model-overwrite (правки pinned-моделей в агентских конфигах). Отлагание
 > снимается Дирижёром при закрытии B9.
 
-- immediate: stale-status-claim (Кейс 3) — устраняется рабочим шагом
-  «статус ↔ факт на диске», capture остаётся в плагине;
-- deferred-after-B9: класс model-overwrite — capture записывается, но
-  уведомление Дирижёру откладывается до закрытия B9 (в записи флаг
-  `deferred-after-B9`, умолчанной обработки нет).
+- immediate: stale-status-claim (Кейс 3) — workflow-only сверка
+  «статус ↔ факт на диске» primary;
+- deferred-after-B9: model-overwrite получает `notification_flag=deferred-after-B9`
+  только если источник capture подтверждён. Это не incident status и не скрывает
+  инцидент; до закрытия B9 уведомление не отправляется.
 
 ## S11. Sustainability-фильтр (обязательный чек)
 
 | Фильтр | Как выполняется |
 |---|---|
-| не грузим машину | 5 hook-событий listener без фоновых процессов; no daemon, no cron |
+| не грузим машину | только подтверждённые hooks, без фоновых процессов; no daemon, no cron |
 | не раздуваем контекст | логи — append-only в state (в контекст сессии НЕ попадают); Дирижёру — краткий сводный блок не более 5 строк |
 | токеномика | zero-LLM в capture/группировке/уведомлении; только патерны |
 
@@ -223,17 +263,28 @@ provider-451 через S3 provider слой; рекомендация — fallb
 
 smoke (fixtures, реальные запуски, без LLM):
 
-1. tool-fail capture — форсед ненулевой exit tool → запись с correlation_id
-   и head stderr (без full output).
-2. secret-leak guard — fake secret (`token=foo`) в stderr → FAILED с
-   stop-сигналом; никакой записи.
-3. dedup — дважды одинаковый сбой → одна запись count=2.
-4. correlation — одинаковый error_class+hint в разных сессиях → склейка по
+1. tool-fail capture — только если соответствующий V2 hook/payload подтверждён;
+   иначе fixture проверяет primary workflow fallback. Запись содержит только
+   safe enums/metadata, не stderr.
+2. secret-leak guard — fake secret (`token=foo`) во всех исходных и производных
+   полях → fail-closed без значения и записи; отдельно проверить secret в
+   exception/error path, не допуская сырого текста в stderr/runtime logs.
+3. detector failure — secret/path detector бросает исключение/возвращает ошибку:
+   запись не создаётся, наружу уходит только фиксированный код отказа, без
+   исходного значения и текста исключения.
+4. dedup — дважды одинаковый сбой → одна запись count=2.
+5. correlation — одинаковый error_class+hint в разных сессиях → склейка по
    correlation_id в агрегате (не отдельные записи).
-5. Scope Guard — project вне ALLOWED_REPOS → запись не создаётся, NO_CREATE.
-6. Route-table: error_class → fix_route детерминировано (fixture-набор).
-7. zero-LLM: grep-аудит (без LLM-вызовов/провайдерских функций).
-8. double-ack/read-gate: по канонам mailing-protocol-proto.
+6. Scope Guard — project вне ALLOWED_REPOS → запись не создаётся, NO_CREATE.
+7. Route-table: error_class → fix_route детерминировано (fixture-набор).
+8. zero-LLM: grep-аудит (без LLM-вызовов/провайдерских функций).
+9. B18 workflow: реальные `letter.sh`/`delivery-check.sh` receipts, rc=0/1/2,
+   deadline→unknown, no-resend того же ID; плагин сам receipts не читает.
+10. Для каждого S3 source — hook/API + payload evidence либо пометка
+   unsupported и доказанный workflow fallback; не засчитывать фиктивное покрытие.
+11. При отсутствии active `bugfix` claim `route_state=blocked`; primary создаёт
+    handoff/incident или возвращает `BLOCKED` для дальнейшей orchestration, не
+    блокируя исходный tool.
 
 Реализация + verifier PASS = обязательное условие ко каждому шагу Phase 1–3;
 не меняем словарь maya-lint, release-пайпы, чужие репо.
@@ -243,6 +294,10 @@ smoke (fixtures, реальные запуски, без LLM):
 - env-флаг `BUGFIX_PLUGIN=off` — плагин полностью пассивен (fail-closed).
 - Никаких внедрений в pre-commit/часы и никаких exit-кодов, ломающих релиз;
   записи всегда metadata-only; сбой capture сам не повышает приоритет.
+- Disable listener не снимает fail-visible обязанность primary из
+  `bugfix-failure-rule.md`: известный сбой получает безопасную запись/handoff
+  либо явный BLOCKED дальнейшей orchestration; штатный инструмент не блокируется,
+  но silent continuation запрещён.
 - Откат — revert коммита плагина; state-файлы остаются (метаданные безопасны).
 
 ## S14. Route management
@@ -289,5 +344,7 @@ Phase 3 = ack/receipts-conform (S9).
 3. Retention state-файлов: 90 дней + перенос в `_archive/`; секреты не архивируются.
 4. XP/метатокены — вне этой спеки (фаза 4, отдельный мандат igraphv2).
 
-Статус спеки: draft → approved (Рудра, 2026-10-07); реализация — Phase 1–3 по
-отдельным мандатам с verifier-гейтом на каждом шаге.
+Резолюция Рудры 2026-10-07 одобрила substance/направление текста, не реализацию.
+Текущий статус остаётся `draft`; runtime-код запрещён до reviewer → verifier
+PASS по этой ревизии и отдельного явного approval Рудры. После этого каждая
+Phase 1–3 всё равно требует собственного scope и verifier-гейта.
