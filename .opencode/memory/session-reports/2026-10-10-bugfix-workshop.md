@@ -240,3 +240,47 @@ fix/workaround → evidence → status.
 - **Status:** fixed. Residual `[проверить]`: grab-race — разовый X/qtile race,
   при повторе смотреть старт X-сессии; `tmux-open`-хоткей при желании
   перепривязать на свободную клавишу (отдельная задача, не делал).
+
+---
+
+## INC-8 — read-only агенты не открывали внешние файлы (vault), 9 жалоб за месяц
+
+- **Symptom:** Рудра: «в волта "Reviewer не смог открыть внешний dotfiles-файл" —
+  я думал проблема решена... уже 9 раз прошу за последний месяц». Отказ чтения
+  файлов вне рабочей директории у read-only агентов; возвращалось многократно,
+  потому что чинилось симптоматически (то bash-allowlist, то проектный конфиг),
+  а не по root cause.
+- **Repro:** вызвать `researcher`/`reviewer` с задачей прочитать файл вне
+  workspace (например `/home/rudra/Projects/OpenCode-Vault/04-Memory/facts.md`)
+  → отказ на инструменте чтения.
+- **Root cause:** в `opencode-global/.config/opencode/agent/researcher.md`
+  ключ `external_directory` **отсутствовал полностью**. Без него действовал
+  дефолт проекта/глобального слоя, а при конфликте слоёв выигрывал более
+  строгий — внешнее чтение перекрывалось. Дополнительная слабость: у ряда
+  агентов стоял скалярный `external_directory: allow`, который при last-match-wins
+  **затирает** секретные deny глобального слоя (`.env`, `*.key`, `id_rsa`…).
+- **Fix (dotfiles, коммит `7c80690`):**
+  1. `researcher.md`: добавлен `external_directory` в **object-форме** —
+     `"*": allow` + все секретные deny (идентично глобальному `opencode.jsonc`).
+     Внешнее чтение открыто, секреты закрыты, `edit`/`task` остались `deny`
+     (read-only семантика не тронута).
+  2. `reviewer.md` уже имел `external_directory: allow` — работает.
+- **Evidence (живые прогон 2026-10-13):**
+  - `researcher` → `ses_ecd1eaf5fffesx7BMVTn1VchBO`: vault-файл прочитан
+    (первые 2 строки дословно, 962 строки); `shell` корректно отклонён
+    (`permission.rejected: Permission denied: shell`) — read-only держится.
+  - `reviewer` → `ses_ecd1e398dffeeWnIYUAnsM72pe`: vault-файл прочитан.
+  - Правка уже в рантайме без рестарта: `~/.config/opencode/agent` — симлинк
+    на каталог репо, `researcher.md` имеет один inode в обоих путях.
+- **Root-cause примечание (почему 9 раз):** `~/.config/opencode/agent/*.md` —
+  это симлинк-каталог `agent/` → `dotfiles/opencode-global/.config/opencode/agent`,
+  то есть правки репо **сразу** в рантайме. Повторные жалобы шли не из-за
+  отсутствия рестарта, а из-за точечных фиксов: чинили bash-whitelist и
+  проектный конфиг, но не сам отсутствующий ключ `external_directory`.
+- **Status:** fixed, подтверждено живыми прогонами обоих агентов.
+- **Residual `[проверить]`:** `meta`, `system-audit`, `tree-cop` по-прежнему
+  **без** ключа `external_directory` (таблица инвентаризации) — если им понадобится
+  внешнее чтение, понадобится тот же object-фикс. Скалярные `allow` у
+  `bash-dev`/`qtile-dev`/`stow-ops`/`sysop`/`util-dev`/`verifier`/`reviewer`
+  шире проектных и формально затирают секретные deny — вопрос единообразия,
+  не блокирующий чтение.
