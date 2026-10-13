@@ -209,6 +209,15 @@
         "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
     },
+    "newapi": {
+      "package": "aisdk:@ai-sdk/openai-compatible",
+      "settings": { "baseURL": "http://localhost:3000/v1" },
+      "models": {
+        "free-code": { "name": "Free Code (gateway)", "tool_call": true, "temperature": true },
+        "free-general": { "name": "Free General (gateway)", "tool_call": true, "temperature": true },
+        "free-vision": { "name": "Free Vision (gateway)", "attachment": true, "tool_call": true, "temperature": true }
+      }
+    },
     "amd-radeon": {
       "package": "aisdk:@ai-sdk/openai-compatible",
       "settings": { "baseURL": "https://developer.amd.com.cn/radeon/api/v1" },
