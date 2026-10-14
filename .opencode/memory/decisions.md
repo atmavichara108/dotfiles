@@ -720,3 +720,30 @@ bun build ок; secrets/latin-cyrillic-mix scan чисто; шаги ship до P
    (incident-record-template). `verifier` это всё должно отпроводить, пока НЕ UP.
 4. Фаза 2/3 (route/notify, ack-conformance) — НЕ реализовано; своего scope'а.
 5. Ship: preflight tree-cop; чужой WIP `.opencode/*-stash-foreign + pop`.
+
+## 2026-10-14 — TG-мост: доводка (md/attach/upload) + инцидент-реестр ЦУ
+
+**Контекст:** после edit/delete-операций координатор ставил Т-tg-md / Т-tg-attach /
+tg-upload (три файла, офлайн-режим) и поднимал вопрос «сторожа» топика 33 (T-tg-watch).
+**Решения/факты:**
+- Пермишения агентов в V2 — только массив `{action,resource,effect}` под ключом
+  `permissions`; `bash:`/map-форма/external_directory файлами = V1-legacy, молча
+  игнорируются → `Permission denied: shell`. Живой preflight tg-bridge PASS после
+  миграции. Системный хвост: остальные агентские `.md` ещё в V1-форме — задача-миграция
+  открыта (ЦУ принял в свою мета-зону как отдельный proposal).
+- tg-send: разбор md через `telethon.extensions.markdown` ДО сети, отправка
+  `formatting_entities` (parse_mode=None), фолбэк plain+warning; dry-run печатает
+  source/wire/план entities полностью офлайн. tg-attach: `--list` (все вложения,
+  любой участник, metadata без байтов), префикс регистронезависим. tg-upload: двухфазно,
+  лимиты, секрет-имена отказ, message_id после каждой отправки.
+- Инцидент id=83: тест tg-send без --dry-run ушёл живьём в топик 28 — у tg-send нет
+  owner-scope whitelist топиков (асимметрия с attach/edit/upload). Удаление вне
+  delete-whitelist {41,42}; доложено control top + ЦУ. Кандидат-фикс по решению top:
+  ALLOWED_TOPICS в tg-send.
+- Реестр сбоев сессии — в docs/handoffs/2026-10-14-tg-bridge-session-incident-registry.md;
+  рапорт ушёл Центральному Узлу (роль bugfix не активна — route_state=blocked по BF-спеке,
+  handoff вместо письма). Путаница веток/писем (INC-C): норма «ссылка = проверенная
+  ветка@sha» и post-verified sent в letter.sh — на арбитраж ЦУ.
+**Open:** вердикт control top по merge ветки tg-md-attach-upload; id=83 не удалён;
+`_prefix_match` с подчёркиванием (LAST_LOGIN) — вопрос координатору; T-tg-watch — старт
+по команде (зависимость office-tg liaison).
