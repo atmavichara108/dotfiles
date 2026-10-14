@@ -37,6 +37,14 @@ SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
 
 
 async def main():
+    if "--help" in sys.argv or "-h" in sys.argv:
+        print("tg-login [--help]: интерактивный логин владельца, сеть — "
+              "только auth; ничего не читает и не отправляет.")
+        return
+    stray = [a for a in sys.argv[1:] if a.startswith("-")]
+    if stray:
+        sys.exit(f"tg-login: неизвестные аргументы {stray} — отказ "
+                 "(принимается только --help)")
     env = load_env(ENV_FILE)
     if not env.get("TG_API_ID") or not env.get("TG_API_HASH"):
         sys.exit("tg-login: заполни TG_API_ID/TG_API_HASH в " + ENV_FILE)

@@ -11,9 +11,16 @@
 """
 import os
 import sys
+import asyncio
 
 ENV_FILE = os.path.expanduser("~/.config/ssa-tg/tg.env")
 SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
+
+USAGE = """tg-send --topic ID [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
+  --topic ID   ID форумного топика (обязателен; без него отправки нет)
+  --dry-run    только показать, не отправлять
+  --file PATH  взять текст из файла (иначе — аргументы или stdin)
+Получатель всегда один — группа SSA из env (whitelist, не меняется)."""
 
 
 def load_env(path):
@@ -39,25 +46,37 @@ def parse_proxy(url):
 
 
 def main(argv):
+    if "--help" in argv or "-h" in argv:
+        print(USAGE)  # безвредно: до сети и текста не доходим
+        return
     dry = "--dry-run" in argv
     argv = [a for a in argv if a != "--dry-run"]
     text = ""
     topic = None
+    known_vals = set()
     if "--topic" in argv:
         i = argv.index("--topic")
         topic = int(argv[i + 1])
-        argv = [a for a in argv if a not in ("--topic", str(topic))]
-    if "--file" in argv:
-        i = argv.index("--file")
-        with open(argv[i + 1], encoding="utf-8") as f:
+        known_vals.add(argv[i + 1])
+    rest = [a for a in argv if a != "--topic"]
+    if "--file" in rest:
+        i = rest.index("--file")
+        with open(rest[i + 1], encoding="utf-8") as f:
             text = f.read()
-    elif argv:
-        text = " ".join(argv)
+        known_vals.update([rest[i + 1]])
     else:
-        text = sys.stdin.read()
+        words = [a for a in rest if a not in known_vals]
+        stray = [a for a in words if a.startswith("--")]
+        if stray:
+            # флагоподобный текст никогда не отправляем (ловушка --help)
+            sys.exit(f"tg-send: неизвестные флаги {stray} — отказ (см. --help)")
+        text = " ".join(words) if words else sys.stdin.read()
     text = text.strip()
     if not text:
         sys.exit("tg-send: пустой текст — нечего отправлять")
+    if topic is None:
+        sys.exit("tg-send: нет --topic ID — отправка запрещена "
+                 "(fail-closed; см. --help)")
 
     env = load_env(ENV_FILE)
     api_id = env.get("TG_API_ID", "")
@@ -77,22 +96,32 @@ def main(argv):
             sys.exit("tg-send: задан TG_PROXY, но нет python-socks "
                      "(владелец ставит: pip install --user 'python-socks[asyncio]')")
 
-    if dry:
-        print(f"dry-run -> chat {group}: {text[:120]}")
-        return
-
-    import asyncio
-
     async def send():
         async with TelegramClient(SESSION, int(api_id), api_hash,
                                   proxy=proxy) as client:
             me = await client.get_me()
-            sys.stderr.write(f"tg-send: как {me.username or me.id} -> {group}"
-                             + (f" topic={topic}" if topic else "") + "\n")
-            msg = await client.send_message(int(group), text, reply_to=topic)
-            print(f"tg-send: ok id={msg.id}")
+            ent = await client.get_entity(int(group))
+            topics = await _topic_ids(client, ent)
+            if topic not in topics:
+                sys.exit(f"tg-send: топика {topic} нет в группе "
+                         f"(есть: {sorted(topics)}) — отказ")
+            if dry:
+                print(f"dry-run -> chat {group} topic={topic}: {text[:120]}")
+                return
+            sys.stderr.write(f"tg-send: как {me.username or me.id} -> {group} "
+                             f"topic={topic}\n")
+            msg = await client.send_message(ent, text, reply_to=topic)
+            print(f"tg-send: ok id={msg.id} topic={topic}")
 
     asyncio.run(send())
+
+
+async def _topic_ids(client, entity):
+    """ID существующих топиков (только метаданные заголовков, без текстов)."""
+    from telethon.tl.functions.messages import GetForumTopicsRequest
+    r = await client(GetForumTopicsRequest(
+        peer=entity, offset_date=None, offset_id=0, offset_topic=0, limit=100))
+    return {t.id for t in r.topics}
 
 
 if __name__ == "__main__":
