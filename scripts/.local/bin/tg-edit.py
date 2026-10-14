@@ -112,8 +112,8 @@ def main(argv):
         sys.exit(f"tg-edit: id вне разрешённого набора {sorted(ALLOWED_IDS)}: "
                  f"{sorted(ids - ALLOWED_IDS)} — отказ, ноль правок")
     for k, v in edits.items():
-        if not str(v).strip():
-            sys.exit(f"tg-edit: пустой текст для id={k} — отказ "
+        if not isinstance(v, str) or not v.strip():
+            sys.exit(f"tg-edit: пустой/нестроковый текст для id={k} — отказ "
                      "(стирание запрещено)")
 
     env = load_env(ENV_FILE)
