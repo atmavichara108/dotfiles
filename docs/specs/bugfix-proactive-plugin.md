@@ -3,7 +3,7 @@ kind: contract
 title: Bugfix-плагин v1 — проактивный capture сбоев и routing в named fix-исполнителей
 spec-home: dotfiles/docs/specs/
 date: 2026-10-07
-status: draft — черновик; реализация запрещена до reviewer→verifier и approval Рудры
+status: approved — approval Рудры 2026-10-14 («включай»); runtime разрешён и работает: bugfix-capture.ts (Phase 1–3) в global plugins + /bugfix; reviewer CLEAR, verifier PASS 2026-10-14
 owner: sysop (route: dotfiles primary/sysop; fallback UNROUTABLE, не general)
 basis: 02-Methods/incident-fix (vault: Route-таблица, форма записи инцидента);
        04-Memory/route-log/2026-10-06-bugfix-logging-research.md; 06-Audits/
