@@ -4,23 +4,38 @@
 Безопасность:
   - получатель ТОЛЬКО SSA_GROUP_ID из env (whitelist, переопределения нет);
   - секреты только из ~/.config/ssa-tg/tg.env, никогда из аргументов/репо;
-  - запуск: python3 tg-send.py [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
+  - запуск: python3 tg-send.py --topic ID [--format md|plain] [--dry-run]
+        [--file TEXTFILE] [ТЕКСТ ...]
     (exec-бит ставит владелец: chmod +x — вне зоны агента).
+
+Разметка (стандарт владельца; формат md — умолчание):
+  - **жирный** — заголовки и акценты;
+  - `код` — команды и пути (всегда в коде);
+  - ```блоки``` — листинги (```lang — с подсветкой);
+  - --format plain — текст уходит как есть, без разбора разметки;
+  - безопасный фолбэк: если md-парсинг падает — сообщение уходит plain
+    БЕЗ маркеров + warning в stderr (сообщение не теряется);
+  - --dry-run показывает исходный текст и план entities полностью ДО сети:
+    Telethon-клиент не запускается, ничего не отправляется.
 
 Зависимость: telethon (системно, ставит владелец: pip install --user telethon).
 """
 import os
+import re
 import sys
 import asyncio
 
 ENV_FILE = os.path.expanduser("~/.config/ssa-tg/tg.env")
 SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
 
-USAGE = """tg-send --topic ID [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
+USAGE = """tg-send --topic ID [--format md|plain] [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
   --topic ID   ID форумного топика (обязателен; без него отправки нет)
-  --dry-run    только показать, не отправлять
+  --format F   разметка: md (умолчание) | plain (как есть, без разбора)
+  --dry-run    показать исходный текст + план entities (до сети), не отправлять
   --file PATH  взять текст из файла (иначе — аргументы или stdin)
-Получатель всегда один — группа SSA из env (whitelist, не меняется)."""
+Получатель всегда один — группа SSA из env (whitelist, не меняется).
+md-разметка: **жирный**, `код`, ```блок``` (Telethon Markdown).
+Падение md-парсинга -> plain без маркеров + warning в stderr (не теряем)."""
 
 
 def load_env(path):
@@ -45,12 +60,76 @@ def parse_proxy(url):
     return (scheme or "socks5", host, int(port or "1080"))
 
 
+def strip_md(text):
+    """Best-effort: снять маркеры md для plain-фолбэка."""
+    t = re.sub(r"```[^\n`]*", "", text)
+    return t.replace("**", "").replace("`", "")
+
+
+def build_message(text, fmt):
+    """Разбор разметки ДО сети. -> (wire_text, entities, warning).
+
+    entities=None => уйдёт как plain. warning непустой => сработал
+    безопасный фолбэк: сообщение не теряется в любом случае.
+    """
+    if fmt != "md":
+        return text, None, ""
+    try:
+        from telethon.extensions import markdown
+        wire, entities = markdown.parse(text)
+        return wire, list(entities), ""
+    except Exception as e:  # noqa: BLE001 — фолбэк обязателен: не теряем сообщение
+        return (strip_md(text), None,
+                f"tg-send: WARNING: md-парсинг упал ({e!r}) — "
+                f"фолбэк: plain без маркеров")
+
+
+def _u16_slice(text, offset, length):
+    """Срез по UTF-16 оффсетам (MTProto считает оффсеты в utf-16 units)."""
+    try:
+        raw = text.encode("utf-16-le")
+        return raw[offset * 2:(offset + length) * 2].decode("utf-16-le",
+                                                            "replace")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _print_dry_run(group, topic, fmt, text, wire, entities):
+    print(f"dry-run -> chat {group} topic={topic} format={fmt} "
+          f"(до сети; без отправки)")
+    print("--- SOURCE TEXT ---")
+    print(text)
+    print("--- WIRE TEXT (что уйдёт в TG) ---")
+    print(wire)
+    n = len(entities) if entities else 0
+    print(f"--- ENTITIES PLAN ({n}) ---")
+    for e in entities or []:
+        kind = type(e).__name__
+        lang = getattr(e, "language", "")
+        snippet = _u16_slice(wire, e.offset, e.length)[:60]
+        extra = f" language={lang!r}" if lang else ""
+        print(f"  {kind} offset={e.offset} length={e.length}{extra} «{snippet}»")
+    if not n:
+        print("  (нет — уйдёт как plain)")
+
+
 def main(argv):
     if "--help" in argv or "-h" in argv:
         print(USAGE)  # безвредно: до сети и текста не доходим
         return
     dry = "--dry-run" in argv
     argv = [a for a in argv if a != "--dry-run"]
+    fmt = "md"
+    if "--format" in argv:
+        i = argv.index("--format")
+        if i + 1 >= len(argv):
+            sys.exit("tg-send: --format без значения (md|plain) — отказ "
+                     "(см. --help)")
+        fmt = argv[i + 1]
+        if fmt not in ("md", "plain"):
+            sys.exit(f"tg-send: неизвестный --format {fmt!r} (только md|plain) "
+                     f"— отказ (см. --help)")
+        argv = argv[:i] + argv[i + 2:]
     text = ""
     topic = None
     known_vals = set()
@@ -96,6 +175,14 @@ def main(argv):
             sys.exit("tg-send: задан TG_PROXY, но нет python-socks "
                      "(владелец ставит: pip install --user 'python-socks[asyncio]')")
 
+    # Разбор разметки ДО сети: dry-run и фолбэк полностью офлайн.
+    wire, entities, warning = build_message(text, fmt)
+    if warning:
+        sys.stderr.write(warning + "\n")
+    if dry:
+        _print_dry_run(group, topic, fmt, text, wire, entities)
+        return  # до сети: Telethon-клиент не запускаем
+
     async def send():
         async with TelegramClient(SESSION, int(api_id), api_hash,
                                   proxy=proxy) as client:
@@ -105,12 +192,11 @@ def main(argv):
             if topic not in topics:
                 sys.exit(f"tg-send: топика {topic} нет в группе "
                          f"(есть: {sorted(topics)}) — отказ")
-            if dry:
-                print(f"dry-run -> chat {group} topic={topic}: {text[:120]}")
-                return
             sys.stderr.write(f"tg-send: как {me.username or me.id} -> {group} "
-                             f"topic={topic}\n")
-            msg = await client.send_message(ent, text, reply_to=topic)
+                             f"topic={topic} format={fmt}\n")
+            msg = await client.send_message(ent, wire, reply_to=topic,
+                                            parse_mode=None,
+                                            formatting_entities=entities)
             print(f"tg-send: ok id={msg.id} topic={topic}")
 
     asyncio.run(send())
