@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
 """tg-attach — fail-closed работа с вложениями ОДНОГО разрешённого топика.
 
-Что делает: список метаданных вложений топика + скачивание ОДНОГО файла
-в контролируемый temp-каталог. Никаких отправок, никакого чтения текстов
-сообщений в вывод (только metadata), никакого group-wide read.
+Что делает:
+  - --list:     metadata ВСЕХ вложений топика от ЛЮБОГО участника —
+               не угадываем имена, просто показываем; байты НЕ качаются;
+  - --download: скачать подходящие файлы (whitelist-префикс, только
+               Ratibor) в контролируемый temp-каталог + SHA-256.
+Никаких отправок, никакого чтения текстов сообщений в вывод (только
+metadata), никакого group-wide read.
 
-Жёсткие рамки текущей задачи (owner scope, инцидент 2026-10-14):
+Жёсткие рамки (owner scope, инцидент 2026-10-14):
   - разрешённый topic: ровно 33 («Тэсты»); другие topics — отказ;
-  - отправитель файла: только Ratibor (username RaKhamidov);
-  - filename prefix: только «Last Login»;
+  - --list: все участники, без фильтра имён; sha256 — только если файл
+    уже скачан ранее (лежит в ATTACH_DIR), само скачивание не запускаем;
+  - --download: единственное условие авто-скачивания — filename prefix
+    «Last Login» (регистронезависимо: 'Last Login' ловит 'Last login')
+    + отправитель Ratibor (username RaKHamidov);
   - каталог: только /tmp/opencode/tg-topic-33-attachment/ (создаётся 0700);
-  - секретоподобные файлы (.pem/.key/.env/id_rsa/*private* и т.п.) — НЕ качать,
-    доложить только признак.
+  - секретоподобные файлы (.pem/.key/.env/id_rsa/*private* и т.п.) —
+    НЕ качать, доложить только признак (secret-suspect-REFUSED).
 
 Использование:
   python3 tg-attach.py --help
-  python3 tg-attach.py --topic 33 [--limit N] [--download]
-Без --download — только metadata-список вложений топика (без текстов сообщений).
-С --download — скачать подходящий файл + SHA-256 (содержимое НИКОГДА не в вывод).
+  python3 tg-attach.py --topic 33 --list [--limit N]
+  python3 tg-attach.py --topic 33 --download [--limit N]
+--list и --download взаимоисключаемы; без режима — отказ (fail-closed).
 
 Зависимость: telethon (системно). Секреты — только ~/.config/ssa-tg/tg.env.
 """
-import fnmatch
 import hashlib
 import json
 import os
@@ -39,12 +45,17 @@ ATTACH_DIR = "/tmp/opencode/tg-topic-33-attachment"
 SECRET_HINTS = (".pem", ".key", ".env", "id_rsa", "private", ".pfx", ".p12",
                 "credentials", "secret")
 
-USAGE = """tg-attach --topic 33 [--limit N] [--download]
+USAGE = """tg-attach --topic 33 (--list | --download) [--limit N]
   --topic 33   разрешён ровно topic 33 (другие — отказ, чтения нет)
+  --list       metadata ВСЕХ вложений топика от любого участника:
+               filename, mime, size, sha256 (если файл уже скачан),
+               message_id, from — без текстов сообщений, без скачивания
+  --download   скачать подходящие (префикс «Last Login», регистронезависимо,
+               отправитель Ratibor) + SHA-256; содержимое НЕ в вывод
   --limit N    сколько сообщений топика сканировать (default 50, max 200)
-  --download   скачать подходящий файл (Ratibor, prefix «Last Login»)
-Вывод: только metadata {topic, message_id, from, filename, mime, size,
-sha256, classification, path}. Тексты сообщений и байты файлов — никогда."""
+--list и --download вместе — отказ; без режима — отказ (fail-closed).
+Вывод: только metadata JSON-строками {topic, message_id, from, filename,
+mime, size, classification, sha256?, path?}. Тексты и байты — никогда."""
 
 
 def load_env(path):
@@ -60,6 +71,7 @@ def load_env(path):
 
 
 def parse_proxy(url):
+    """socks5://host:port -> кортеж для telethon. Пусто -> None (прямое)."""
     url = (url or "").strip()
     if not url:
         return None
@@ -90,12 +102,44 @@ def classify(mime, name):
     return "document-other"
 
 
+def _prefix_match(name, prefix):
+    """Whitelist-префикс, регистронезависимо: 'Last Login' ловит 'Last login'."""
+    return name.casefold().startswith(prefix.casefold())
+
+
+def _local_path(message_id, name):
+    """Путь уже скачанного файла в ATTACH_DIR ('' — если не скачан)."""
+    if not name:
+        return ""
+    safe = "".join(c for c in name if c not in "/\\\0").strip() or "file"
+    p = os.path.join(ATTACH_DIR, f"{message_id}_{safe}")
+    return p if os.path.exists(p) else ""
+
+
+def _metadata(topic, m, doc, name, sender):
+    """Metadata одного вложения: без текстов сообщений, без байтов.
+    sha256 — только если файл уже лежит скачанный в ATTACH_DIR."""
+    meta = {"topic": topic,
+            "message_id": m.id,
+            "from": sender,
+            "filename": name,
+            "mime": doc.mime_type or "",
+            "size": doc.size or 0,
+            "classification": classify(doc.mime_type or "", name)}
+    if looks_secret(name, doc.mime_type or ""):
+        meta["classification"] = "secret-suspect"
+    local = _local_path(m.id, name)
+    if local:
+        meta["path"] = local
+        meta["sha256"] = _sha256(local)
+    return meta
+
+
 def main(argv):
     if "--help" in argv or "-h" in argv:
         print(USAGE)  # безвредно: до сети, env и диска не доходим
         return
     limit = 50
-    download = False
     topic = None
     known_vals = set()
     if "--limit" in argv:
@@ -106,9 +150,12 @@ def main(argv):
         i = argv.index("--topic")
         topic = int(argv[i + 1])
         known_vals.add(argv[i + 1])
-    if "--download" in argv:
-        download = True
-    allowed = {"--limit", "--topic", "--download"} | known_vals
+    want_list = "--list" in argv
+    want_download = "--download" in argv
+    if want_list and want_download:
+        sys.exit("tg-attach: --list и --download вместе — отказ (см. --help)")
+    mode = "list" if want_list else ("download" if want_download else None)
+    allowed = {"--limit", "--topic", "--list", "--download"} | known_vals
     stray = [a for a in argv if a not in allowed]
     if stray:
         sys.exit(f"tg-attach: неизвестные аргументы {stray} — отказ (см. --help)")
@@ -117,6 +164,9 @@ def main(argv):
     if topic not in ALLOWED_TOPICS:
         sys.exit(f"tg-attach: topic {topic} вне разрешённого scope "
                  f"(разрешён: {sorted(ALLOWED_TOPICS)}) — отказ")
+    if mode is None:
+        sys.exit("tg-attach: нет режима (--list или --download) — отказ "
+                 "(fail-closed; см. --help)")
 
     env = load_env(ENV_FILE)
     api_id = env.get("TG_API_ID", "")
@@ -155,30 +205,27 @@ def main(argv):
                     continue
                 name = _filename(m) or ""
                 sender = await _sender(m)
-                if not name or not fnmatch.fnmatch(name, FILENAME_PREFIX + "*"):
+                if mode == "list":
+                    # ВСЕ вложения, любой участник — имена не угадываем.
+                    found.append(_metadata(topic, m, doc, name, sender))
+                    continue
+                # --download: whitelist-префикс (регистронезависимо) + Ratibor.
+                if not name or not _prefix_match(name, FILENAME_PREFIX):
                     continue
                 if sender.lower() != ALLOWED_SENDER:
                     continue
-                meta = {"topic": topic,
-                        "message_id": m.id,
-                        "from": sender,
-                        "filename": name,
-                        "mime": doc.mime_type or "",
-                        "size": doc.size or 0,
-                        "classification": classify(doc.mime_type or "", name),
-                        "path": ""}
-                if looks_secret(name, doc.mime_type or ""):
+                meta = _metadata(topic, m, doc, name, sender)
+                if meta["classification"] == "secret-suspect":
                     meta["classification"] = "secret-suspect-REFUSED"
                     found.append(meta)
                     continue
-                if download:
-                    meta["path"] = await _download(client, m, name)
-                    meta["sha256"] = _sha256(meta["path"])
+                meta["path"] = await _download(client, m, name)
+                meta["sha256"] = _sha256(meta["path"])
                 found.append(meta)
             for row in found:
                 print(json.dumps(row, ensure_ascii=False))
-            sys.stderr.write(f"tg-attach: topic={topic} вложений "
-                             f"по фильтру={len(found)}\n")
+            sys.stderr.write(f"tg-attach: topic={topic} mode={mode} "
+                             f"вложений={len(found)}\n")
 
     asyncio.run(run())
 
