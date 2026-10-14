@@ -5,7 +5,7 @@ project: dotfiles
 spec-home: docs/specs/
 owner: librarian
 title: Храм практической философии — оформление как локация-сессия сети
-status: proposed
+status: approved — approval Rudra 2026-10-14
 related:
   - docs/specs/ship-research-network.md
   - docs/specs/done/engineering-center-location.md
