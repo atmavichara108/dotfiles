@@ -90,20 +90,22 @@
     { "action": "shell", "resource": "*", "effect": "allow" }
   ],
   "provider": {
-    // NOTE 2026-09-29: баланс linaliapi исчерпан, агенты переведены на free-модели; блок оставлен — оживёт пополнением.
-    "linaliapi": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "LinaliAPI",
-      "options": { "baseURL": "https://api.linaliapi.com/v1" },
-      "models": {
-        "anthropic/claude-opus-5": { "name": "Claude Opus 5", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "openai/gpt-5.6-sol": { "name": "GPT-5.6 Sol", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "openai/gpt-5.6-luna": { "name": "GPT-5.6 Luna", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "google/gemini-3.8-flash": { "name": "Gemini 3.8 Flash", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "z-ai/glm-5.3": { "name": "GLM 5.3", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
-      }
-    },
+    // ЗАМОРОЗКА 2026-10-15 (решение Rudra 2026-10-14: «этим провайдером не пользуюсь
+    // и пока не буду, лимитов там нет»). Блок linaliapi закомментирован — исчезает
+    // из списка моделей; оживление — раскомментировать и перезапустить OpenCode.
+    // "linaliapi": {
+    //   "npm": "@ai-sdk/openai-compatible",
+    //   "name": "LinaliAPI",
+    //   "options": { "baseURL": "https://api.linaliapi.com/v1" },
+    //   "models": {
+    //     "anthropic/claude-opus-5": { "name": "Claude Opus 5", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "openai/gpt-5.6-sol": { "name": "GPT-5.6 Sol", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "openai/gpt-5.6-luna": { "name": "GPT-5.6 Luna", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "google/gemini-3.8-flash": { "name": "Gemini 3.8 Flash", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "z-ai/glm-5.3": { "name": "GLM 5.3", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
+    //   }
+    // },
     "amd-radeon": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "AMD Radeon Cloud",
@@ -196,19 +198,21 @@
     }
   },
   "providers": {
-    // NOTE 2026-09-29: баланс linaliapi исчерпан, агенты переведены на free-модели; блок оставлен — оживёт пополнением.
-    "linaliapi": {
-      "package": "aisdk:@ai-sdk/openai-compatible",
-      "settings": { "baseURL": "https://api.linaliapi.com/v1" },
-      "models": {
-        "anthropic/claude-opus-5": { "name": "Claude Opus 5", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "openai/gpt-5.6-sol": { "name": "GPT-5.6 Sol", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "openai/gpt-5.6-luna": { "name": "GPT-5.6 Luna", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "google/gemini-3.8-flash": { "name": "Gemini 3.8 Flash", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "z-ai/glm-5.3": { "name": "GLM 5.3", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
-        "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
-      }
-    },
+    // ЗАМОРОЗКА 2026-10-15 (решение Rudra 2026-10-14): linaliapi не используется,
+    // лимитов нет. Блок закомментирован — исчезает из списка моделей; оживление —
+    // раскомментировать и перезапустить OpenCode.
+    // "linaliapi": {
+    //   "package": "aisdk:@ai-sdk/openai-compatible",
+    //   "settings": { "baseURL": "https://api.linaliapi.com/v1" },
+    //   "models": {
+    //     "anthropic/claude-opus-5": { "name": "Claude Opus 5", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "openai/gpt-5.6-sol": { "name": "GPT-5.6 Sol", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "openai/gpt-5.6-luna": { "name": "GPT-5.6 Luna", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "google/gemini-3.8-flash": { "name": "Gemini 3.8 Flash", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "z-ai/glm-5.3": { "name": "GLM 5.3", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true },
+    //     "deepseek/deepseek-v4-pro": { "name": "DeepSeek V4 Pro", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
+    //   }
+    // },
     "newapi": {
       "package": "aisdk:@ai-sdk/openai-compatible",
       "settings": { "baseURL": "http://localhost:3000/v1" },
