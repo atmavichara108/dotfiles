@@ -1,0 +1,19 @@
+# Syncthing — обмен с маком тестера Ратибора (задача B1, локальная сеть).
+# LAN-only политика зашита в config.xml (~/.config/syncthing/config.xml):
+# global discovery / relays / remote discovery / NAT — выключены,
+# локальная multicast-раскладка (localAnnounceEnabled) — включена.
+# Бинарь: ~/.local/bin/syncthing (официальный статический релиз, вне pacman).
+
+[Unit]
+Description=Syncthing —continuous file synchronization (LAN-only, B1)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/syncthing --no-browser --no-restart --home=%h/.config/syncthing
+Restart=always
+RestartSec=1
+Environment=STNOUPGRADE=1
+
+[Install]
+WantedBy=default.target
