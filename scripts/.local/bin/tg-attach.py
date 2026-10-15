@@ -14,8 +14,9 @@ metadata), никакого group-wide read.
   - --list: все участники, без фильтра имён; sha256 — только если файл
     уже скачан ранее (лежит в ATTACH_DIR), само скачивание не запускаем;
   - --download: единственное условие авто-скачивания — filename prefix
-    «Last Login» (регистронезависимо: 'Last Login' ловит 'Last login')
-    + отправитель Ratibor (username RaKHamidov);
+    «Last Login» (регистронезависимо + нормализация разделителей
+    ' ', '_', '-' — равноценны: 'LAST_LOGIN_v2.txt' ловится,
+    'report login last' — нет) + отправитель Ratibor (username RaKHamidov);
   - каталог: только /tmp/opencode/tg-topic-33-attachment/ (создаётся 0700);
   - секретоподобные файлы (.pem/.key/.env/id_rsa/*private* и т.п.) —
     НЕ качать, доложить только признак (secret-suspect-REFUSED).
@@ -50,8 +51,10 @@ USAGE = """tg-attach --topic 33 (--list | --download) [--limit N]
   --list       metadata ВСЕХ вложений топика от любого участника:
                filename, mime, size, sha256 (если файл уже скачан),
                message_id, from — без текстов сообщений, без скачивания
-  --download   скачать подходящие (префикс «Last Login», регистронезависимо,
-               отправитель Ratibor) + SHA-256; содержимое НЕ в вывод
+  --download   скачать подходящие (префикс «Last Login» регистронезависимо,
+               разделители ' ', '_', '-' равноценны — 'LAST_LOGIN_v2.txt'
+               ловится, 'report login last' — нет; отправитель Ratibor)
+               + SHA-256; содержимое НЕ в вывод
   --limit N    сколько сообщений топика сканировать (default 50, max 200)
 --list и --download вместе — отказ; без режима — отказ (fail-closed).
 Вывод: только metadata JSON-строками {topic, message_id, from, filename,
@@ -102,9 +105,19 @@ def classify(mime, name):
     return "document-other"
 
 
+def _norm_sep(s):
+    """lower + разделители ' ', '_', '-' → единый разделитель (пробел)."""
+    return s.lower().replace("_", " ").replace("-", " ")
+
+
 def _prefix_match(name, prefix):
-    """Whitelist-префикс, регистронезависимо: 'Last Login' ловит 'Last login'."""
-    return name.casefold().startswith(prefix.casefold())
+    """Whitelist-префикс: lower + нормализация разделителей (' ', '_', '-' → ' ').
+
+    'Last Login' ловит 'LAST_LOGIN_v2.txt' (→ 'last login v2.txt') и
+    'last_login'/'Last-Login' (→ 'last login'), но НЕ ловит
+    'report login last' и 'LAST-LINE' (→ 'last line').
+    """
+    return _norm_sep(name).startswith(_norm_sep(prefix))
 
 
 def _local_path(message_id, name):

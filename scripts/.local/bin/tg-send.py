@@ -3,6 +3,8 @@
 
 Безопасность:
   - получатель ТОЛЬКО SSA_GROUP_ID из env (whitelist, переопределения нет);
+  - живая отправка — только ALLOWED_TOPICS (сейчас 33); другой topic —
+    отказ ДО env/сети; --dry-run — любой topic, полностью без сети;
   - секреты только из ~/.config/ssa-tg/tg.env, никогда из аргументов/репо;
   - запуск: python3 tg-send.py --topic ID [--format md|plain] [--dry-run]
         [--file TEXTFILE] [ТЕКСТ ...]
@@ -29,11 +31,17 @@ import asyncio
 ENV_FILE = os.path.expanduser("~/.config/ssa-tg/tg.env")
 SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
 
+# Живая отправка — только эти topics (симметрия tg-attach/tg-upload);
+# --dry-run не ограничен и не ходит в сеть.
+ALLOWED_TOPICS = {33}
+
 USAGE = """tg-send --topic ID [--format md|plain] [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
   --topic ID   ID форумного топика (обязателен; без него отправки нет)
   --format F   разметка: md (умолчание) | plain (как есть, без разбора)
   --dry-run    показать исходный текст + план entities (до сети), не отправлять
   --file PATH  взять текст из файла (иначе — аргументы или stdin)
+Живая отправка: только разрешённые topics (сейчас 33) — другой topic
+даёт отказ ДО env/сети; --dry-run безвреден для любого topic (без сети).
 Получатель всегда один — группа SSA из env (whitelist, не меняется).
 md-разметка: **жирный**, `код`, ```блок``` (Telethon Markdown).
 Падение md-парсинга -> plain без маркеров + warning в stderr (не теряем)."""
@@ -161,6 +169,11 @@ def main(argv):
     if topic is None:
         sys.exit("tg-send: нет --topic ID — отправка запрещена "
                  "(fail-closed; см. --help)")
+    if not dry and topic not in ALLOWED_TOPICS:
+        sys.exit(f"tg-send: topic {topic} вне разрешённого scope для живой "
+                 f"отправки (разрешён: {sorted(ALLOWED_TOPICS)}) — отказ "
+                 f"ДО env/сети; --dry-run безвреден для любого topic "
+                 f"(см. --help)")
 
     env = load_env(ENV_FILE)
     api_id = env.get("TG_API_ID", "")
