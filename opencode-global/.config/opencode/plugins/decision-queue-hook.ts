@@ -19,9 +19,10 @@
 // состояние плагина не является доказательством; своя durable-запись обязательна).
 
 import { Plugin } from "@opencode/plugin"
-import { mkdir, readFile, rename, writeFile } from "fs/promises"
+import { mkdir, open, readFile, rename, writeFile } from "fs/promises"
 import { join } from "path"
 import { existsSync } from "fs"
+import { randomUUID } from "crypto"
 import {
   inferRisk,
   sanitizeReason,
@@ -150,10 +151,96 @@ function createCard(ev: PermissionEvent, extra?: Partial<DecisionCard> & { metad
 // Атомарная запись: temp-файл + rename. Один файл = ровно один JSON-объект.
 // Append запрещён: id генерируется с секундным разрешением и коллизии
 // склеивали РАЗНЫЕ события в один файл (Extra data). Перезапись — fail-safe.
+//
+// Усиление (INC-dq-hook, 2026-10-17) — три защиты от битых карточек:
+//   1) уникальное tmp-имя (randomUUID) — исключает гонку на общем tmp
+//      (`<path>.<pid>.<ms>.tmp` совпадал при двух записях в одну мс);
+//   2) fsync перед rename — данные на диске до появления карточки по имени;
+//   3) мьютекс по пути + read-after-write валидация: после rename файл
+//      перечитывается и парсится; битый (внешняя запись поверх / гонка) —
+//      перезаписывается из памяти и фиксируется телеметрией (hex-хвост).
+const writeChains = new Map<string, Promise<unknown>>()
+
+function withPathLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = writeChains.get(path) ?? Promise.resolve()
+  const run = prev.then(fn, fn)
+  const tail = run.then(
+    () => {},
+    () => {},
+  )
+  writeChains.set(path, tail)
+  return run
+}
+
+function hexTail(raw: Buffer, limit = 64): string {
+  return raw.subarray(Math.max(0, raw.length - limit)).toString("hex")
+}
+
+// Телеметрия битой записи: hex-хвост + размер — уличает механизм повреждения.
+async function noteCorruptWrite(path: string, raw: Buffer, reason: string) {
+  try {
+    const dir = cardsDir()
+    await mkdir(dir, { recursive: true })
+    const line =
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        card: path.split("/").pop(),
+        size: raw.length,
+        reason,
+        tail_hex: hexTail(raw),
+        pid: process.pid,
+      }) + "\n"
+    const fh = await open(join(dir, "_corrupt-telemetry.jsonl"), "a")
+    await fh.write(line, null, "utf-8")
+    await fh.close()
+  } catch {
+    // телеметрия не должна ломать запись карточки
+  }
+}
+
+// null = ок; иначе — причина, по которой записанный файл нельзя разобрать.
+function parseError(raw: Buffer): string | null {
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(raw)
+  JSON.parse(text)
+  return null
+}
+
 async function writeCardAtomic(path: string, card: unknown) {
-  const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
-  await writeFile(tmp, JSON.stringify(card, null, 2) + "\n", "utf-8")
-  await rename(tmp, path)
+  const payload = JSON.stringify(card, null, 2) + "\n"
+  await withPathLock(path, async () => {
+    const tmp = `${path}.${process.pid}.${randomUUID()}.tmp`
+    const fh = await open(tmp, "w")
+    try {
+      await fh.writeFile(payload, "utf-8")
+      await fh.sync()
+    } finally {
+      await fh.close()
+    }
+    await rename(tmp, path)
+
+    // read-after-write валидация: внешнее вмешательство (append из чужого
+    // инстанса / гонка) ловится тут же и устраняется перезаписью из памяти.
+    let raw: Buffer
+    try {
+      raw = await readFile(path)
+    } catch (err) {
+      await noteCorruptWrite(path, Buffer.alloc(0), `read-after: ${err}`)
+      return
+    }
+    let reason: string | null
+    try {
+      reason = parseError(raw)
+    } catch (err) {
+      reason = err instanceof Error ? err.message.slice(0, 160) : "invalid-json"
+    }
+    if (reason !== null) {
+      await noteCorruptWrite(path, raw, reason)
+      await writeFile(path, payload, "utf-8")
+      console.warn(
+        `[decision-queue-hook] corrupt write on ${path.split("/").pop()} — repaired: ${reason}`,
+      )
+    }
+  })
 }
 
 async function writeCard(card: DecisionCard) {
