@@ -766,13 +766,14 @@ general/build/explore/plan — отвергнуто: не используютс
 
 ---
 
-### ADR-028: Lineage — единая система происхождения сессий, веток и работ (к едиству пяти реестров)
+### ADR-028: Lineage — единая система происхождения сессий, веток и работ (к единству шести реестров)
 **Дата:** 2026-10-16
-**Статус:** draft — на peer-review Института; approval: pending Rudra
+**Статус:** draft v2 — amendments по peer-review ИПТ (approve-with-nits, блокеры приняты); approval: pending Rudra
 **Контекст (И-53):** нет единого ключа «сессия↔ветка↔worktree↔задача↔PR» —
-пять отдельных реестров: claims.jsonl (в двух экземплярах), opencode.db
+шесть отдельных реестров: claims.jsonl (в двух экземплярах), opencode.db
 (session_v2/worktree), почтовые receipts, incident-capture, git refs и
-`branch.*`-config. Доставка letter.sh ≠ обработка: receipt = запись в
+`branch.*`-config, а также таблицы-очереди session_inbox/session_pending
+(шестой реестр, включён в census). Доставка letter.sh ≠ обработка: receipt = запись в
 session_message, не факт чтения (INC-12/14). Поля генеалогии
 `fork_session_id`/`parent_id` есть в session_v2, но почтовый путь их не
 заполняет; tg-bridge плодит безродные сессии. PR #1: ветка уехала на 88
@@ -782,30 +783,54 @@ session_message, не факт чтения (INC-12/14). Поля генеало
 остаётся.
 
 **Решение:**
-1. Единственный канонический append-only ledger `tools/lineage/ledger.jsonl`
-   в dotfiles — сшивка-истина пяти реестров. Он **поглощает claims.jsonl**:
-   после внедрения claims.jsonl мигрируется в ledger и выносится из
-   активного учёта, содержимое не теряется.
-2. Первичный ключ записи — `session_id` (поля генеалогии
-   `parent_id`/`fork_session_id`/`fork_boundary` уже есть в session_v2).
-3. Поля записи: `session_id`, `parent`, `born {via: letter|tg|subagent|manual, ts}`,
+1. Единый канонический append-only ledger — рантайм-файл
+   `~/.local/state/opencode/lineage/ledger.jsonl`: один канонический путь
+   для ВСЕХ рабочих копий (их 8 — гонка копий недопустима); сшивка-истина
+   шести реестров. В git — только схема (этот ADR) и audit-tool.
+   Компенсации хранения вне git: (а) ledger почти полностью выводим из
+   источников; (б) audit-tool делает ротируемый снапшот рядом с ledger;
+   (в) опционально read-only зеркало в волт. Он **поглощает claims.jsonl**:
+   после внедрения claims.jsonl мигрируется к рантайм-канону (не в git),
+   содержимое не теряется.
+2. Канон ключа — session_v2: поля генеалогии `fork_session_id`/
+   `fork_boundary` уже там; старая таблица session — легаси-источник, аудит
+   сшивает обе по id. Сироты: сессия без родителя записывается в ledger как
+   «born without parent» (`orphan: true`) — НИКОГДА не отбрасывается;
+   255 известных сирот — первый список аудита. Рёбра родства типизируются:
+   `forked-from` (ручной форк) / `child-of` (сабагент) / `letter-spawned`
+   (порождено обработкой письма).
+3. Поля записи: `session_id`, `parent` (типизированное ребро из п. 2),
+   `orphan: true` для «born without parent»,
+   `born {via: letter|tg|subagent|manual, ts}`,
    `branch`, `worktree`, `task (T-/И-/spec)`, `pr`, letter refs, `status
    (live|merged|orphaned|archived)`, `stage` для писем (`sent|delivered|processed`).
-4. Пять реестров НЕ удаляются — каждый остаётся источником своего домена;
+4. Два паттерна записи, оба append-only: append-факт (рождение, ack) и
+   ревизия статуса (`merged`/`archived` — новая запись-ревизия, аудит берёт
+   последнюю); in-place правок нет.
+5. Все записи ledger — под flock: длина записи (поля ветки/дерева/задачи/
+   ссылок) превышает pipe buffer; комментарий letter.sh «атомарно без лока»
+   на ledger не переносится.
+6. Шесть реестров НЕ удаляются — каждый остаётся источником своего домена;
    ledger — сшивка-истина; audit-tool сверяет ledger с источниками.
 
 **Четыре слоя:**
 - **Слой 1 «Рождение»** — автозапись при создании любой сущности.
   Ветка/worktree → claim: И-51 поглощается (запись в ledger; git config
   `branch.*.owner` — dual-write для per-repo читаемости, истина — ledger).
-  letter.sh при отправке заполняет parent/fork-цепочку; tg-bridge пишет
-  `parent` = мост-сессия; PR → номер в запись ветки.
+  letter.sh НЕ пишет родословную потомков (форки пишет ядро в session_v2):
+  letter.sh пишет ребро «delivered-to» (receipts + delivery-check уже есть),
+  ребро «forked-from» — импорт из БД. tg-bridge: заполнение `parent` —
+  отдельная задача в спеке (зонд на одном мосте с kill-criterion, затем
+  тираж), не следствие внедрения ledger; сегодня 47 из 48 его сессий
+  безродные. PR → номер в запись ветки.
 - **Слой 2 «Аудит слепых зон»** — регулярный lineage-audit (по запросу +
-  встроенный в /ship): orphan-ветки (нет владельца/сессии); stale-ветки
-  (порог: ≥10 коммитов позади origin/main ИЛИ ≥3 дней без merge origin/main);
-  письма delivered-без-processed старше 48ч; безродные сессии (`parent_id IS
-  NULL` у неперсональных); divergence открытых PR. На выходе — отчёт +
-  тикеты, не молчание.
+  встроенный в /ship); lineage-audit — ТОЛЬКО читатель БД (никаких записей
+  в чужие таблицы). Проверки: orphan-ветки (нет владельца/сессии); безродные
+  сессии (`parent_id IS NULL` у неперсональных; в ledger — `orphan: true`);
+  stale-ветки (порог с точкой отсчёта: ≥10 коммитов позади origin/main НА
+  МОМЕНТ АУДИТА или ≥3 дней от последней lineage-записи ветки); письма
+  delivered-без-processed старше 48ч; divergence открытых PR. На выходе —
+  отчёт + тикеты, не молчание.
 - **Слой 3 «Доставка ≠ обработка»** — стадия `sent → delivered → processed`;
   processed фиксируется ответом с тем же ref или явным ack; аудит показывает
   только СТАРЫЕ необработанные (>48ч) — без бюрократизации каждого письма.
@@ -814,7 +839,8 @@ session_message, не факт чтения (INC-12/14). Поля генеало
   origin/main в ветку при /ship.
 
 **Границы:**
-- Пять реестров не удаляются (кроме claims.jsonl — он поглощается с миграцией).
+- Шесть реестров не удаляются (кроме claims.jsonl — он поглощается
+  миграцией к рантайм-канону).
 - Никаких временных/промежуточных механизмов (ограничение владельца).
 - Код приложений не трогается.
 - Ledger не дублирует данные БД — только связки и события, которых в
@@ -828,7 +854,10 @@ session_message, не факт чтения (INC-12/14). Поля генеало
 - живой аудит выдаёт либо чистый отчёт, либо список тикетов.
 
 **Диспозиция:** ЦУ-дизайн (этот ADR) → peer-review Института → реализация
-dotfiles-infra по спеке ЦУ (letter fork-fill, tg-bridge parent, ledger+audit-tool,
-claims-миграция) → verifier PASS → approval Rudra.
+dotfiles-infra по спеке ЦУ (letter delivered-to + импорт forked-from из БД;
+tg-bridge parent — отдельная задача: зонд с kill-criterion, затем тираж;
+ledger (рантайм, flock) + audit-tool; claims-миграция к рантайм-канону) →
+verifier PASS → approval Rudra.
 
-Связано: И-53, И-51, ADR-019, ADR-022, INC-12/14
+Связано: И-53, И-51, ADR-019, ADR-022, INC-12/14, peer-review ИПТ
+2026-10-17, самокоррекция ИПТ 8 worktrees
