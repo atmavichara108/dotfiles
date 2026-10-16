@@ -768,7 +768,7 @@ general/build/explore/plan — отвергнуто: не используютс
 
 ### ADR-028: Lineage — единая система происхождения сессий, веток и работ (к единству шести реестров)
 **Дата:** 2026-10-16
-**Статус:** draft v2 — amendments по peer-review ИПТ (approve-with-nits, блокеры приняты); approval: pending Rudra
+**Статус:** approved — approval Rudra 2026-10-17 («держите апрув»); peer-review ИПТ: approve-with-nits (2026-10-16), правки v2 применены (9db6e34)
 **Контекст (И-53):** нет единого ключа «сессия↔ветка↔worktree↔задача↔PR» —
 шесть отдельных реестров: claims.jsonl (в двух экземплярах), opencode.db
 (session_v2/worktree), почтовые receipts, incident-capture, git refs и
