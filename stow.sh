@@ -60,6 +60,7 @@ packages=(
   "scripts"
   "helpreg"
   "opencode-global"
+  "mcode"
 )
 
 success=0
