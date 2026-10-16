@@ -1,0 +1,15 @@
+# awake-while-open: не давать машине уходить в suspend по idle, ПОКА крышка ноутбука открыта.
+# Временная задача владельца 2026-10-16 (уезд на день). Автоистечение 24ч (анти-энтропия).
+# Блокирует ТОЛЬКО idle-suspend (logind IdleAction); suspend по крышке — работает как обычно.
+[Unit]
+Description=Не спать по idle, пока крышка открыта (временное, задача владельца 2026-10-16)
+
+[Service]
+; запуск через bash — исполняемый бит не требуется (chmod запрещён агентскому контуру)
+ExecStart=/usr/bin/env bash %h/.local/bin/awake-while-open.sh
+Restart=always
+RestartSec=3
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=default.target

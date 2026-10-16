@@ -56,10 +56,11 @@ packages=(
   "wal" "wallust"
   "flameshot" "copyq" "nitrogen" "thefuck" "weathr" "screenlayout"
   "taskwarrior" "task-tools" "calcurse"
-  "xdg" "environment.d" "systemd" "proxyctl"
+  "xdg" "environment.d" "systemd" "proxyctl" "syncthing"
   "scripts"
   "helpreg"
   "opencode-global"
+  "mcode"
 )
 
 success=0
