@@ -12,7 +12,7 @@ set -euo pipefail
 CHILD=""
 ensure() {
   if [ -z "$CHILD" ] || ! kill -0 "$CHILD" 2>/dev/null; then
-    systemd-inhibit --what=sleep:handle-lid-switch:idle \
+    systemd-inhibit --what=handle-lid-switch:idle \
       --who=awake-while-open \
       --why="владелец: крышка не влияет на сон, ноут работает всегда" \
       --mode=block sleep infinity &
