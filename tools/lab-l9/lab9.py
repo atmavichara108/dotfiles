@@ -26,7 +26,7 @@ from corpus import VAULT, corpus_files, sha256  # noqa: E402
 
 CACHE = VAULT / ".cache" / "lab-l9"
 DB = CACHE / "index.sqlite"
-MODEL = HERE / ".venv" / "models" / "multilingual-e5-small-Q8_0.gguf"
+MODEL = HERE / ".venv" / "models" / "e5-small-hdrrayan-f16.gguf"
 DIM = 384
 CHUNK_CHARS = 900
 MIN_CHUNK = 200
