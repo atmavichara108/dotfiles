@@ -1,29 +1,28 @@
 #!/usr/bin/env bash
-# Держит idle-inhibitor, пока крышка открыта; при закрытой — отпускает.
-# Deadline 24ч: после — выход с кодом 2 (юнит больше не рестартует).
+# awake-while-open: ноут не спит НИ ПРИ ОТКРЫТОЙ, НИ ПРИ ЗАКРЫТОЙ крышке.
+# Эволюция 2026-10-17 (слово владельца): «при закрытии крышки ничего не
+# происходило и ноут работал так же» → держим ПЕРМАНЕНТНЫЙ блокирующий
+# ингибитор sleep:handle-lid-switch:idle: закрытие крышки игнорируется
+# logind, suspend от любых idle-источников заблокирован. Сон — только
+# вручную (systemctl suspend / кнопка).
+# Дедлайн 24ч временной версии снят: фича постоянная.
+# lid-мониторинг не нужен — крышка больше не управляет ничем.
+# Вернуть штатное поведение: systemctl --user disable --now awake-while-open.
 set -euo pipefail
-LID_GLOB=/proc/acpi/button/lid/*/state
 CHILD=""
-END=$(( $(date +%s) + 24*3600 ))
-lid_open() { grep -qi open $LID_GLOB 2>/dev/null; }
 ensure() {
   if [ -z "$CHILD" ] || ! kill -0 "$CHILD" 2>/dev/null; then
-    systemd-inhibit --what=idle --who=awake-while-open \
-      --why="работа владельца, крышка открыта" --mode=block sleep 900 &
+    systemd-inhibit --what=sleep:handle-lid-switch:idle \
+      --who=awake-while-open \
+      --why="владелец: крышка не влияет на сон, ноут работает всегда" \
+      --mode=block sleep infinity &
     CHILD=$!
   fi
 }
-drop() {
-  if [ -n "$CHILD" ]; then kill "$CHILD" 2>/dev/null || true; wait "$CHILD" 2>/dev/null || true; CHILD=""; fi
-}
-cleanup() { drop; }
+cleanup() { if [ -n "$CHILD" ]; then kill "$CHILD" 2>/dev/null || true; wait "$CHILD" 2>/dev/null || true; CHILD=""; fi; }
 trap cleanup EXIT
 trap 'cleanup; exit 0' TERM INT
 while :; do
-  if [ "$(date +%s)" -ge "$END" ]; then
-    echo "awake-while-open: deadline 24ч истёк — выключение" >&2
-    exit 2
-  fi
-  if lid_open; then ensure; else drop; fi
+  ensure
   sleep 15
 done
