@@ -1,33 +1,70 @@
 #!/usr/bin/env bash
-# opencode-reload — перезагрузка backend'а OpenCode v2.
-# Проблема: TUI — только клиент, конфиги/команды/плагины держит фоновый
-# `opencode serve --service`. Выход/вход в TUI его не трогает — релоад
-# не происходит. Решение: убить сервис; новая TUI-сессия поднимет свежий
-# с актуальным конфигом.
-# Безопасность: процессы harness-сессий (родитель `opencode -s ses_*`)
-# НЕ трогаем — только пользовательские TUI-бекенды.
+# opencode-reload — ПОЛНАЯ перезагрузка backend'а OpenCode v2 (INC-15, 2026-10-17).
+#
+# Проблема: плагины грузятся в ПАМЯТЬ при старте процесса opencode и
+# не hot-reload. Рестарт TUI-окна не помогает, если процесс-демон жив —
+# живёт в памяти старый код (например, plugin decision-queue-hook).
+# Старая версия скрипта убивала только `opencode serve --service` —
+# pid'ов "opencode serve" у встроенных (paused embedded) серверов нет,
+# и иногда она не убивала ничего.
+#
+# Что убиваем (текущая топология OpenCode):
+#   - `opencode`            — TUI терминала со встроенным сервером;
+#   - `opencode -s ses_*`   — TUI конкретной сессии (то же самое + serve at child);
+#   - `opencode serve*`     — выделенный сервер (в т.ч. harness-owned).
+#
+# Что НЕ убиваем:
+#   - `opencode run ...` — короткая разовая задача (letter.sh/one-shots) —
+#     они сами умирают; в путь не попадают.
+#
+# Сессии персистентны в БД opencode (session_v2 + messages + plugin-free),
+# поэтому перезапуск процессов безопасен: новый TUI / новый `letter.sh`
+# или /resume вернут сессию с полным контекстом. Параллельные TUI окна
+# отваливаются — их надо открыть заново.
+#
+# Безопасность: просто SIGTERM по списку PID, без оперативных вызовов.
+# Ничего не трогает права/конфиги.
+
 set -u
 
-PATTERN="opencode serve --service"
+PATTERN='(^opencode$|^opencode -s |^opencode serve)'
 killed=0
 skipped=0
 
-for pid in $(pgrep -f "$PATTERN" 2>/dev/null); do
-    ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-    parent=$(ps -o args= -p "$ppid" 2>/dev/null || true)
-    if [[ "$parent" == *"opencode -s ses_"* ]]; then
-        echo "skip harness-owned backend: pid $pid"
-        skipped=$((skipped + 1))
-        continue
-    fi
+# Уникальный список PID opencode-процессов (TUI/embedded/serve).
+mapfile -t pids < <(pgrep -x opencode 2>/dev/null; pgrep -f "$PATTERN" 2>/dev/null)
+pids=$(printf '%s\n' "${pids[@]}" 2>/dev/null | sort -u)
+
+if [[ -z "$pids" ]]; then
+    echo "opencode processes: none running"
+    command -v notify-send >/dev/null 2>&1 && notify-send "opencode" "reload: процессов opencode нет, нечего перезагружать"
+    exit 0
+fi
+
+for pid in $pids; do
+    cmd=$(ps -o args= -p "$pid" 2>/dev/null | head -c 100) || cmd=""
+    # наш собственный pgrep может захватить тех, кто запущен из под opencode
+    # (например, клиенты/скрипты) — эта запись не может быть релевантной
+    case "$cmd" in
+        opencode*|-) ;;
+        *) continue ;;
+    esac
     if kill "$pid" 2>/dev/null; then
-        echo "killed user backend: pid $pid"
+        echo "killed: pid $pid  ($cmd)"
         killed=$((killed + 1))
     else
-        echo "cannot kill pid $pid" >&2
+        echo "cannot kill: pid $pid" >&2
+        skipped=$((skipped + 1))
     fi
 done
 
-msg="opencode backend reloaded (killed $killed, skipped harness $skipped) — start new TUI session"
+sleep 0.3
+# подчистить детей, отсиротевших от убитых TUI-процессов (serve --service)
+for cpid in $(pgrep -f "opencode serve" 2>/dev/null); do
+    ppid=$(ps -o ppid= -p "$cpid" | tr -d ' ')
+    [[ -d "/proc/$ppid" ]] || { kill "$cpid" 2>/dev/null && { echo "killed orphaned serve: pid $cpid"; killed=$((killed + 1)); }; }
+done
+
+msg="opencode полностью перезагружен (killed $killed, skipped $skipped) — откройте TUI заново; сессии персистентны, продолжение через letter / resume"
 echo "$msg"
 command -v notify-send >/dev/null 2>&1 && notify-send "opencode" "$msg"
