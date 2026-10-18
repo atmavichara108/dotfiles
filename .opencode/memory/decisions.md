@@ -766,3 +766,11 @@ tg-upload (три файла, офлайн-режим) и поднимал во�
 **Контекст:** обновление mcode (форк OpenCode Desktop) внесло путаницу конфигов: namespace-миграция Electron-каталога, замороженная копия opencode.jsonc в зоне движка, двойной SSOT провайдеров. Слово Rudra: опенкод — двигатель корабля; архитектура под неограниченное число SDK-движков.
 **Решение:** полная спека `docs/specs/mcode-coexistence.md`. Инварианты: (1) зонная изоляция — агентский контур пишет только в свою зону/пакеты/SSOT, зоны движков read-only; (2) SSOT направление dotfiles→движок только скриптом (sync-mcode-config, diff-first+.bak); (3) общий слой — контракты (T-156 мост, SSOT провайдеров, git-дерево), не файлы; (4) несовместимости — фиксируются границами (ADR-019, своя БД mcode → граница И-53). Формула нового движка: 6 артефактов + строка в `docs/engines.md`, ноль правок чужих зон. Исполнено: D1 (mcode в stow.sh), D2 (sync-скрипт + живой синк newapi-блока), D3–D4 (реестр, легаси-маркеры).
 **Последствия:** добавление движка — каталогизированная процедура; реестр движков — SSOT со связкой пакет↔строка (анти-энтропия ADR-028); подтверждение источника чтения mcode — открытый kill-criterion D2в при следующем старте движка.
+
+## INC — Envelope cursor-paginated в OpenCode-сервере v2 (tg-guard wake, 2026-10-18)
+- **Symptom:** staged-версия tg-guard._resolve_coord_session возвращала бы None на каждом wake → все входящие `wake="failed"` («coordinator session not found»).
+- **Repro:** GET /api/session (Basic auth из service.json) → 200, тело {"data":[…~50…],"cursor":{previous,next}} — envelope с пейджингом, не список; страница 2 через ?cursor=.
+- **Root cause:** код ждал голый JSON-список; сервер OpenCode v2 отдаёт cursor-paginated envelope (~50/страница).
+- **Fix:** _page_sessions() (envelope+list совместимо) + ограниченный пейджинг (?cursor=, MAX_SESSION_PAGES=20); fail-open семантика сохранена. Файл в staged set ветки task/tg-guard-image-read-20261018.
+- **Evidence:** live-прогоны сессии meta#2 (ses_eb36d6884ffefdnT1qGboqTN60): «Control top» резолвится; токен нигде не логировался.
+- **Статус:** fix staged; запись — отдельным коммитом ПОСЛЕ основного (вердикт ЦУ вариант А, verdict-10-20261018).
