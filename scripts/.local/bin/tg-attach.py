@@ -316,7 +316,12 @@ async def _sender(m):
 
 
 def _filename(m):
-    for attr in (m.document.attributes or []):
+    doc = m.document
+    if doc is None:
+        # photo-сообщение (MessageMediaPhoto): имени нет, не падаем —
+        # fail-closed; размер photo идёт через _photo_size отдельно.
+        return ""
+    for attr in (doc.attributes or []):
         if hasattr(attr, "file_name") and attr.file_name:
             return os.path.basename(attr.file_name)
     return ""
