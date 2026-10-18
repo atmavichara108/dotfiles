@@ -1,18 +1,16 @@
 #!/bin/bash
 # Peer letter delivery — единственная канонная точка отправки письма в сессию.
 #
-# Проблема B15 (model-overwrite): `opencode run -s <id> -m <model>` вызывает
-# серверную операцию session.switchModel и ПЕРСИСТЕНТНО переписывает модель
-# в самой сессии адресата (opencode.db, session_v2.model). Письмо отправителя
-# меняло рабочий профиль получателя.
+# Проблема B15 → закрыта жёстко (мандат владельца 2026-10-18, B15 model-lock):
+# `opencode run -s <id> -m <model>` вызывает серверную операцию session.switchModel
+# и ПЕРСИСТЕНТНО переписывает модель в самой сессии адресата (opencode.db,
+# session_v2.model). Канал не должен менять модель адресата никогда.
 #
-# Guard (вариант 3+2, вердикт Дирижёра 2026-10-07):
-#   Guard 1 — по умолчанию письмо уходит БЕЗ `-m` (CLI вызывает switchModel
-#             только если модель передана). Модель адресата не меняется.
-#   Guard 2 — если `-m` всё же передан и сессия известна в реестре peer-comms
-#             (claims.jsonl) с другой моделью — REFUSE (exit 3), не перезапись.
-#   Fallback 3 — если `-m` совпадает с текущей моделью адресата из реестра —
-#             подаётся как есть (no-op запись).
+# Guard (мандат 2026-10-18, зеркалит peer-comms.md):
+#   без --model    -> письмо уходит без switchModel; модель адресата не меняется
+#   --model        -> REFUSE (exit 3) ВСЕГДА, без исключений
+#   --force-model  -> флаг удалён целиком (обход гейтить нельзя); попадёт
+#                     в "Unknown option" (exit 1)
 #
 # БД не изменяет. Журнал доставки (B18) — append-only receipts-out.jsonl в
 # ~/.local/state/opencode/mail/ (metadata-only: id/digest/to/from/ts, без тела).
@@ -27,8 +25,8 @@ fail() { echo "Error: $*" >&2; exit 1; }
 usage() {
   cat <<'EOF'
 Usage:
-  letter.sh --to <sessionID> [--model <provider/model>] [--title <t>] --file <path>
-  letter.sh --to <sessionID> [--model <provider/model>] --text "<message>"
+  letter.sh --to <sessionID> [--title <t>] --file <path>
+  letter.sh --to <sessionID> [--title <t>] --text "<message>"
 
 Receipt-флаги (B18, двойной ack):
   --from <id>                 отправитель в журнал (дефолт $OPENCODE_SESSION_ID)
@@ -43,10 +41,9 @@ Journal (append-only, metadata-only, без тела письма):
   ${PEER_MAIL_DIR:-~/.local/state/opencode/mail}/receipts-out.jsonl
   идемпотентность: повтор того же message_id (hash тела + день + from) — отклоняется.
 
-Guard (B15, model-overwrite):
-  без --model    -> письмо уходит без switchModel; модель адресата не меняется
-  с --model      -> REFUSE (exit 3), если модель отличается от зарегистрированной
-  --force-model  -> явный обход guard (печатает WARN про перезапись профиля)
+Guard (B15 model-lock, мандат владельца 2026-10-18):
+  --model      -> REFUSE (exit 3) всегда: канал не меняет модель адресата
+  --force-model -> флаг удалён: "Unknown option" (exit 1)
 EOF
 }
 
@@ -59,21 +56,13 @@ journal_append() {
 
 sha256_of() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
 
-resolve_registered_model() {
-  local session="${1:?}"
-  [[ -f "${CLAIMS_FILE}" ]] || return 0
-  jq -R -c --arg s "${session}" \
-    'fromjson? // empty | select(.session == $s and (.model // "") != "")' \
-    "${CLAIMS_FILE}" 2>/dev/null | tail -n 1 | jq -r '.model // empty'
-}
-
 main() {
-  local to="" model="" title="" text="" file="" force=false
+  local to="" title="" text="" file=""
   local from="${OPENCODE_SESSION_ID:-unknown}" scope="" receipt="" ref=""
   while (( $# > 0 )); do
     case "$1" in
       --to)          to="${2:?--to requires a value}"; shift 2 ;;
-      --model)       model="${2:?--model requires a value}"; shift 2 ;;
+      --model)       echo "REFUSE: --model запрещён (B15 model-lock, мандат владельца 2026-10-18): канал не меняет модель адресата; смена модели — только владелец штатными средствами" >&2; exit 3 ;;
       --title)       title="${2:?--title requires a value}"; shift 2 ;;
       --text)        text="${2:?--text requires a value}"; shift 2 ;;
       --file)        file="${2:?--file requires a value}"; shift 2 ;;
@@ -81,7 +70,8 @@ main() {
       --scope)       scope="${2:?--scope requires a value}"; shift 2 ;;
       --receipt)     receipt="${2:?--receipt requires a value}"; shift 2 ;;
       --ref)         ref="${2:?--ref requires a value}"; shift 2 ;;
-      --force-model) force=true; shift ;;
+      # --force-model удалён целиком (обход гейтить нельзя) — попадёт в
+      # "Unknown option" ниже автоматически.
       -h|--help|help) usage; return 0 ;;
       *) fail "Unknown option: $1" ;;
     esac
@@ -106,25 +96,8 @@ main() {
   local args=("run" "-s" "${to}")
   [[ -n "${title}" ]] && args+=("--title" "${title}")
 
-  if [[ -n "${model}" ]]; then
-    local registered
-    registered="$(resolve_registered_model "${to}" || true)"
-    if [[ "${force}" != true ]]; then
-      if [[ -n "${registered}" && "${registered}" != "${model}" ]]; then
-        echo "REFUSE: recipient ${to} is registered with model '${registered}', letter carries '${model}'." >&2
-        echo "REFUSE: sending would overwrite the recipient profile (B15). Use --force-model to override." >&2
-        exit 3
-      fi
-      if [[ -z "${registered}" ]]; then
-        echo "REFUSE: recipient ${to} unknown in registry — cannot verify model '${model}'." >&2
-        echo "REFUSE: register the session (hello.sh hello) or send without --model." >&2
-        exit 3
-      fi
-    else
-      echo "WARN: --force-model overwrites recipient profile (${registered:-unknown} -> ${model})" >&2
-    fi
-    args+=("-m" "${model}")
-  fi
+  # NOTE (B15 model-lock): никаких -m/--model и no force-пути. Модель адресата
+  # канал не меняет никогда — смена только владельцем штатными средствами.
 
   # message_id: детерминированный — hash тела + номер дня + from (спека S2.1)
   local digest message_id

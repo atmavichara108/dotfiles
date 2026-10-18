@@ -53,9 +53,11 @@ cmd_hello() {
     esac
   done
 
+  # B15 model-lock (мандат владельца 2026-10-18): --model стал ОПЦИОНАЛЬНЫМ
+  # метаданным реестра; эта метка — не канал доставки, opencode run она не
+  # трогает. В новые вызовы модель передавать не нужно (см. smoke.sh).
   [[ -n "${session}" ]] || die "--session is required"
   [[ -n "${role}" ]]    || die "--role is required"
-  [[ -n "${model}" ]]   || die "--model is required"
   [[ -n "${scope}" ]]   || die "--scope is required"
 
   ensure_claims_file
@@ -389,8 +391,11 @@ cmd_find() {
 usage() {
   cat <<'EOF'
 Usage:
-  hello.sh hello --session <id> --role <role> --model <model> --scope <scope>
+  hello.sh hello --session <id> --role <role> [--model <model>] --scope <scope>
   hello.sh ack  --session <recipient> --from <sender> [--role <role>] [--model <model>] [--scope <scope>]
+
+  B15 model-lock (2026-10-18): --model — опциональная метка реестра; канал
+  доставки (letter.sh) модель адресата не передаёт НИКОГДА.
   hello.sh ping <sessionId> [--json]
   hello.sh bye  --session <id>
   hello.sh list [--json]
