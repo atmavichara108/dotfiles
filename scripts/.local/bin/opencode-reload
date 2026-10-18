@@ -27,12 +27,11 @@
 
 set -u
 
-PATTERN='(^opencode$|^opencode -s |^opencode serve)'
 killed=0
 skipped=0
 
 # Уникальный список PID opencode-процессов (TUI/embedded/serve).
-mapfile -t pids < <(pgrep -x opencode 2>/dev/null; pgrep -f "$PATTERN" 2>/dev/null)
+mapfile -t pids < <(pgrep -x opencode 2>/dev/null; pgrep -f 'opencode (serve|-s ses_)' 2>/dev/null)
 pids=$(printf '%s\n' "${pids[@]}" 2>/dev/null | sort -u)
 
 if [[ -z "$pids" ]]; then
@@ -42,15 +41,26 @@ if [[ -z "$pids" ]]; then
 fi
 
 for pid in $pids; do
-    cmd=$(ps -o args= -p "$pid" 2>/dev/null | head -c 100) || cmd=""
-    # наш собственный pgrep может захватить тех, кто запущен из под opencode
-    # (например, клиенты/скрипты) — эта запись не может быть релевантной
-    case "$cmd" in
-        opencode*|-) ;;
+    args=$(ps -o args= -p "$pid" 2>/dev/null) || args=""
+    base=${args%% *}
+    base=${base##*/}
+    # только процессы, исполняемый файл которых opencode (TUI/serve/run);
+    # их дети (bun-задачи, shim, letter) убиваются сами или ниже по дереву
+    [[ "$base" == "opencode" ]] || continue
+    # НЕ убиваем разовые задачи `opencode run ...` (letter.sh/one-shots) —
+    # они умирают сами и чаще всего держат важного письмо-агента.
+    case "$args" in
+        *"opencode run "*) continue ;;
+        # serve был пропущен при первом прогоне: у выделенного сервера путь
+        # полный (`~/.opencode/bin/opencode serve --service`), старый case-фильтр
+        # `opencode*` его отсекал — инцидент BF-20261018 (image-read не встав).
+        *"opencode serve"*) ;;
+        *"opencode -s ses_"*) ;;  # TUI конкретной сессии
+        opencode) ;;              # plain TUI
         *) continue ;;
     esac
     if kill "$pid" 2>/dev/null; then
-        echo "killed: pid $pid  ($cmd)"
+        echo "killed: pid $pid  ($args)"
         killed=$((killed + 1))
     else
         echo "cannot kill: pid $pid" >&2
