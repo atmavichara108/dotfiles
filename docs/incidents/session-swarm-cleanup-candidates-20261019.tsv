@@ -1,0 +1,49 @@
+ses_ec5d00d68ffejNprBj3Jiln0fr|Read-only Telegram topic 33 inbox and Ratibor messages|2026-10-14 14:33:03
+ses_ec5cdba07ffePFmLppvYE3HTZr|Sending approved reply to @RaKhamidov in topic 33 only; stop if unrelated outbox entries exist.|2026-10-14 14:35:35
+ses_ec5c9b674ffeVrbBgeu58y4a1p|Inspect Ratibor’s Last Login attachment in topic 33|2026-10-14 14:39:58
+ses_ec5c92e1bffeMPn98RMPnKzHC5|Одна отправка сообщения в topic 33 с проверкой sent_id|2026-10-14 14:40:33
+ses_ec57c951effe6UhtFwJKIiKYKf|Owner-approved Ratibor test coordination in topic 33|2026-10-14 16:04:13
+ses_ec57453e7ffeiBda1dVAjHSXKD|Reading new messages in Telegram topic 33 after ID 43|2026-10-14 16:13:14
+ses_ec571f887ffeFhf4w4cjdq0NRo|Send test acknowledgement to Ratibor in topic 33|2026-10-14 16:15:49
+ses_ec57138baffeXOIH346i53dMdp|Checking new messages in Telegram topic 33 only|2026-10-14 16:16:38
+ses_ec56f8769ffexq976S4e8YQXLS|Send approved acknowledgement in topic 33 and verify sent_id|2026-10-14 16:18:29
+ses_ec55fad93ffeSdmmTJ2fNu37tx|Topic 33 Telegram bug report and attachment metadata|2026-10-14 16:35:47
+ses_ec5580659ffek6Wh7WyUoC5NHn|Send approved root-cause message in topic 33 and verify sent_id|2026-10-14 16:44:09
+ses_ec5522109ffefDn5cRcwucKdsP|Сообщение Ратибору в topic 33: комплект готов|2026-10-14 16:50:35
+ses_ec541e4a2ffee15hh9FbLLaZ58|Сообщение Ратибору о передаче папки в топике 33|2026-10-14 17:08:19
+ses_ec537955cffeDulyRdBqlyZBn5|Сообщение Ратибору в топик 33 о файлах через 10–15 минут|2026-10-14 17:19:35
+ses_ec5373622ffe2NLd0gdnB3dlQk|Загрузка вложений в Telegram topic 33|2026-10-14 17:19:59
+ses_ec51590abffeC6LWiyVFstwwL6|Отправка файлов в топик 33 (fail-closed)|2026-10-14 17:56:44
+ses_ec51533afffexT30SHsFJz0wPG|Сообщение Ратибору в топик 33: задержка с файлами|2026-10-14 17:57:08
+ses_ec4a8c295ffebfeJtfDWa5RPBu|Сообщение Ратибору в Telegram: прогресс и папка, topic 33|2026-10-14 19:55:35
+ses_ec4a77579ffeFreZFoIgsgwDu4|Sending progress message to topic 33 and recording sent_id|2026-10-14 19:57:00
+ses_ec4809adcffevcGYJ4CDQWbDRl|Отправка сообщения в topic 33 и запись sent_id|2026-10-14 20:39:27
+ses_ec45a8890ffeI1vycoOKtTcsZx|Отправка сообщения в Telegram topic 33 с записью в outbox|2026-10-14 21:21:02
+ses_ec4571c3affez4gHpoNENtQ2Hg|Telegram topic 33: отправка и запись в outbox|2026-10-14 21:24:46
+ses_ec445f902ffeijawvhr28eaG9J|Отправка сообщения в Telegram topic 33|2026-10-14 21:43:29
+ses_ec4427d9cffed1wDViLbS06Jk8|Отправка сообщения в Telegram topic 33 и запись в outbox|2026-10-14 21:47:17
+ses_ec43a61fbffeDsX2SzgRlVKA6K|Отправка сообщения в topic 33 и запись в outbox|2026-10-14 21:56:09
+ses_ec43221d8ffelsYM6xG87MsSzN|Отправка сообщения в Telegram topic 33 и запись в outbox|2026-10-14 22:05:09
+ses_ec42fe0a7ffeQC4VHizI0AsUr0|Отправка сообщения в Telegram topic 33 и запись в outbox|2026-10-14 22:07:37
+ses_ec42e1786ffeN7kaR0oPyeFDSJ|Отправка сообщения в Telegram topic 33 с записью в outbox|2026-10-14 22:09:34
+ses_ec42b46e8ffeG8RqWFYiNUnOD2|Отправка сообщения в Telegram topic 33 и append в outbox|2026-10-14 22:12:39
+ses_ec4263a79ffe8tFuOXNj950S8r|Отправка сообщения в Telegram topic 33 и запись в outbox|2026-10-14 22:18:10
+ses_ec422ed09ffezMIdICXEVH4E79|Отправка сообщения блокеров в topic 33 с записью в outbox|2026-10-14 22:21:46
+ses_ec41c4cd7ffeXnBcWJWSOJNeHl|Отправка сообщения в Telegram topic 33 и запись в outbox|2026-10-14 22:29:00
+ses_ec14d844effepccICY3Qc0we77|Отправка сообщения в topic 33 и запись в outbox|2026-10-15 11:34:06
+ses_ec0ea019fffe6G7VenlXmOJcXs|Отправка инструкции в Telegram topic 33 с Markdown|2026-10-15 13:22:48
+ses_ec0b3d452ffeELiub6Ep5FifrN|Отправка инструкции Syncthing в Telegram topic 33|2026-10-15 14:21:58
+ses_ec09710dfffecH6V5xIqmdqSiA|Отправка сообщения в Telegram topic 33 и запись в outbox|2026-10-15 14:53:24
+ses_ebef53c42ffesr08nKRFDg8NCu|Отправка статуса Яндекс AI Studio в topic 33|2026-10-15 22:29:47
+ses_ebed8db61ffep5jYziw3Zm2fgR|Отправка статус-поста в Telegram topic 33|2026-10-15 23:00:46
+ses_ebc070e89ffeF6VAQOTnzlOquD|Отправка Brave Search API key инструкции в topic 33|2026-10-16 12:09:10
+ses_ebbffa19bffe5zg5Y9koPMLl8V|Отправка сообщения в Telegram topic 33 и запись в outbox|2026-10-16 12:17:17
+ses_ebb4391e1ffeqBOIOgpfAU60B1|Тест-отправка topic 33 и запись outbox|2026-10-16 15:42:42
+ses_ebb2665d7ffe14IZqOUh7KBtuv|Отправка в топик 33 с записью в outbox.jsonl|2026-10-16 16:14:34
+ses_ebb0ba63affeRqFO5j6kpht0DF|Отправка сообщения в topic 33|2026-10-16 16:43:46
+ses_ebae85125ffeVqpp0QR1HwzZ52|Три шага отправки в topic 33|2026-10-16 17:22:22
+ses_ebad77829ffes0XFkXCyljueAe|Отправка в topic 33 и запись в outbox|2026-10-16 17:40:46
+ses_eba97b48cffe1mYoFFbJHOhIfg|TG topic 33: append outbox|2026-10-16 18:50:25
+ses_eba558065ffeCezNynnl59wNlS|Отправка md в topic 33 и outbox|2026-10-16 20:02:44
+ses_eb9b797dcffenFhetaGWmQMTQF|Отправка в topic 33 и запись в outbox|2026-10-16 22:55:12
+ses_eb9b6256cffeJo35N9ERwF1Xna|Отправка msg109 в topic 33 и outbox|2026-10-16 22:56:47
