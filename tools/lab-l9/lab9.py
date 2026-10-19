@@ -28,7 +28,7 @@ CACHE = VAULT / ".cache" / "lab-l9"
 DB = CACHE / "index.sqlite"
 MODEL = HERE / ".venv" / "models" / "e5-small-hdrrayan-f16.gguf"
 DIM = 384
-CHUNK_CHARS = 900
+CHUNK_CHARS = 600
 MIN_CHUNK = 200
 
 _model = None
@@ -49,18 +49,30 @@ def embed(text: str, prefix: str) -> list[float]:
 
 
 def chunks(text: str):
-    """Куски по абзацам до CHUNK_CHARS, с номером стартовой строки.
+    """Куски по секциям (границы — markdown-заголовки), под-бивка до
+    CHUNK_CHARS; минимальный кусок MIN_CHUNK (шапки склеиваются с телом —
+    иначе ведут себя как «магниты», гипотеза 2 итерации 1).
 
-    Куски <MIN_CHUNK символов (шапки-frontmatter) не отдаются отдельно —
-    склеиваются со следующим, иначе ведут себя как «магниты» (гипотеза 2).
-    """
+    Ревизия итерации 3: секции вместо однородной нарезки 900 симв. — цель
+    выводить якорную строку в top-5 (карточка-гипотеза l9-iter3)."""
     lines = text.splitlines()
     cur, start, acc = [], 1, 0
+    boundary = False  # встретили заголовок и накопили достаточно — резать
+
+    def flush(i):
+        nonlocal cur, start, acc
+        if cur:
+            yield start, "\n".join(cur)
+        cur, start, acc = [], i, 0
+
     for i, line in enumerate(lines, 1):
-        if acc + len(line) + 1 > CHUNK_CHARS and cur:
-            if acc >= MIN_CHUNK or i >= len(lines):
-                yield start, "\n".join(cur)
-                cur, start, acc = [], i, 0
+        if boundary:
+            yield from flush(i)
+            boundary = False
+        if line.startswith("#") and acc >= MIN_CHUNK:
+            boundary = True
+        if acc + len(line) + 1 > CHUNK_CHARS and acc >= MIN_CHUNK:
+            yield from flush(i)
         cur.append(line)
         acc += len(line) + 1
     if cur:
