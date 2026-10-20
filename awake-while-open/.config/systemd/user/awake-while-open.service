@@ -1,15 +1,15 @@
-# awake-while-open: не давать машине уходить в suspend по idle, ПОКА крышка ноутбука открыта.
-# Временная задача владельца 2026-10-16 (уезд на день). Автоистечение 24ч (анти-энтропия).
-# Блокирует ТОЛЬКО idle-suspend (logind IdleAction); suspend по крышке — работает как обычно.
+# awake-while-open: крышка ноутбука не влияет на сон НИКАК (открыта/закрыта — ноут работает).
+# Эволюция 2026-10-17 (слово владельца): «при закрытии крышки ничего не происходило и ноут работал так же».
+# Ингибитор handle-lid-switch:idle (block): lid-события logind игнорирует; ручной сон (systemctl suspend/кнопка) свободен.
+# Дедлайн 24ч снят — фича постоянная. Вернуть штатное: systemctl --user disable --now awake-while-open.
 [Unit]
-Description=Не спать по idle, пока крышка открыта (временное, задача владельца 2026-10-16)
+Description=Крышка не влияет на сон: ноут работает всегда (владелец 2026-10-17)
 
 [Service]
 ; запуск через bash — исполняемый бит не требуется (chmod запрещён агентскому контуру)
 ExecStart=/usr/bin/env bash %h/.local/bin/awake-while-open.sh
 Restart=always
 RestartSec=3
-RestartPreventExitStatus=2
 
 [Install]
 WantedBy=default.target

@@ -15,13 +15,15 @@
 import { Plugin } from "@opencode/plugin"
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { appendFileSync } from "node:fs"
+import { appendFileSync, readFileSync, existsSync } from "node:fs"
+import { Database } from "bun:sqlite"
 import { appendCapture, buildCapture, classifyFailure, notifyUser, routeIncident } from "../lib/bugfix-capture-helpers.js"
 
 const PASSIVE = process.env.BUGFIX_PLUGIN === "off";
 const ACTIVE_MODE = true; // Phase 2–4: routing, notifications, subagent-recovery
 const STATE_DIR =
   process.env.BUGFIX_STATE_DIR ?? join(homedir(), ".local", "state", "opencode", "incidents")
+const DB_PATH = join(homedir(), ".local", "share", "opencode", "opencode.db")
 
 const asRecord = (v: unknown): Record<string, any> => (v && typeof v === "object" ? (v as Record<string, any>) : {})
 const SESSION_RE = /^ses_[A-Za-z0-9]+$/
@@ -60,6 +62,44 @@ function projectSlug(directory: unknown): string {
 const SESSION_EVENT_TYPES = new Set([
   "session.updated", "session.idle", "session.completed", "session.deleted",
 ])
+
+// Phase 4.1 (boot-sweep, INC-15 follow-up, 2026-10-17): рестарт демона убивает
+// процессы без единого события — event-driven фаза 4 их не видит. Поэтому при
+// старте плагина читаешь БД сессий read-only (bun:sqlite) и собираешь прерванные
+// субагенты за окно 48 ч: parent_id IS NOT NULL, idle_outcome failed/interrupted.
+// Родителю (родительская сессия) synthetic-пуш «продолжай с места остановки» —
+// доставку безопасно, если TUI родителя закрыта (получит из БД при открытии).
+// Архивированный родитель (time_archived) — контекст умер, notify нет смысла.
+// Авторезаранта в чужую сессию НЕТ: только notification (план утверждён).
+// Дедуп между инстансами: реестр notified в STATE_DIR (append-only JSONL).
+const SWEEP_WINDOW_MS = 48 * 60 * 60 * 1000
+const NOTIFIED_FILE = "subagent-recovery-notified.jsonl"
+
+function loadNotifiedIDs(): Set<string> {
+  const out = new Set<string>()
+  try {
+    const f = join(STATE_DIR, NOTIFIED_FILE)
+    if (existsSync(f)) {
+      for (const line of readFileSync(f, "utf-8").split("\n")) {
+        if (!line.trim()) continue
+        const rec = asRecord(JSON.parse(line))
+        if (typeof rec.sessionID === "string") out.add(rec.sessionID)
+      }
+    }
+  } catch {
+    // реестр не читается — всё ещё безопасно (notify может повториться)
+  }
+  return out
+}
+
+function markNotified(sessionID: string, parentID: string, outcome: string) {
+  try {
+    const line = JSON.stringify({ ts: Date.now(), sessionID, parentID, outcome }) + "\n"
+    appendFileSync(join(STATE_DIR, NOTIFIED_FILE), line)
+  } catch {
+    // реестр не пишется — дедуп ослаблен, но notify остаётся безопасной
+  }
+}
 
 export default Plugin.define({
   id: "bugfix-capture",
@@ -104,6 +144,69 @@ export default Plugin.define({
 
     // Phase 4: дедуп уведомлений (один sessionID — одно уведомление за жизнь плагина).
     const recoveryNotified = new Set<string>()
+    // Phase 4.1: продолжение дедупа между инстансами — реестр в STATE_DIR.
+    for (const id of loadNotifiedIDs()) recoveryNotified.add(id)
+
+    // Phase 4.1: boot-sweep — рестарт демона не оставляет событий; читаем БД.
+    // Read-only доступ к opencode.db через bun:sqlite; любая ошибка — пассив.
+    const bootSweep = () => {
+      if (!ACTIVE_MODE) return
+      try {
+        const db = new Database(DB_PATH, { readonly: true, create: false })
+        try {
+          const cutoff = Date.now() - SWEEP_WINDOW_MS
+          const rows: Array<{ id: string; agent: string; parent_id: string; idle_outcome: string; time_updated: number }> =
+            db
+              .query(
+                "SELECT id, agent, parent_id, idle_outcome, time_updated FROM session_v2 " +
+                  "WHERE idle_outcome IN ('failed','interrupted') AND parent_id IS NOT NULL " +
+                  "AND time_updated > $cutoff",
+              )
+              .all({ $cutoff: cutoff })
+          // Фильтр: архивированный родитель = контекст умер, notify нет смысла.
+          // Молчанье родителя НЕ фильтр: мог писать заметки, не возобновив
+          // субагента — дедуп: реестр notified + окно 48 ч.
+          const archivedParent = new Set<string>()
+          const pidQuery = db.query("SELECT time_archived FROM session_v2 WHERE id = $pid")
+          for (const r of rows) {
+            if (!archivedParent.has(r.parent_id)) {
+              const p = pidQuery.get({ $pid: r.parent_id }) as { time_archived?: number | null } | null
+              if (p?.time_archived != null) archivedParent.add(String(r.parent_id))
+            }
+          }
+          let notified = 0
+          for (const r of rows) {
+            if (recoveryNotified.has(r.id)) continue
+            if (!r.parent_id || !r.idle_outcome) continue
+            if (archivedParent.has(r.parent_id)) continue
+            recoveryNotified.add(r.id)
+            markNotified(r.id, r.parent_id, r.idle_outcome)
+            notified++
+            void notifyParent(r.parent_id, String(r.agent ?? "subagent"), r.idle_outcome, r.id)
+          }
+          if (notified > 0) {
+            void notifyUser("OpenCode Recovery", `boot-sweep: ${notified} прерванных субагентов — родителям отправлены уведомления`)
+            console.error(`[bugfix-capture] boot-sweep: notified ${notified}`)
+          } else {
+            console.error("[bugfix-capture] boot-sweep: clean")
+          }
+        } finally {
+          db.close()
+        }
+      } catch (err) {
+        console.error(`[bugfix-capture] boot-sweep skipped: ${err instanceof Error ? err.name : "ERR"}`)
+      }
+    }
+
+    // Синтетическое уведомление родителю определено ниже (Phase 4) — вызов отложен
+    // на микро-тик после setup, чтобы все хуки были установлены.
+    setTimeout(() => {
+      try {
+        bootSweep()
+      } catch {
+        // sweep — опционально, не мешает работе плагина
+      }
+    }, 250)
     // Phase 4: калибровка формата session-событий — первые 40 в debug-файл (metadata-only).
     let debugLeft = 40
     const debugSessionEvent = (ev: Record<string, any>) => {
