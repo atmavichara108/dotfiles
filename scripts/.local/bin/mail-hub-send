@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""mail-hub-send — отправка через msmtp с очередью outbox (хендофф A6).
+
+«Отправлено» = релей принял письмо (код 250 / exit 0 msmtp) — не «нажал Send».
+Нет релея/сети → письмо ждёт в outbox (~/Mail/re-search.wiki-outbox/),
+уходит при mail-hub-outbox-flush. Не теряется молча.
+
+Вход: письмо на stdin (формат RFC 822: заголовки, пустая строка, тело;
+получатели берутся из To/Cc/Bcc — msmtp -t).
+"""
+import pathlib
+import subprocess
+import sys
+import time
+
+OUTBOX = pathlib.Path.home() / "Mail/re-search.wiki-outbox"
+
+
+def try_send(raw: bytes) -> bool:
+    r = subprocess.run(["msmtp", "-t", "--read-recipients"],
+                       input=raw, capture_output=True)
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr.decode(errors="replace"))
+    return r.returncode == 0
+
+
+def main() -> int:
+    raw = sys.stdin.buffer.read()
+    if not raw:
+        print("пустое письмо на stdin — нечего отправлять")
+        return 1
+    if try_send(raw):
+        print("отправлено: релей принял (250)")
+        return 0
+    OUTBOX.mkdir(parents=True, exist_ok=True)
+    f = OUTBOX / f"{int(time.time() * 1000)}.eml"
+    f.write_bytes(raw)
+    print(f"нет релея — письмо ждёт в outbox: {f}")
+    print("уйдёт автоматически: mail-hub-outbox-flush")
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
