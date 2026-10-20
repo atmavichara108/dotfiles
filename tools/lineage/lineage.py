@@ -29,7 +29,8 @@ LEDGER = Path(os.environ.get("LINEAGE_LEDGER",
 DB = HOME / ".local/share/opencode/opencode.db"
 REPO = Path(os.environ.get("LINEAGE_REPO", HOME / "dotfiles"))
 RECEIPTS_OUT = HOME / ".local/state/opencode/mail/receipts-out.jsonl"
-STALE_DAYS = 2
+STALE_DAYS = 3
+STALE_BEHIND = 10          # R3: stale = ≥10 коммитов позади origin/main ИЛИ ≥3 дней
 UNPROCESSED_H = 48
 
 
@@ -158,8 +159,14 @@ def audit_branches():
             out["orphan"].append(name)
         in_main = subprocess.run(["git", "merge-base", "--is-ancestor", name, "origin/main"],
                                  cwd=REPO, capture_output=True).returncode == 0
-        if not in_main and (now - int(ts)) / 86400 >= STALE_DAYS:
-            out["stale"].append({"branch": name, "age_d": round((now - int(ts)) / 86400, 1)})
+        behind = 0
+        try:
+            behind = int(sh(["git", "rev-list", "--count", f"origin/main..{name}"]).strip() or "0")
+        except ValueError:
+            behind = 0
+        age_d = (now - int(ts)) / 86400
+        if not in_main and (age_d >= STALE_DAYS or behind >= STALE_BEHIND):
+            out["stale"].append({"branch": name, "age_d": round(age_d, 1), "behind": behind})
     return out
 
 
@@ -195,6 +202,20 @@ def audit_letters():
              for r, e in by_ref.items()
              if not e["answered"] and (now - e["sent_ts"]) / 3600 > UNPROCESSED_H]
     return {"scanned": n, "refs": len(by_ref), "unprocessed": stale}
+
+
+def snapshot_ledger():
+    """R3: ротируемый снапшот ledger рядом (ledger.snapshot-<ts>.jsonl, keep 5)."""
+    if not LEDGER.exists():
+        return None
+    import shutil
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    dst = LEDGER.parent / f"ledger.snapshot-{stamp}.jsonl"
+    shutil.copy2(LEDGER, dst)
+    snaps = sorted(LEDGER.parent.glob("ledger.snapshot-*.jsonl"))
+    for old in snaps[:-5]:
+        old.unlink()
+    return dst.name
 
 
 def cmd_audit(a):
