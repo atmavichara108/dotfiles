@@ -24,15 +24,71 @@
 #
 # Безопасность: просто SIGTERM по списку PID, без оперативных вызовов.
 # Ничего не трогает права/конфиги.
-
+#
+# Restore (BF-20261018-02): mod+o возвращает пользователя в то же положение —
+# до убийства снимаем, в какой tmux-панели какой opencode открыт (сессия из
+# args `-s ses_*`, для plain — последняя просмотренная сессия этого cwd по БД,
+# колонка time_viewed; это ровно та, что открыта в TUI прямо сейчас). После
+# перезагрузки в каждую панель отправляется её команда запуска через
+# `tmux send-keys` — панель живёт (shell остаётся shell'ом), фокус/вкладки
+# tmux не сдвигаются, поведение вкладок не меняется. TUI вне tmux
+# восстановить автоматически нельзя — только уведомление.
 set -u
 
-PATTERN='(^opencode$|^opencode -s |^opencode serve)'
+DRYRUN=0
+[[ "${1:-}" == "--dry-run" ]] && DRYRUN=1
+
 killed=0
 skipped=0
 
+# --- Restore: снимок tmux-панелей с живым opencode (до убийства) ---
+# ВАЖНО (BF-20261018-02): вкладки внутри одного TUI opencode восстанавливает
+# САМ — штатно из ~/.local/state/opencode/latest/tui/tabs.json (map cwd →
+# список sessionID-вкладок). от нас нужно ровно одно: перезапустить opencode
+# в той же tmux-панели и с тем же запускающим аргументом (-s ses_* или plain).
+# Играть в sqlite/time_viewed не нужно — только мешает.
+declare -a SNAPS=()   # строки «pane_id|запуск»
+TMUX_OK=0
+if command -v tmux >/dev/null 2>&1 && tmux info >/dev/null 2>&1; then
+    TMUX_OK=1
+    declare -A PANE_BY_PID=()
+    while IFS='|' read -r pane pid dead; do
+        [[ "$dead" == "0" ]] && PANE_BY_PID["$pid"]="$pane"
+    done < <(tmux list-panes -a -F '#{pane_id}|#{pane_pid}|#{pane_dead}' 2>/dev/null)
+
+    while IFS= read -r tp; do
+        targs=$(ps -o args= -p "$tp" 2>/dev/null) || targs=""
+        [[ "$targs" == *"opencode run "* ]] && continue
+        # ищем tmux-панель-предка TUI-процесса (вверх до pane_pid)
+        pane=""
+        par="$tp"
+        for _ in 1 2 3 4 5 6; do
+            par=$(ps -o ppid= -p "$par" 2>/dev/null | tr -d ' ')
+            [[ -z "$par" || "$par" == "1" ]] && break
+            p="${PANE_BY_PID[$par]:-}"
+            if [[ -n "$p" ]]; then pane="$p"; break; fi
+        done
+        [[ -z "$pane" ]] && continue   # opencode вне tmux — авто-восстановления нет
+        if [[ "$targs" == *"opencode -s"* ]]; then
+            sess=$(grep -oE 'ses_[A-Za-z0-9]+' <<< "$targs" | head -1)
+            [[ -n "$sess" ]] && tstart="opencode -s ${sess}" || tstart="opencode"
+        else
+            tstart="opencode"   # plain: вкладки вернёт tabs.json по cwd
+        fi
+        SNAPS+=("${pane}|${tstart}")
+    done < <(pgrep -x opencode 2>/dev/null)
+fi
+
+if (( DRYRUN )); then
+    echo "DRY-RUN: план восстановления (панель|запуск):"
+    if [[ ${#SNAPS[@]} -eq 0 ]]; then echo "  (нет opencode в tmux-панелях)"; fi
+    for s in "${SNAPS[@]}"; do printf '  %s\n' "$s"; done
+    echo "DRY-RUN: kill и восстановление пропущены"
+    exit 0
+fi
+
 # Уникальный список PID opencode-процессов (TUI/embedded/serve).
-mapfile -t pids < <(pgrep -x opencode 2>/dev/null; pgrep -f "$PATTERN" 2>/dev/null)
+mapfile -t pids < <(pgrep -x opencode 2>/dev/null; pgrep -f 'opencode (serve|-s ses_)' 2>/dev/null)
 pids=$(printf '%s\n' "${pids[@]}" 2>/dev/null | sort -u)
 
 if [[ -z "$pids" ]]; then
@@ -42,15 +98,26 @@ if [[ -z "$pids" ]]; then
 fi
 
 for pid in $pids; do
-    cmd=$(ps -o args= -p "$pid" 2>/dev/null | head -c 100) || cmd=""
-    # наш собственный pgrep может захватить тех, кто запущен из под opencode
-    # (например, клиенты/скрипты) — эта запись не может быть релевантной
-    case "$cmd" in
-        opencode*|-) ;;
+    args=$(ps -o args= -p "$pid" 2>/dev/null) || args=""
+    base=${args%% *}
+    base=${base##*/}
+    # только процессы, исполняемый файл которых opencode (TUI/serve/run);
+    # их дети (bun-задачи, shim, letter) убиваются сами или ниже по дереву
+    [[ "$base" == "opencode" ]] || continue
+    # НЕ убиваем разовые задачи `opencode run ...` (letter.sh/one-shots) —
+    # они умирают сами и чаще всего держат важного письмо-агента.
+    case "$args" in
+        *"opencode run "*) continue ;;
+        # serve был пропущен при первом прогоне: у выделенного сервера путь
+        # полный (`~/.opencode/bin/opencode serve --service`), старый case-фильтр
+        # `opencode*` его отсекал — инцидент BF-20261018 (image-read не встав).
+        *"opencode serve"*) ;;
+        *"opencode -s ses_"*) ;;  # TUI конкретной сессии
+        opencode) ;;              # plain TUI
         *) continue ;;
     esac
     if kill "$pid" 2>/dev/null; then
-        echo "killed: pid $pid  ($cmd)"
+        echo "killed: pid $pid  ($args)"
         killed=$((killed + 1))
     else
         echo "cannot kill: pid $pid" >&2
@@ -65,6 +132,20 @@ for cpid in $(pgrep -f "opencode serve" 2>/dev/null); do
     [[ -d "/proc/$ppid" ]] || { kill "$cpid" 2>/dev/null && { echo "killed orphaned serve: pid $cpid"; killed=$((killed + 1)); }; }
 done
 
-msg="opencode полностью перезагружен (killed $killed, skipped $skipped) — откройте TUI заново; сессии персистентны, продолжение через letter / resume"
+# --- Restore: каждой tmux-панели — её opencode и её сессия ---
+if [[ "$TMUX_OK" == "1" && ${#SNAPS[@]} -gt 0 ]]; then
+    sleep 0.7   # shell'ы панелей успели вернуться в prompt
+    for snap in "${SNAPS[@]}"; do
+        IFS='|' read -r pane cmd <<< "$snap"
+        [[ -z "$pane" ]] && continue
+        if tmux send-keys -t "$pane" -l "$cmd" 2>/dev/null && tmux send-keys -t "$pane" Enter 2>/dev/null; then
+            echo "restore: pane ${pane} -> ${cmd}"
+        else
+            echo "restore: не удалось вписать команду в ${pane}" >&2
+        fi
+    done
+fi
+
+msg="opencode перезагружен (killed $killed, skipped $skipped); tmux-вкладки возвращаются сами; TUI вне tmux — открыть вручную"
 echo "$msg"
 command -v notify-send >/dev/null 2>&1 && notify-send "opencode" "$msg"

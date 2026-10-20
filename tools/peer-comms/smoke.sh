@@ -33,7 +33,7 @@ echo ""
 
 # --- Test 1: hello + ping shows active ---
 echo "--- Test 1: hello A → ping A → active ---"
-"${HELLO}" hello --session A --role builder --model qwen3.7-plus --scope "tools/peer-comms"
+"${HELLO}" hello --session A --role builder --scope "tools/peer-comms"
 out="$("${HELLO}" ping A)"
 assert "ping shows session A" "Session A" "${out}"
 assert "ping shows active" "active" "${out}"
@@ -48,7 +48,7 @@ echo ""
 
 # --- Test 3: stale TTL ---
 echo "--- Test 3: stale session (ts > TTL) → stale ---"
-"${HELLO}" hello --session B --role verifier --model muse-spark --scope test
+"${HELLO}" hello --session B --role verifier --scope test
 # Rewrite ts to 2 hours ago (well beyond 30-min TTL)
 old_ts=$(( $(date +%s) - 7200 ))
 # Replace ts for session B entries with old_ts
@@ -68,9 +68,9 @@ echo ""
 
 # --- Test 5: full handshake hello A → hello B → ack B from A → ping B ---
 echo "--- Test 5: handshake A↔B → ack refreshes B ---"
-"${HELLO}" hello --session A --role builder --model qwen3.7-plus --scope "tools/peer-comms"
-"${HELLO}" hello --session B --role verifier --model muse-spark --scope "tools/peer-comms"
-"${HELLO}" ack --session B --from A --role builder --model qwen3.7-plus
+"${HELLO}" hello --session A --role builder --scope "tools/peer-comms"
+"${HELLO}" hello --session B --role verifier --scope "tools/peer-comms"
+"${HELLO}" ack --session B --from A --role builder
 out="$("${HELLO}" ping B)"
 assert "ping B shows active after ack" "active" "${out}"
 assert "ping B shows ack from A" "ack from: A" "${out}"
@@ -78,7 +78,7 @@ echo ""
 
 # --- Test 6: ack alone keeps session active ---
 echo "--- Test 6: ack without bye keeps session active ---"
-"${HELLO}" hello --session C --role sysop --model gpt-5.6-luna --scope test
+"${HELLO}" hello --session C --role sysop --scope test
 "${HELLO}" ack --session C --from A
 out="$("${HELLO}" ping C)"
 assert "ping C active after ack" "active" "${out}"
@@ -93,7 +93,7 @@ echo ""
 
 # --- Test 7: ack does not override bye ---
 echo "--- Test 7: bye after ack → inactive ---"
-"${HELLO}" hello --session D --role util-dev --model qwen3.7-plus --scope test
+"${HELLO}" hello --session D --role util-dev --scope test
 "${HELLO}" ack --session D --from A
 "${HELLO}" bye --session D
 out="$("${HELLO}" ping D)"
@@ -102,7 +102,7 @@ echo ""
 
 # --- Test 8: list shows registered sessions ---
 echo "--- Test 8: list shows registered sessions ---"
-"${HELLO}" hello --session X --role builder --model qwen3.7-plus --scope "tools/peer-comms"
+"${HELLO}" hello --session X --role builder --scope "tools/peer-comms"
 out="$("${HELLO}" list)"
 assert "list contains header" "SESSION" "${out}"
 assert "list shows session X" "X" "${out}"

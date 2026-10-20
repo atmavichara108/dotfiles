@@ -1,0 +1,22 @@
+[Unit]
+Description=tg-guard — постоянный push-сторож TG-топика 33 (журнал + wake координатора)
+# Wake-канал — opencode-serve (локальный OpenCode-сервер, 127.0.0.1:49374).
+# Связка осознанно НЕ жёсткая (fail-open, апрув владельца 2026-10-18): событие
+# остаётся в append-only журнале, реакция — при следующей сессии.
+After=network-online.target opencode-serve.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# python3 явно: в git у tg-*.py нет exec-бита (100644), exec-бит ставит владелец.
+ExecStart=/usr/bin/python3 %h/.local/bin/tg-guard.py --topic 33
+# Persistence-гарантия инцидента 17.10: демон сам возвращается после смерти.
+Restart=always
+RestartSec=5
+# Журнал событий — на диске (append-only, guard-journal.jsonl), к событиям
+# диск независим от journald; journald — только диагностика демона.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -846,3 +846,11 @@ tg-upload (три файла, офлайн-режим) и поднимал во�
 6. Реестр задач — SSOT у ИЦ (.opencode/memory/inbox.md); волт — указателем.
 7. Регистрация — через /task (пользовательская форма /задача): анти-коллизия индексов (перепроверка после записи), путь реестра в ответе.
 **Последствия:** объекты опознаются по смыслу мгновенно — владельцем и агентами; пары с рождения — честные обучающие данные для «цифрового образа» (замечание ИПТ); T-187 закрыт исполнением; волт-указатель — за ЦУ (их реестр).
+
+## INC — Envelope cursor-paginated в OpenCode-сервере v2 (tg-guard wake, 2026-10-18)
+- **Symptom:** staged-версия tg-guard._resolve_coord_session возвращала бы None на каждом wake → все входящие `wake="failed"` («coordinator session not found»).
+- **Repro:** GET /api/session (Basic auth из service.json) → 200, тело {"data":[…~50…],"cursor":{previous,next}} — envelope с пейджингом, не список; страница 2 через ?cursor=.
+- **Root cause:** код ждал голый JSON-список; сервер OpenCode v2 отдаёт cursor-paginated envelope (~50/страница).
+- **Fix:** _page_sessions() (envelope+list совместимо) + ограниченный пейджинг (?cursor=, MAX_SESSION_PAGES=20); fail-open семантика сохранена. Файл в staged set ветки task/tg-guard-image-read-20261018.
+- **Evidence:** live-прогоны сессии meta#2 (ses_eb36d6884ffefdnT1qGboqTN60): «Control top» резолвится; токен нигде не логировался.
+- **Статус:** fix staged; запись — отдельным коммитом ПОСЛЕ основного (вердикт ЦУ вариант А, verdict-10-20261018).
