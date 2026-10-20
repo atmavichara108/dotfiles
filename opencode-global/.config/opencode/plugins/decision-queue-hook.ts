@@ -15,13 +15,13 @@
 //     V1 permission.ask / permission.request → V2 стрим-событие "permission.asked"
 //     + "permission.replied" — дозапись решения человека строго по requestID.
 //
-// Карточки: <VAULT_PATH>/cards/<requestID>.json — durable-запись (ephemeral
+// Карточки: <STATE_PATH>/cards/<requestID>.json — durable-запись (ephemeral
 // состояние плагина не является доказательством; своя durable-запись обязательна).
 
 import { Plugin } from "@opencode/plugin"
+import { readdir, stat, unlink } from "fs/promises"
 import { mkdir, open, readFile, rename, writeFile } from "fs/promises"
 import { join } from "path"
-import { existsSync } from "fs"
 import { randomUUID } from "crypto"
 import {
   inferRisk,
@@ -87,11 +87,15 @@ interface DecisionCard {
   model: string | null
 }
 
-const VAULT_PATH = "/home/rudra/Projects/OpenCode-Vault/control-plane/decision-queue"
-const FALLBACK_PATH = "/home/rudra/.local/share/opencode/decision-queue"
+// Норма 2026-10-20 (ЦУ ОК с условием; класс «runtime не пишет в рабочее дерево»):
+// карточки живут в state-каталоге вне git; волт для записи не используется.
+// Ротация: resolved/шумные карточки старше 7 дней подчищаются при старте сервера;
+// pending (живые дилеммы владельца) автоматически не ротируются — только вручную.
+const STATE_PATH = "/home/rudra/.local/state/opencode/decision-queue"
+const ROTATION_DAYS = 7
 
 function getStoragePath(): string {
-  return existsSync(VAULT_PATH) ? VAULT_PATH : FALLBACK_PATH
+  return STATE_PATH
 }
 
 function cardsDir(): string {
@@ -100,6 +104,34 @@ function cardsDir(): string {
 
 function cardPath(id: string): string {
   return join(cardsDir(), `${id}.json`)
+}
+
+// Ротация при старте сервера: удаляет карточки старше ROTATION_DAYS дней,
+// кроме status === "pending" (живые дилеммы владельца — только вручную,
+// условие ЦУ от 2026-10-20).
+async function rotateResolvedCards(): Promise<void> {
+  try {
+    const dir = cardsDir()
+    await mkdir(dir, { recursive: true })
+    const entries = await readdir(dir)
+    const cutoff = Date.now() - ROTATION_DAYS * 24 * 3600 * 1000
+    for (const name of entries) {
+      if (!name.endsWith(".json")) continue
+      const full = join(dir, name)
+      try {
+        const st = await stat(full)
+        if (st.mtimeMs >= cutoff) continue
+        let keep = false
+        try {
+          keep = ((JSON.parse(await readFile(full, "utf-8")) as { status?: string })?.status === "pending")
+        } catch { keep = false }
+        if (keep) continue
+        await unlink(full)
+      } catch { /* файл исчез параллельно — пропускаем */ }
+    }
+  } catch (err) {
+    console.error(`[decision-queue-hook] rotation failed: ${err}`)
+  }
 }
 
 // requestID — ключ карточки: из permission.asked data.id; при его отсутствии
@@ -334,6 +366,10 @@ function extrasFromAsked(event: Record<string, any>): Partial<DecisionCard> & { 
 export default Plugin.define({
   id: "decision-queue-hook",
   async setup(ctx) {
+    // Норма 2026-10-20: чистка resolved-карточек старше 7 дней при старте сервера
+    // (pending не трогаем). Волт больше не пишем — только state-каталог.
+    void rotateResolvedCards()
+
     // Теневое состояние (только чтение): evaluate даёт effect/agent раньше либо
     // параллельно со стримом; храним кратко, только для обогащения карточки.
     // Никаких reply-вызовов, никаких мутаций effect — обработчик возвращает undefined
