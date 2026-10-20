@@ -24,7 +24,8 @@ import time
 from pathlib import Path
 
 HOME = Path.home()
-LEDGER = HOME / ".local/state/opencode/lineage/ledger.jsonl"
+LEDGER = Path(os.environ.get("LINEAGE_LEDGER",
+                              HOME / ".local/state/opencode/lineage/ledger.jsonl"))
 DB = HOME / ".local/share/opencode/opencode.db"
 REPO = Path(os.environ.get("LINEAGE_REPO", HOME / "dotfiles"))
 RECEIPTS_OUT = HOME / ".local/state/opencode/mail/receipts-out.jsonl"
@@ -37,6 +38,23 @@ def sh(args, cwd=None):
                           text=True).stdout
 
 
+def last_rev(session_id):
+    """Последняя ревизия session_id в ledger (0 — если нет). Состояние = последняя ревизия."""
+    rev = 0
+    try:
+        with open(LEDGER) as f:
+            for l in f:
+                try:
+                    d = json.loads(l)
+                except json.JSONDecodeError:
+                    continue
+                if d.get("kind") == "revision" and d.get("session_id") == session_id:
+                    rev = max(rev, int(d.get("rev", 0)))
+    except FileNotFoundError:
+        pass
+    return rev
+
+
 def cmd_append(a):
     rec = {"ts": int(time.time()), "kind": a.kind, "session_id": a.session_id}
     for k in ("branch", "worktree", "task", "pr", "status", "stage", "via",
@@ -45,15 +63,44 @@ def cmd_append(a):
         if v is not None:
             rec[k] = v
     if a.kind not in ("fact", "revision"):
-        sys.exit("kind: fact|revision");
+        sys.exit("kind: fact|revision")
+    if a.kind == "revision" and a.session_id:
+        rec["rev"] = last_rev(a.session_id) + 1   # revise_status: rev-цепочка
     LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    fresh = not LEDGER.exists()
     line = json.dumps(rec, ensure_ascii=False, separators=(",", ":"))
     with open(LEDGER, "a") as f:            # append-only, длина записи > pipe
         fcntl.flock(f, fcntl.LOCK_EX)       # буфера — только flock (ADR §5)
         f.write(line + "\n")
         f.flush()
         os.fsync(f.fileno())
+    if fresh:
+        os.chmod(LEDGER, 0o600)             # R1: права 600 на канонический ledger
     print(line)
+    return 0
+
+
+def cmd_status(a):
+    """Состояние session_id = последняя ревизия (revise_status-читатель)."""
+    rows = []
+    try:
+        with open(LEDGER) as f:
+            for l in f:
+                try:
+                    d = json.loads(l)
+                except json.JSONDecodeError:
+                    continue
+                if d.get("session_id") == a.session_id:
+                    rows.append(d)
+    except FileNotFoundError:
+        pass
+    revs = [r for r in rows if r.get("kind") == "revision"]
+    latest = sorted(revs, key=lambda r: int(r.get("rev", 0)))[-1] if revs else None
+    if latest:
+        print(json.dumps(latest, ensure_ascii=False))
+    else:
+        print("(нет ревизий)" if a.session_id else "(не задан session-id)")
+        return 1
     return 0
 
 
@@ -185,6 +232,9 @@ def main():
     pu = sub.add_parser("audit", help="read-only сшивка источников")
     pu.add_argument("--json", action="store_true")
     pu.set_defaults(fn=cmd_audit)
+    pst = sub.add_parser("status", help="последняя ревизия session_id (revise_status-читатель)")
+    pst.add_argument("--session-id", required=True)
+    pst.set_defaults(fn=cmd_status)
     a = p.parse_args()
     sys.exit(a.fn(a))
 
