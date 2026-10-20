@@ -30,6 +30,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAIMS_FILE="${CLAIMS_FILE:-${SCRIPT_DIR}/claims.jsonl}"
 MAIL_DIR="${PEER_MAIL_DIR:-$HOME/.local/state/opencode/mail}"
+# Scope C (мандат ЦУ agents-drwho-20261019, ВРЕМЕННАЯ мера; апрув владельца):
+# агент адресата берём из peer-registry (колонка «Агент»), а не из дефолтов
+# рабочего каталога вызывающего: cwd-дефолт («sysop» из dotfiles) не существует
+# в репо забежавшего адресата (ability-lab -> Dr.Who) -> «Agent not found».
+# Не резолвили/не нашли -> письмо уходит БЕЗ переключения агента, не падает.
+# Постоянный фикс (агент как отдельное поле реестра/схема) — отдельное решение.
+REGISTRY_FILE="${PEER_REGISTRY:-$HOME/Projects/OpenCode-Vault/04-Memory/peer-registry.md}"
 
 fail() { echo "Error: $*" >&2; exit 1; }
 
@@ -67,6 +74,23 @@ journal_append() {
 }
 
 sha256_of() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
+
+# Agent адресата из peer-registry (Scope C, временная мера). Пусто = нет записи.
+# Нормализация: "Dr.Who" -> dr-who (id агента — lowercase, точки -> дефисы).
+registry_agent() {
+  local target="${1:?}"
+  [[ -r "${REGISTRY_FILE}" ]] || return 0
+  awk -F'|' -v sid="${target}" '
+    /^[|]/ && $3 ~ sid {
+      v = $4
+      gsub(/\*/, "", v)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+      if (v == "" || v == "Агент" || /^-+$/) v = ""
+      print v
+      exit
+    }' "${REGISTRY_FILE}" 2>/dev/null \
+    | tr '[:upper:]' '[:lower:]' | tr '.' '-'
+}
 
 PENDING_FILE="${MAIL_DIR}/pending.jsonl"
 PENDING_DIR="${MAIL_DIR}/pending"
@@ -212,9 +236,6 @@ main() {
     payload="${text}"
   fi
 
-  local args=("run" "-s" "${to}")
-  [[ -n "${title}" ]] && args+=("--title" "${title}")
-
   # NOTE (B15 model-lock): никаких -m/--model и no force-пути. Модель адресата
   # канал не меняет никогда — смена только владельцем штатными средствами.
 
@@ -264,7 +285,29 @@ main() {
   # письмо молча не доставляется. `--` гарантированно переводит payload
   # в позиционный аргумент.
   args+=("--" "${payload}")
-  _inject "${message_id}" "${digest}" "${args[@]}"
+
+  # Scope C (agents-drwho-20261019): агент адресата — из реестра, не из cwd.
+  # Знаем -> --agent <имя> (run переключит/подтвердит агента адресата на его же
+  # штатного, «Agent not found: sysop» уходит). Не знаем -> как раньше, без
+  # --agent. Если --agent отклонён адресатом — НЕ падаем: доставка без
+  # переключения агента, с пометкой agent-fallback в журнале.
+  local ragent fa_rc=0
+  ragent="$(registry_agent "${to}")"
+  if [[ -n "${ragent}" ]]; then
+    local base_args=("${args[@]}")
+    args+=("--agent" "${ragent}")
+    _inject "${message_id}" "${digest}" "${args[@]}" || fa_rc=$?
+    if (( fa_rc != 0 )); then
+      journal_append "${MAIL_DIR}" "$(jq -cn \
+        --arg event "agent-fallback" --arg id "${message_id}" \
+        --arg agent "${ragent}" \
+        '{event:"agent-fallback", message_id:$id, agent:$agent, ts:(now|floor)}')"
+      echo "NOTE: --agent ${ragent} отклонён адресатом -> доставка без переключения агента" >&2
+      _inject "${message_id}" "${digest}" "${base_args[@]}"
+    fi
+  else
+    _inject "${message_id}" "${digest}" "${args[@]}"
+  fi
 }
 
 main "$@"
