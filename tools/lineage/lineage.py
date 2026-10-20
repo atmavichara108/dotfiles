@@ -176,13 +176,36 @@ def audit_worktrees():
 
 
 def audit_letters():
-    """Слой 3: sent → delivered → processed. processed = finished/started receipt
-    с тем же ref ОТ КОНТРАГЕНТА (в наших исходящих — наших finished на тот же ref)."""
-    if not RECEIPTS_OUT.exists():
-        return {"scanned": 0, "unprocessed": []}
+    """Слой 3 (R5): sent → delivered → processed.
+    sent: receipts-out.jsonl (event=sent);
+    delivered: ledger edge=delivered-to (R2) или receipts delivered;
+    processed: receipt started/finished с тем же ref ИЛИ ledger edge=ack (R5)."""
     now = time.time()
     by_ref: dict = {}
     n = 0
+    ack_refs: set = set()
+    delivered_refs: set = set()
+    # --- ledger: ручные ack (R5) и рёбра доставки (R2) ---
+    try:
+        with open(LEDGER) as f:
+            for l in f:
+                try:
+                    d = json.loads(l)
+                except json.JSONDecodeError:
+                    continue
+                ref = d.get("ref")
+                if not ref:
+                    continue
+                if d.get("edge") == "ack":
+                    ack_refs.add(ref)
+                elif d.get("edge") == "delivered-to" and ref:
+                    delivered_refs.add(ref)
+    except FileNotFoundError:
+        pass
+    # --- receipts: sent + ответы (started/finished) ---
+    if not RECEIPTS_OUT.exists():
+        return {"scanned": 0, "refs": 0, "unprocessed": [],
+                "acked": len(ack_refs)}
     with open(RECEIPTS_OUT) as f:
         for l in f:
             try:
@@ -192,16 +215,44 @@ def audit_letters():
             n += 1
             ref = d.get("ref") or d.get("scope") or "?"
             e = by_ref.setdefault(ref, {"sent_ts": now, "answered": False,
+                                        "delivered": False,
                                         "to": d.get("to", "")})
             e["sent_ts"] = min(e["sent_ts"], d.get("ts", now))
             if str(d.get("receipt", "")) in ("started", "finished") and d.get("from"):
                 e["answered"] = True
-            if d.get("scope", "").endswith("-ack") or "receipt" in str(d.get("scope", "")):
-                pass
+            if str(d.get("event", "")) in ("delivered", "timeout"):
+                e["delivered"] = True
+    for ref in by_ref:
+        if ref in ack_refs:
+            by_ref[ref]["answered"] = True
+        if ref in delivered_refs:
+            by_ref[ref]["delivered"] = True
     stale = [{"ref": r, "age_h": round((now - e["sent_ts"]) / 3600, 1), "to": e["to"]}
              for r, e in by_ref.items()
              if not e["answered"] and (now - e["sent_ts"]) / 3600 > UNPROCESSED_H]
-    return {"scanned": n, "refs": len(by_ref), "unprocessed": stale}
+    return {"scanned": n, "refs": len(by_ref), "unprocessed": stale,
+            "acked": len(ack_refs)}
+
+
+def cmd_ack(a):
+    """R5: явная фиксация processed — «доставлено ≠ обработано».
+    ack <ref> — письмо с этим ref обработано (вне канала ответа)."""
+    if not a.ref:
+        sys.exit("ack: нужен --ref")
+    rec = {"ts": int(time.time()), "kind": "fact", "session_id": a.session_id,
+           "edge": "ack", "ref": a.ref, "note": a.note or "manual ack"}
+    LEDGER.parent.mkdir(parents=True, exist_ok=True)
+    fresh = not LEDGER.exists()
+    line = json.dumps(rec, ensure_ascii=False, separators=(",", ":"))
+    with open(LEDGER, "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.write(line + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    if fresh:
+        os.chmod(LEDGER, 0o600)
+    print(line)
+    return 0
 
 
 def snapshot_ledger():
@@ -270,6 +321,11 @@ def main():
     pst = sub.add_parser("status", help="последняя ревизия session_id (revise_status-читатель)")
     pst.add_argument("--session-id", required=True)
     pst.set_defaults(fn=cmd_status)
+    pck = sub.add_parser("ack", help="R5: ручная фиксация processed по ref (доставлено ≠ обработано)")
+    pck.add_argument("--ref", required=True)
+    pck.add_argument("--session-id")
+    pck.add_argument("--note")
+    pck.set_defaults(fn=cmd_ack)
     a = p.parse_args()
     sys.exit(a.fn(a))
 
