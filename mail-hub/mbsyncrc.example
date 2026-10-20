@@ -1,0 +1,31 @@
+# mbsyncrc — шаблон (mail-hub v0.3, нулевой путь по хендоффу A3/V2)
+# Живой файл: ~/.mbsyncrc (создаётся с правами 600; секреты — PassCmd, вне репо).
+# Заполни <...> по своему ящику-приёмнику (куда Forward Email пересылает).
+
+IMAPAccount re-search-wiki
+Host <imap.твой-ящик.например-gmail>
+User <твой-логин@ящик>
+# Пароль — файлом 600, не в репо и не в логах:
+PassCmd "cat ~/.secrets/mail-hub/imap.pass"
+TLSType IMAPS
+AuthMechs LOGIN
+
+IMAPStore re-search-wiki-remote
+Account re-search-wiki
+
+MaildirStore re-search-wiki-local
+Path ~/Mail/re-search.wiki/
+Inbox ~/Mail/re-search.wiki/INBOX
+Subfolders Verbatim
+
+Channel re-search-wiki
+Far :re-search-wiki-remote:
+Near :re-search-wiki-local:
+Patterns *
+Create Both
+Expunge Both
+SyncState *
+
+# Группы для запуска: mbsync -a
+Group all
+Channel re-search-wiki
