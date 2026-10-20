@@ -44,6 +44,16 @@ function git(args: string[], cwd: string): Promise<string> {
   })
 }
 
+// R2(а) И-53: lineage-запись (python-инструмент, fail-open как реестр)
+function lineage(args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("python3",
+      ["/home/rudra/dotfiles/tools/lineage/lineage.py", ...args],
+      (err, stdout) => (err ? reject(err) : resolve(stdout.trim())),
+    )
+  })
+}
+
 async function isGitRepo(directory: string): Promise<boolean> {
   try {
     await git(["rev-parse", "--show-toplevel"], directory)
@@ -138,6 +148,11 @@ async function claimBranch(directory: string, name: string, sessionID: string): 
     if (!/^[A-Za-z0-9_./-]+$/.test(name)) return
     await git(["config", `branch.${name}.owner`, sessionID], directory)
     await git(["config", `branch.${name}.claimedAt`, String(Math.floor(Date.now() / 1000))], directory)
+    // R2(а) И-53: полная lineage-запись рождения — fact + первичная ревизия live
+    // (dual-write: git-config остаётся для per-repo читаемости, истина — ledger).
+    await lineage(["append", "--kind", "fact", "--session-id", sessionID,
+      "--via", "branch-auto", "--branch", name, "--worktree", directory,
+      "--task", name, "--ref", "birth", "--status", "live"])
   } catch {
     // fail-open: реестр — помощь, не гейт
   }
