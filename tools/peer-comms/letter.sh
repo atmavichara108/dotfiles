@@ -25,6 +25,13 @@
 # доставляется безусловно с пометкой (event=timeout, поле wait_ms в журнале).
 # Очередь живёт на диске — переживает рестарт сервера. Payload копируется:
 # /tmp-оригинал может исчезнуть.
+#
+# Устойчивость канала (инцидент lab-channel-fix-20261020, мандат ЦУ):
+# drain не топит вызывающего — на фазу drain выделен бюджет DRAIN_BUDGET сек
+# (default 30) и таймаут на один инжект DRAIN_TMO сек (default 45); не успевшее
+# остаётся в очереди (event=drain-budget). Постановка в очередь журналируется
+# (event=queued) — отправитель видит «принято» в журнале, а не только в stderr.
+# Провенанс: --from-алиакс дополняется from_sid из $OPENCODE_SESSION_ID.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,6 +102,8 @@ registry_agent() {
 PENDING_FILE="${MAIL_DIR}/pending.jsonl"
 PENDING_DIR="${MAIL_DIR}/pending"
 QUEUE_TTL="${LETTER_QUEUE_TTL:-1800}"   # форс-таймаут, сек (default 30 мин)
+DRAIN_BUDGET="${LETTER_DRAIN_BUDGET:-30}"  # бюджет drain-фазы за вызов, сек
+DRAIN_TMO="${LETTER_DRAIN_TIMEOUT:-45}"    # таймаут одного drain-инжекта, сек
 
 # busy адресата по API (мандат: API-путь предпочтителен).
 # busy = time.updated > time.idle. Сбой API = свободен (fail-open, не голодает).
@@ -109,46 +118,103 @@ session_busy() {
   (( updated > idle ))
 }
 
-# Инжект по готовому args + запись в журнал. Используется и прямым
-# путём, и из drain. $1 = message_id, $2 = digest, $3.. = argv для opencode.
-# INJECT_EVENT: "sent" или "receipt-<kind>" (квитанции B18).
+# Run-фаза: opencode run + Scope C агент адресата (fallback без переключения,
+# не падение) + журнал run-rc на отказ. $1=mid, $2=target, $3=payload, ост.=флаги.
+# Таймаут/стадия ставятся вызывающим: RUN_TMO (сек), STAGE (метка в run-rc).
+_run() {
+  local mid="$1" target="$2" payload="$3"; shift 3
+  local ragent rrc=0 errf
+  local tmo=()
+  if [[ -n "${RUN_TMO:-}" ]]; then tmo=(timeout "${RUN_TMO}"); fi
+  ragent="$(registry_agent "${target}")"
+  if [[ -n "${ragent}" ]]; then
+    errf="${TMPDIR:-/tmp}/opencode-letter-err-${mid}.txt"
+    if "${tmo[@]}" opencode run -s "${target}" "$@" --agent "${ragent}" -- "${payload}" \
+        >/dev/null 2>"${errf}"; then
+      rm -f "${errf}"
+      return 0
+    fi
+    rrc=$?
+    # Scope C fallback ТОЛЬКО по настоящему отказу агента («Agent not found»):
+    # таймаут/иное — сообщение могло уже дойти, повтор запрещён (двойная
+    # доставка не допускается).
+    if grep -q "Agent not found" "${errf}" 2>/dev/null; then
+      journal_append "${MAIL_DIR}" "$(jq -cn \
+        --arg event "agent-fallback" --arg id "${mid}" --arg agent "${ragent}" \
+        --arg stage "${STAGE:-}" \
+        '{event:"agent-fallback", message_id:$id, agent:$agent,
+          ts:(now|floor)} + (if $stage == "" then {} else {stage:$stage} end)')"
+      echo "NOTE: --agent ${ragent} отклонён адресатом -> доставка без переключения агента" >&2
+      if "${tmo[@]}" opencode run -s "${target}" "$@" -- "${payload}" \
+          >/dev/null 2>"${errf}"; then
+        rrc=0
+      else
+        rrc=$?
+      fi
+    fi
+    rm -f "${errf}" 2>/dev/null || true
+  else
+    if "${tmo[@]}" opencode run -s "${target}" "$@" -- "${payload}" >/dev/null 2>/dev/null; then
+      rrc=0
+    else
+      rrc=$?
+    fi
+  fi
+  if (( rrc != 0 )); then
+    journal_append "${MAIL_DIR}" "$(jq -cn \
+      --arg id "${mid}" --argjson rc "${rrc}" --arg stage "${STAGE:-}" \
+      '{event:"run-rc", message_id:$id, rc:$rc, ts:(now|floor)}
+        + (if $stage == "" then {} else {stage:$stage} end)')" || true
+  fi
+  return "${rrc}"
+}
+
+# Инжект по готовым данным: журнал-в-первую (B18) -> run. Используется прямым
+# путём и из drain. INJECT_EVENT: "sent" | "receipt-<kind>".
+# $1=mid, $2=digest, $3=to, $4=payload, остальные = флаги (--title ...).
 _inject() {
-  local mid="$1" dg="$2"; shift 2
+  local mid="$1" dg="$2" target="$3" payload="$4"; shift 4
   journal_append "${MAIL_DIR}" "$(jq -cn \
     --arg event "${INJECT_EVENT:-sent}" --arg id "${mid}" --arg digest "${dg}" \
-    --arg to "${TO}" --arg from "${FROM}" --arg scope "${SCOPE}" --arg ref "${REF}" \
+    --arg to "${target}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
+    --arg scope "${SCOPE}" --arg ref "${REF}" \
     '{event:$event, message_id:$id, digest:$digest, to:$to, from:$from,
+      from_sid:(if $from_sid == "" then empty else $from_sid end),
       scope:$scope, ref:$ref, ts:(now|floor)}')"
-  echo "RECEIPT: ${mid} -> ${TO} (journal: ${MAIL_DIR}/receipts-out.jsonl)" >&2
-  local rc=0
-  opencode "$@" || rc=$?
-  if (( rc != 0 )); then
-    journal_append "${MAIL_DIR}" "$(jq -cn \
-      --arg id "${mid}" --argjson rc "${rc}" \
-      '{event:"run-rc", message_id:$id, rc:$rc, ts:(now|floor)}')"
-  fi
-  return "${rc}"
+  echo "RECEIPT: ${mid} -> ${target} (journal: ${MAIL_DIR}/receipts-out.jsonl)" >&2
+  _run "${mid}" "${target}" "${payload}" "$@"
 }
 
 # Обслужить отложенную очередь: свободен -> доставить; занят дольше QUEUE_TTL ->
 # доставить безусловно (event=timeout, wait_ms в журнале); иначе продолжает ждать.
-# Вызывается перед каждой отправкой и режимом --drain.
+# Вызывается перед каждой отправкой и режимом --drain. Ограничения (таблетка
+# от «drain топит вызывающего», lab-channel-fix-20261020): полный бюджет
+# DRAIN_BUDGET сек и таймаут DRAIN_TMO сек на один инжект; не подавшееся
+# остаётся в очереди (event=drain-budget), не теряется.
 drain_queue() {
   [[ -s "${PENDING_FILE}" ]] || return 0
-  local tmp now age mid dg pt qs payload_line target from_field scope_field busy
+  local tmp line mid dg pt qs target from_f from_sid_f scope_f busy payload_line
+  local ev note age rrc injected=0 kept=0
   tmp="${PENDING_FILE}.tmp"
   : > "${tmp}"
-  now=$(date +%s)
+  mkdir -p "${PENDING_DIR}/done"
+  local deadline=$(( $(date +%s) + DRAIN_BUDGET ))
   while IFS= read -r line; do
     [[ -z "${line}" ]] && continue
+    if (( $(date +%s) >= deadline )); then
+      printf '%s\n' "${line}" >> "${tmp}"
+      kept=$((kept+1))
+      continue
+    fi
     mid="$(jq -r '.message_id // ""' <<< "${line}")"
     dg="$(jq -r '.digest // ""' <<< "${line}")"
     pt="$(jq -r '.payload_path // ""' <<< "${line}")"
     qs="$(jq -r '.queued_ts // 0' <<< "${line}")"
     target="$(jq -r '.to // ""' <<< "${line}")"
-    from_field="$(jq -r '.from // ""' <<< "${line}")"
-    scope_field="$(jq -r '.scope // ""' <<< "${line}")"
-    age=$(( now - qs ))
+    from_f="$(jq -r '.from // ""' <<< "${line}")"
+    from_sid_f="$(jq -r '.from_sid // ""' <<< "${line}")"
+    scope_f="$(jq -r '.scope // ""' <<< "${line}")"
+    age=$(( $(date +%s) - qs ))
     payload_line="$(cat "${pt}" 2>/dev/null || true)"
     if [[ -z "${target}" || -z "${payload_line}" ]]; then
       echo "drain: битая запись (нет payload/to) mid=${mid}" >&2
@@ -158,36 +224,57 @@ drain_queue() {
     session_busy "${target}" && busy=1
     if (( busy == 1 && age < QUEUE_TTL )); then
       printf '%s\n' "${line}" >> "${tmp}"
+      kept=$((kept+1))
       continue
     fi
-    local note="" event="sent"
-    if (( busy == 1 )); then event="timeout"; note=" (delivered-after-timeout)"; fi
+    ev="sent"; note=""
+    if (( busy == 1 )); then ev="timeout"; note=" (delivered-after-timeout)"; fi
     journal_append "${MAIL_DIR}" "$(jq -cn \
-      --arg event "${event}" --arg id "${mid}" --arg digest "${dg}" \
-      --arg to "${target}" --arg from "${from_field}" --arg scope "${scope_field}" \
+      --arg event "${ev}" --arg id "${mid}" --arg digest "${dg}" \
+      --arg to "${target}" --arg from "${from_f}" --arg from_sid "${from_sid_f}" \
+      --arg scope "${scope_f}" \
       --argjson wait_ms $(( age * 1000 )) \
       '{event:$event, message_id:$id, digest:$digest, to:$to, from:$from,
+        from_sid:(if $from_sid == "" then empty else $from_sid end),
         scope:$scope, wait_ms:$wait_ms, ts:(now|floor)}')"
     echo "RECEIPT: ${mid} -> ${target}${note} (journal)" >&2
-    local rrc=0
-    opencode run -s "${target}" -- "${payload_line}" 2>/dev/null || rrc=$?
+    RUN_TMO="${DRAIN_TMO}" STAGE="drain" \
+      _run "${mid}" "${target}" "${payload_line}" || true
+    mv "${pt}" "${PENDING_DIR}/done/" 2>/dev/null || true
+    injected=$((injected+1))
   done < "${PENDING_FILE}"
   mv "${tmp}" "${PENDING_FILE}"
+  if (( kept > 0 )); then
+    journal_append "${MAIL_DIR}" "$(jq -cn \
+      --arg event "drain-budget" --argjson kept "${kept}" --argjson injected "${injected}" \
+      '{event:"drain-budget", kept:$kept, injected:$injected, ts:(now|floor)}')"
+  fi
 }
 
 # Положить письмо в очередь (payload копируем: /tmp может протухнуть).
+# Журналируем event=queued (lab-channel-fix-20261020): факт постановки —
+# в журнале, не только в stderr отправителя.
 enqueue_pending() {
-  mkdir -p "${PENDING_DIR}"
+  mkdir -p "${PENDING_DIR}" "${PENDING_DIR}/done"
   local pp="${PENDING_DIR}/${MESSAGE_ID}.txt"
   printf '%s' "${PAYLOAD}" > "${pp}"
   jq -c -n \
     --arg mid "${MESSAGE_ID}" --arg digest "${DIGEST}" \
-    --arg to "${TO}" --arg from "${FROM}" --arg scope "${SCOPE}" \
+    --arg to "${TO}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
+    --arg scope "${SCOPE}" \
     --arg title "${TITLE}" --arg pp "${pp}" \
     --argjson queued_ts "$(date +%s)" \
     '{op:"queued", message_id:$mid, digest:$digest, to:$to, from:$from,
+      from_sid:(if $from_sid == "" then empty else $from_sid end),
       scope:$scope, title:$title, payload_path:$pp, queued_ts:$queued_ts, attempts:0}' \
     >> "${PENDING_FILE}"
+  journal_append "${MAIL_DIR}" "$(jq -c -n \
+    --arg event "queued" --arg id "${MESSAGE_ID}" --arg digest "${DIGEST}" \
+    --arg to "${TO}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
+    --arg scope "${SCOPE}" \
+    '{event:"queued", message_id:$id, digest:$digest, to:$to, from:$from,
+      from_sid:(if $from_sid == "" then empty else $from_sid end),
+      scope:$scope, ts:(now|floor)}')"
   echo "QUEUED: ${MESSAGE_ID} -> ${TO} (адресат занят; ${QUEUE_TTL}s TTL; ${PENDING_FILE})" >&2
 }
 
@@ -269,7 +356,14 @@ main() {
 
   # Вежливая доставка (polite-delivery-20261019): сначала обслуживаем очередь
   # (старые письма идут первыми), затем idle-гейт для этого письма.
-  TO="${to}" FROM="${from}" SCOPE="${scope}" REF="${ref}" TITLE="${title}"
+  # Провенанс отправителя (lab-channel-fix-20261020): если --from — алиас
+  # («sysop»), а окружение при этом знает session id — он едет рядом в журнал
+  # и очередь полем from_sid, чтобы не терять реального отправителя.
+  local from_sid="${OPENCODE_SESSION_ID:-unknown}"
+  [[ "${from_sid}" == "${from}" ]] && from_sid=""
+  [[ "${from_sid}" =~ ^ses_ ]] || from_sid=""
+
+  TO="${to}" FROM="${from}" FROM_SID="${from_sid}" SCOPE="${scope}" REF="${ref}" TITLE="${title}"
   DIGEST="${digest}" MESSAGE_ID="${message_id}" PAYLOAD="${payload}"
   INJECT_EVENT=$([[ -n "${receipt}" ]] && echo "receipt-${receipt}" || echo "sent")
   drain_queue
@@ -278,36 +372,13 @@ main() {
     return 0
   fi
 
-  local args=("run" "-s" "${to}")
-  [[ -n "${title}" ]] && args+=("--title" "${title}")
+  local flags=()
+  [[ -n "${title}" ]] && flags+=("--title" "${title}")
   # терминал `--` ОБЯЗАТЕЛЕН (BF-20261018-03): payload из файла может начинаться
   # с "- " (список) — CLI трактует такой аргумент как флаг и показывает help,
   # письмо молча не доставляется. `--` гарантированно переводит payload
-  # в позиционный аргумент.
-  args+=("--" "${payload}")
-
-  # Scope C (agents-drwho-20261019): агент адресата — из реестра, не из cwd.
-  # Знаем -> --agent <имя> (run переключит/подтвердит агента адресата на его же
-  # штатного, «Agent not found: sysop» уходит). Не знаем -> как раньше, без
-  # --agent. Если --agent отклонён адресатом — НЕ падаем: доставка без
-  # переключения агента, с пометкой agent-fallback в журнале.
-  local ragent fa_rc=0
-  ragent="$(registry_agent "${to}")"
-  if [[ -n "${ragent}" ]]; then
-    local base_args=("${args[@]}")
-    args+=("--agent" "${ragent}")
-    _inject "${message_id}" "${digest}" "${args[@]}" || fa_rc=$?
-    if (( fa_rc != 0 )); then
-      journal_append "${MAIL_DIR}" "$(jq -cn \
-        --arg event "agent-fallback" --arg id "${message_id}" \
-        --arg agent "${ragent}" \
-        '{event:"agent-fallback", message_id:$id, agent:$agent, ts:(now|floor)}')"
-      echo "NOTE: --agent ${ragent} отклонён адресатом -> доставка без переключения агента" >&2
-      _inject "${message_id}" "${digest}" "${base_args[@]}"
-    fi
-  else
-    _inject "${message_id}" "${digest}" "${args[@]}"
-  fi
+  # в позиционный аргумент. Scope C агентный резолв и fallback — внутри _run.
+  _inject "${message_id}" "${digest}" "${to}" "${payload}" "${flags[@]}"
 }
 
 main "$@"
