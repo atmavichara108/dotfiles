@@ -75,7 +75,10 @@ EOF
 
 journal_append() {
   # Одна короткая JSONL-строка; < PIPE_BUF, append атомарен без лока.
+  # Пустое $* (упавший jq при параллельном drain) НЕ пишем — пустые строки
+  # ломают потребители журнала (grep/jsonl-парсеры).
   local mail_dir="$1"; shift
+  [[ -n "$*" ]] || return 0
   mkdir -p "${mail_dir}"
   printf '%s\n' "$*" >> "${mail_dir}/receipts-out.jsonl"
 }
