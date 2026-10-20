@@ -66,17 +66,24 @@ def cmd_append(a):
         sys.exit("kind: fact|revision")
     if a.kind == "revision" and a.session_id:
         rec["rev"] = last_rev(a.session_id) + 1   # revise_status: rev-цепочка
+    lines = [json.dumps(rec, ensure_ascii=False, separators=(",", ":"))]
+    # R2: рождение с первичным статусом — fact + revision(live) одним flock-захватом
+    if a.kind == "fact" and a.status and a.session_id:
+        rec2 = {"ts": rec["ts"], "kind": "revision", "session_id": a.session_id,
+                "status": a.status, "rev": 1, "via": a.via}
+        lines.append(json.dumps(rec2, ensure_ascii=False, separators=(",", ":")))
     LEDGER.parent.mkdir(parents=True, exist_ok=True)
     fresh = not LEDGER.exists()
-    line = json.dumps(rec, ensure_ascii=False, separators=(",", ":"))
     with open(LEDGER, "a") as f:            # append-only, длина записи > pipe
         fcntl.flock(f, fcntl.LOCK_EX)       # буфера — только flock (ADR §5)
-        f.write(line + "\n")
+        for line in lines:
+            f.write(line + "\n")
         f.flush()
         os.fsync(f.fileno())
     if fresh:
         os.chmod(LEDGER, 0o600)             # R1: права 600 на канонический ledger
-    print(line)
+    for line in lines:
+        print(line)
     return 0
 
 
@@ -124,7 +131,14 @@ def audit_sessions():
         "child-of(parent)": db_rows("SELECT COUNT(*) FROM session_v2 WHERE parent_id IS NOT NULL")[0][0],
         "forked-from": db_rows("SELECT COUNT(*) FROM session_v2 WHERE fork_session_id IS NOT NULL")[0][0],
     }
-    return {"total": total, "orphan": orphans, "edges": edges}
+    # R2(в): первый список аудита — сироты не отбрасываются (orphan:true), выводим список
+    orphan_list = db_rows(
+        "SELECT id, substr(coalesce(title,''),1,40), "
+        "datetime(time_updated/1000,'unixepoch') FROM session_v2 "
+        "WHERE parent_id IS NULL AND fork_session_id IS NULL "
+        "ORDER BY time_updated DESC LIMIT 60")
+    return {"total": total, "orphan": orphans, "edges": edges,
+            "orphan_list": [{"id": r[0], "title": r[1], "updated": r[2]} for r in orphan_list]}
 
 
 def audit_branches():
