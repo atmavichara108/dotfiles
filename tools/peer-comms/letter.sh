@@ -182,8 +182,8 @@ _inject() {
     --arg to "${target}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
     --arg scope "${SCOPE}" --arg ref "${REF}" \
     '{event:$event, message_id:$id, digest:$digest, to:$to, from:$from,
-      from_sid:(if $from_sid == "" then empty else $from_sid end),
-      scope:$scope, ref:$ref, ts:(now|floor)}')"
+      scope:$scope, ref:$ref, ts:(now|floor)}
+      + (if $from_sid == "" then {} else {from_sid:$from_sid} end)')"
   echo "RECEIPT: ${mid} -> ${target} (journal: ${MAIL_DIR}/receipts-out.jsonl)" >&2
   _run "${mid}" "${target}" "${payload}" "$@"
 }
@@ -238,8 +238,8 @@ drain_queue() {
       --arg scope "${scope_f}" \
       --argjson wait_ms $(( age * 1000 )) \
       '{event:$event, message_id:$id, digest:$digest, to:$to, from:$from,
-        from_sid:(if $from_sid == "" then empty else $from_sid end),
-        scope:$scope, wait_ms:$wait_ms, ts:(now|floor)}')"
+        scope:$scope, wait_ms:$wait_ms, ts:(now|floor)}
+        + (if $from_sid == "" then {} else {from_sid:$from_sid} end)')"
     echo "RECEIPT: ${mid} -> ${target}${note} (journal)" >&2
     RUN_TMO="${DRAIN_TMO}" STAGE="drain" \
       _run "${mid}" "${target}" "${payload_line}" || true
@@ -268,16 +268,16 @@ enqueue_pending() {
     --arg title "${TITLE}" --arg pp "${pp}" \
     --argjson queued_ts "$(date +%s)" \
     '{op:"queued", message_id:$mid, digest:$digest, to:$to, from:$from,
-      from_sid:(if $from_sid == "" then empty else $from_sid end),
-      scope:$scope, title:$title, payload_path:$pp, queued_ts:$queued_ts, attempts:0}' \
+      scope:$scope, title:$title, payload_path:$pp, queued_ts:$queued_ts, attempts:0}
+      + (if $from_sid == "" then {} else {from_sid:$from_sid} end)' \
     >> "${PENDING_FILE}"
   journal_append "${MAIL_DIR}" "$(jq -c -n \
     --arg event "queued" --arg id "${MESSAGE_ID}" --arg digest "${DIGEST}" \
     --arg to "${TO}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
     --arg scope "${SCOPE}" \
     '{event:"queued", message_id:$id, digest:$digest, to:$to, from:$from,
-      from_sid:(if $from_sid == "" then empty else $from_sid end),
-      scope:$scope, ts:(now|floor)}')"
+      scope:$scope, ts:(now|floor)}
+    + (if $from_sid == "" then {} else {from_sid:$from_sid} end)')"
   echo "QUEUED: ${MESSAGE_ID} -> ${TO} (адресат занят; ${QUEUE_TTL}s TTL; ${PENDING_FILE})" >&2
 }
 
