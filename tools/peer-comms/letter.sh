@@ -226,6 +226,18 @@ drain_queue() {
       echo "drain: битая запись (нет payload/to) mid=${mid}" >&2
       continue
     fi
+    # queued-noise-fix-20261020: ЖЁСТКИЙ ГЕЙТ — водинжект идут только
+    # настоящие payload-письма. Служебные JSON-записи очереди (op-объекты
+    # с message_id/to) инжекту НЕ подчиняются: в done/, журнал, дальше.
+    if jq -e 'type=="object" and .op? != null and .message_id? != null' \
+        >/dev/null 2>&1 <<< "${payload_line}"; then
+      journal_append "${MAIL_DIR}" "$(jq -cn \
+        --arg event "service-rejected" --arg id "${mid}" \
+        '{event:$event, message_id:$id, ts:(now|floor)}')"
+      echo "drain: служебная запись mid=${mid} — НЕ инжектится (queued-noise-fix)" >&2
+      mv "${pt}" "${PENDING_DIR}/done/" 2>/dev/null || true
+      continue
+    fi
     busy=0
     session_busy "${target}" && busy=1
     if (( busy == 1 && age < QUEUE_TTL )); then
