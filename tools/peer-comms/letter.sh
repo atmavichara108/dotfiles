@@ -74,13 +74,16 @@ EOF
 }
 
 journal_append() {
-  # Одна короткая JSONL-строка; < PIPE_BUF, append атомарен без лока.
-  # Пустое $* (упавший jq при параллельном drain) НЕ пишем — пустые строки
-  # ломают потребители журнала (grep/jsonl-парсеры).
+  # Одна короткая JSONL-строка; пустую НЕ пишем (ломает JSONL-потребители).
+  # Атомарная цельная строка: эксклюзивный flock на файл — параллельные
+  # letter.sh/дрены не рассыпают строку в крошку при рестарте сервера.
+  # tmp+rename на каждую строку отвергнуто: rename вытер бы чужие аппенды.
   local mail_dir="$1"; shift
   [[ -n "$*" ]] || return 0
   mkdir -p "${mail_dir}"
-  printf '%s\n' "$*" >> "${mail_dir}/receipts-out.jsonl"
+  { flock -x 9
+    printf '%s\n' "$*" >&9
+  } 9>> "${mail_dir}/receipts-out.jsonl"
 }
 
 sha256_of() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
@@ -261,7 +264,8 @@ enqueue_pending() {
   mkdir -p "${PENDING_DIR}" "${PENDING_DIR}/done"
   local pp="${PENDING_DIR}/${MESSAGE_ID}.txt"
   printf '%s' "${PAYLOAD}" > "${pp}"
-  jq -c -n \
+  local qline
+  qline="$(jq -c -n \
     --arg mid "${MESSAGE_ID}" --arg digest "${DIGEST}" \
     --arg to "${TO}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
     --arg scope "${SCOPE}" \
@@ -269,8 +273,10 @@ enqueue_pending() {
     --argjson queued_ts "$(date +%s)" \
     '{op:"queued", message_id:$mid, digest:$digest, to:$to, from:$from,
       scope:$scope, title:$title, payload_path:$pp, queued_ts:$queued_ts, attempts:0}
-      + (if $from_sid == "" then {} else {from_sid:$from_sid} end)' \
-    >> "${PENDING_FILE}"
+      + (if $from_sid == "" then {} else {from_sid:$from_sid} end)')"
+  { flock -x 8
+    printf '%s\n' "${qline}" >&8
+  } 8>> "${PENDING_FILE}"
   journal_append "${MAIL_DIR}" "$(jq -c -n \
     --arg event "queued" --arg id "${MESSAGE_ID}" --arg digest "${DIGEST}" \
     --arg to "${TO}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
