@@ -3,6 +3,7 @@
   "model": "opencode-go/glm-5.3-flash",
   "agent": {},
   "agents": {},
+  "experimental": { "todo": true },
   "permission": {
     "task": "allow",
     "edit": {

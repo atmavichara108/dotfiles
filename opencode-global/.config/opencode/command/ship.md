@@ -32,6 +32,27 @@ python3 /home/rudra/dotfiles/opencode-global/.config/opencode/tools/tree-cop/tre
 
 Ручные `git status`/`fetch` после копа не нужны (коп сам делает fetch).
 
+### A.0b. Гейты свежести и конфликтов (R6, И-53; lineage-implementation §R6)
+
+Сразу после копа, ДО коммитов и merge:
+
+**Stale-gate** — ветка ≥10 коммитов позади origin/main ИЛИ ≥3 дней без
+синка → обязательный `git merge origin/main` в ветку (не наоборот), затем
+повтори ship-check. Проверка кодом, не глазами:
+
+```bash
+python3 /home/rudra/dotfiles/tools/lineage/lineage.py audit | grep -E 'S3|stale'
+```
+
+**Conflict-preview** — список конфликтных файлов ДО merge/PR:
+
+```bash
+git merge-tree origin/main...HEAD 2>/dev/null | grep -c '<<<<<<<' || echo "0 конфликтов"
+```
+
+Есть конфликты → разбор в текущей ветке (правило tree-hygiene п.7), не в main.
+Ноль → merge по канону A.3.
+
 ### A.1. Коммиты по зонам
 
 - Один коммит = один сюжет/зона (гейт zone-mix). Несколько сюжетов — несколько коммитов.

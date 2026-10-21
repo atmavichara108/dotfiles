@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""mail-hub-outbox-flush — очередь уходит при появлении релея (A6).
+
+Файл удаляется ТОЛЬКО после успешной отправки (250) — дублей нет,
+потерь нет. Порядок — по времени создания.
+"""
+import pathlib
+import subprocess
+import sys
+
+OUTBOX = pathlib.Path.home() / "Mail/re-search.wiki-outbox"
+
+
+def send(raw: bytes) -> bool:
+    return subprocess.run(["msmtp", "-t", "--read-recipients"],
+                          input=raw, capture_output=True).returncode == 0
+
+
+def main() -> int:
+    if not OUTBOX.exists():
+        print("outbox пуст")
+        return 0
+    sent = kept = 0
+    for eml in sorted(OUTBOX.glob("*.eml")):
+        if send(eml.read_bytes()):
+            eml.unlink()
+            sent += 1
+        else:
+            kept += 1
+    print(f"ушло {sent}, ждёт {kept}")
+    return 0 if kept == 0 else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

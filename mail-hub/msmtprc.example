@@ -1,0 +1,26 @@
+# msmtprc — финальная схема (mailhub-final-20261020, Resend разрешён владельцем)
+# Живой файл: ~/.msmtprc (строго права 600 — msmtp отказывается иначе).
+# Отправка: msmtp → smtp.resend.com:465 (неявный TLS), user=resend,
+# пароль = API-ключ Resend — ВНЕ репо, файлом 600, подставляет владелец.
+
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        ~/.local/state/mail-hub/msmtp.log
+domain         re-search.wiki
+
+account default
+host           smtp.resend.com
+port           465
+tls_starttls   off
+auth           plain
+user           resend
+passwordeval   "cat ~/.secrets/mail-hub/resend.apikey"
+from            maks@re-search.wiki
+set_from_header on
+
+# DKIM: resend._domainkey TXT вставляет владелец из панели Resend (A0 хендоффа:
+# домен в Resend не верифицирован до вставки). SPF: v=spf1 ... include:send.resend.com
+# «отправлено» = 250 от релея (конвенция A6); без сети письмо ждёт в outbox
+# (mail-hub-send / mail-hub-outbox-flush).
