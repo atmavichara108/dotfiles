@@ -17,7 +17,7 @@ tls_starttls   off
 auth           plain
 user           resend
 passwordeval   "cat ~/.secrets/mail-hub/resend.apikey"
-from            maks@re-search.wiki
+from            rudra108@re-search.wiki
 set_from_header on
 
 # DKIM: resend._domainkey TXT вставляет владелец из панели Resend (A0 хендоффа:
