@@ -209,6 +209,18 @@ def wake_coord(row: dict):
                 method="POST")
             with urllib.request.urlopen(req, timeout=WAKE_TIMEOUT) as r:
                 r.read()
+            # R7 (И-53): lineage-запись wake-parent — кто разбудил координатора
+            try:
+                import subprocess as _sp
+                _sp.run(["python3",
+                    "/home/rudra/dotfiles/tools/lineage/lineage.py", "append",
+                    "--kind", "fact", "--session-id", sid,
+                    "--edge", "wake-parent", "--via", "tg-guard",
+                    "--ref", "tg-wake-%s" % row.get("id"),
+                    "--note", "from=%s" % row.get("from")],
+                    capture_output=True, timeout=5)
+            except Exception:  # fail-open — lineage не блокирует wake
+                pass
             return "ok", ""
         except Exception as e:  # noqa: BLE001 — fail-open по дизайну
             last_err = "%s: %s" % (type(e).__name__, e)
