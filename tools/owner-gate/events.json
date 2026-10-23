@@ -1,0 +1,40 @@
+{
+  "_comment": "Заявленные события форм Ворот владельца (owner-gate). Форма показывается ТОЛЬКО для события из этого списка; неизвестное событие = отказ без формы. Добавление события — правка ИЦ в task-ветке с пометкой в ADR/реестре; событие живёт, пока живёт его триггер.",
+  "events": [
+    {
+      "id": "apply.approve",
+      "title": "Апрув опасного применения (high-risk apply)",
+      "trigger": "system-ops: после dry-run/preflight, перед реальным apply на хосте",
+      "tools": ["ask_confirm"],
+      "canon_ref": "AGENTS.md: high-risk host scope — explicit user approval между plan и apply"
+    },
+    {
+      "id": "ship.override",
+      "title": "Обход гейта при /ship (STOP-вердикт копа)",
+      "trigger": "tree-cop ship-check вернул STOP и primary предлагает осознанный обход",
+      "tools": ["ask_confirm"],
+      "canon_ref": "AGENTS.md: STOP — доложить и ждать решения, молча не чинить"
+    },
+    {
+      "id": "canon.choice",
+      "title": "Каноническая развилка (выбор варианта)",
+      "trigger": "ХПФ/ИЦ приносят 2+ варианта канона (S0-сжатие, Bases/Dataview, маршрут)",
+      "tools": ["ask_choice"],
+      "canon_ref": "S0-канон; резолюции ХПФ §5"
+    },
+    {
+      "id": "mail-hub.secret",
+      "title": "Секрет почтового хаба",
+      "trigger": "нужен ключ Resend / пароль приложения IMAP — вставляет только владелец",
+      "tools": ["ask_secret"],
+      "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600"
+    },
+    {
+      "id": "mail-hub.dns",
+      "title": "DNS-запись для домена почты",
+      "trigger": "SPF/DKIM/MX записи в панели регистратора — вставляет только владелец",
+      "tools": ["ask_dns"],
+      "canon_ref": "mail-hub v0.3; канон-адрес rudra108@re-search.wiki"
+    }
+  ]
+}
