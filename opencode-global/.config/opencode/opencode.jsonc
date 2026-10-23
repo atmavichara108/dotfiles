@@ -4,8 +4,16 @@
   "agent": {},
   "agents": {},
   "experimental": { "todo": true },
+  "mcp": {
+    "owner-gate": {
+      "type": "local",
+      "command": ["python3", "/home/rudra/dotfiles/tools/owner-gate/server.py"],
+      "enabled": true
+    }
+  },
   "permission": {
     "task": "allow",
+    "owner-gate_*": "allow",
     "edit": {
       "*": "allow",
       "**/TASKS.md": "ask",
