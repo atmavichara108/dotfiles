@@ -1,7 +1,7 @@
 ---
 description: Специалист по утилитам. Макросы, нотификации (dunst), rofi-меню, sxhkd, btop, neofetch, wal, weathr.
 mode: subagent
-model: justwoker/claude-opus-4-8#max
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.1
 steps: 20
 permission:

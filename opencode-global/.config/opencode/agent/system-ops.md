@@ -1,7 +1,7 @@
 ---
 description: "system-ops: approval-gated high-risk host apply planner"
 mode: subagent
-model: justwoker/claude-opus-4-8#max
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.1
 steps: 25
 permission:

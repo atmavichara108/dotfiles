@@ -1,7 +1,7 @@
 ---
 description: "system-audit: глобальный read-only аудит системы и экосистемы по sourced evidence"
 mode: subagent
-model: justwoker/claude-opus-4-8#max
+model: amd-radeon/GLM-5.3-Flash
 temperature: 0.1
 steps: 20
 permission:

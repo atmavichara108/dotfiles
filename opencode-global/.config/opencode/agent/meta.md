@@ -1,7 +1,7 @@
 ---
 description: Meta-infra editor. Правит агентную инфраструктуру OpenCode из любого проекта. НЕ трогает код приложений.
 mode: subagent
-model: justwoker/claude-opus-4-8#max
+model: amd-radeon/GLM-5.3-Flash
 temperature: 0.1
 steps: 20
 permission:

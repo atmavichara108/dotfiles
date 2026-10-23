@@ -1,7 +1,7 @@
 ---
 description: Bash-специалист. Пишет/правит shell-скрипты, автоматизации, хуки, cron-задачи, systemd-юниты.
 mode: subagent
-model: justwoker/claude-opus-4-8#max
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.1
 steps: 20
 permission:

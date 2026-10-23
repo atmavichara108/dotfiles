@@ -1,7 +1,7 @@
 ---
 description: "Read-only quality, style and domain reviewer for dotfiles"
 mode: subagent
-model: justwoker/claude-opus-4-8#max
+model: amd-radeon/GLM-5.3-Flash
 temperature: 0.1
 steps: 15
 permission:
