@@ -35,7 +35,7 @@ Wake — fail-open (апрув владельца 2026-10-18):
 Безопасность (read-only, fail-closed по аргументам):
   - отправки/редактирования/удаления в коде нет: ядро tg-watch не имеет
     send_message/edit_message/delete — ничего не добавляется;
-  - --topic строго 33 (ALLOWED_TOPICS={33}), неизвестный аргумент — отказ
+  - --topic строго из scope профиля (dv: {1399}), неизвестный аргумент — отказ
     ДО env/сети (rc=1);
   - секреты (TG_API_ID/TG_API_HASH, service-токен) — только в
     ~/.config/dv-tg/tg.env и ~/.config/opencode/service.json; никогда в
@@ -45,9 +45,9 @@ Wake — fail-open (апрув владельца 2026-10-18):
   - wake-ошибка: один повтор с перерезолвом сессии; без слепых ретрай-циклов
     (следующее входящее попробует снова).
 
-Запуск: user-юнит tg-guard.service (Restart=always); активация — владельцем:
-  systemctl --user daemon-reload && systemctl --user enable --now tg-guard
-Вручную: python3 tg-guard.py --topic 33
+Запуск: user-юнит dv-tg-guard.service (Restart=always); активация — владельцем:
+  systemctl --user daemon-reload && systemctl --user enable --now dv-tg-guard
+Вручную: python3 dv-tg-guard.py --topic 1399
 Остановка: SIGTERM/SIGINT — чистый exit.
 """
 from __future__ import annotations
