@@ -1,0 +1,23 @@
+[Unit]
+Description=dv-tg-guard — постоянный push-сторож кабинета dv-hub (TG-топик 1399: журнал + wake координатора)
+# Wake-канал — opencode-serve (локальный OpenCode-сервер, 127.0.0.1:49374).
+# Связка осознанно НЕ жёсткая (fail-open): событие остаётся в append-only
+# журнале ~/.local/state/dv-tg/guard-journal.jsonl, реакция — при следующей
+# сессии координатора. ЭТАП 2 мандата dv-tg-gateway (слово владельца 2026-10-24).
+After=network-online.target opencode-serve.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# python3 явно: в git у dv-*.py нет exec-бита (100644), exec-бит ставит владелец.
+# Прямой путь репо (не зависит от симв-линков ~/.local/bin и их дрейфа, И-56).
+ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/dv-tg-guard.py --topic 1399
+# Persistence: демон сам возвращается после смерти.
+Restart=always
+RestartSec=5
+# Журнал событий — на диске (append-only), journald — только диагностика демона.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
