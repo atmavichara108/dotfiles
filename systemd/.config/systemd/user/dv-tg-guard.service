@@ -12,6 +12,7 @@ Type=simple
 # python3 явно: в git у dv-*.py нет exec-бита (100644), exec-бит ставит владелец.
 # Прямой путь репо (не зависит от симв-линков ~/.local/bin и их дрейфа, И-56).
 ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/dv-tg-guard.py --topic 1399
+Environment=DV_WAKE_SESSION_TITLE=Координация работы контрибьюторов
 # Persistence: демон сам возвращается после смерти.
 Restart=always
 RestartSec=5
