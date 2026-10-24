@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""tg-send — отправка сообщения в рабочую группу SSA от имени владельца.
+"""tg-send — отправка сообщения в рабочую группу от имени владельца
+(профиль SSA по умолчанию; TG_PROFILE=dv — кабинет dv-hub, топик 1399).
 
 Безопасность:
-  - получатель ТОЛЬКО SSA_GROUP_ID из env (whitelist, переопределения нет);
-  - живая отправка — только ALLOWED_TOPICS (сейчас 33); другой topic —
-    отказ ДО env/сети; --dry-run — любой topic, полностью без сети;
-  - секреты только из ~/.config/ssa-tg/tg.env, никогда из аргументов/репо;
+  - получатель ТОЛЬКО <GROUP_KEY> профиля из env (whitelist, переопределения нет);
+  - живая отправка — только ALLOWED_TOPICS профиля (ssa: 33, dv: 1399);
+    другой topic — отказ ДО env/сети; --dry-run — любой topic, полностью без сети;
+  - секреты только из env-файла профиля, никогда из аргументов/репо;
   - запуск: python3 tg-send.py --topic ID [--format md|plain] [--dry-run]
         [--file TEXTFILE] [ТЕКСТ ...]
     (exec-бит ставит владелец: chmod +x — вне зоны агента).
@@ -28,12 +29,15 @@ import re
 import sys
 import asyncio
 
-ENV_FILE = os.path.expanduser("~/.config/ssa-tg/tg.env")
-SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tg_profile  # noqa: E402
 
-# Живая отправка — только эти topics (симметрия tg-attach/tg-upload);
+_PROFILE = tg_profile.profile()
+ENV_FILE, SESSION, _STATE_DIR = tg_profile.paths()
+
+# Живая отправка — только эти topics профиля (симметрия tg-attach/tg-upload);
 # --dry-run не ограничен и не ходит в сеть.
-ALLOWED_TOPICS = {33}
+ALLOWED_TOPICS = set(_PROFILE["allowed_topics"])
 
 USAGE = """tg-send --topic ID [--format md|plain] [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
   --topic ID   ID форумного топика (обязателен; без него отправки нет)
@@ -48,25 +52,8 @@ md-разметка: **жирный**, `код`, ```блок``` (Telethon Markdo
 
 
 def load_env(path):
-    env = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip().strip("'\"")
-    return env
-
-
-def parse_proxy(url):
-    """socks5://host:port -> кортеж для telethon. Пусто -> None (прямое)."""
-    url = (url or "").strip()
-    if not url:
-        return None
-    scheme, _, rest = url.partition("://")
-    host, _, port = rest.partition(":")
-    return (scheme or "socks5", host, int(port or "1080"))
+    """Оставлено для совместимости (см. tg_profile.load_env)."""
+    return tg_profile.load_env(path)
 
 
 def strip_md(text):
@@ -175,13 +162,19 @@ def main(argv):
                  f"ДО env/сети; --dry-run безвреден для любого topic "
                  f"(см. --help)")
 
-    env = load_env(ENV_FILE)
+    env = tg_profile.load_env(ENV_FILE) if os.path.exists(ENV_FILE) else {}
     api_id = env.get("TG_API_ID", "")
     api_hash = env.get("TG_API_HASH", "")
-    group = env.get("SSA_GROUP_ID", "")
-    proxy = parse_proxy(env.get("TG_PROXY", ""))
+    group = env.get(_PROFILE["group_key"], "") or _PROFILE.get("group_default", "")
+    proxy = tg_profile.parse_proxy(env.get("TG_PROXY", ""))
     if not api_id or not api_hash or not group:
-        sys.exit("tg-send: заполни TG_API_ID/TG_API_HASH/SSA_GROUP_ID в " + ENV_FILE)
+        if not dry:
+            sys.exit(f"tg-send: заполни TG_API_ID/TG_API_HASH/{_PROFILE['group_key']} "
+                     f"в {ENV_FILE}")
+        # dry-run: env может быть не создан (профиль dv до шага владельца) —
+        # placeholder группы из профиля, секретов нет, сеть не нужна
+        tg_profile.journal_append({"action": "dry-run-noenv", "topic": topic,
+                                   "reason": "env-missing-placeholder"})
     try:
         from telethon import TelegramClient
     except ImportError:
@@ -199,6 +192,9 @@ def main(argv):
         sys.stderr.write(warning + "\n")
     if dry:
         _print_dry_run(group, topic, fmt, text, wire, entities)
+        tg_profile.journal_append({"action": "dry-run", "topic": topic, "fmt": fmt,
+                                   "entities": len(entities) if entities else 0,
+                                   "text_preview": tg_profile.preview(text)})
         return  # до сети: Telethon-клиент не запускаем
 
     async def send():
@@ -216,6 +212,9 @@ def main(argv):
                                             parse_mode=None,
                                             formatting_entities=entities)
             print(f"tg-send: ok id={msg.id} topic={topic}")
+            tg_profile.journal_append({"action": "sent", "topic": topic,
+                                       "msg_id": msg.id, "fmt": fmt,
+                                       "text_preview": tg_profile.preview(text)})
 
     asyncio.run(send())
 

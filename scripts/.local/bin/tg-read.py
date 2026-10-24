@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""tg-read — чтение новых сообщений ОДНОГО топика рабочей группы SSA.
+"""tg-read — чтение новых сообщений ОДНОГО топика рабочей группы (профиль SSA
+по умолчанию; TG_PROFILE=dv — кабинет dv-hub, топик 1399).
 
 Read-only, ничего не отправляет. Fail-closed: живое чтение ТОЛЬКО с explicit
 --topic ID; без топика, с неизвестным топиком или неизвестным флагом — отказ,
@@ -9,19 +10,21 @@ Read-only, ничего не отправляет. Fail-closed: живое чт�
   python3 tg-read.py --help
   python3 tg-read.py --topic ID [--limit N] [--since-id ID] [--no-save]
 Вывод: JSON-строки {id, topic, date, from, text} в stdout.
-Маркер последнего прочитанного — per-topic: ~/.local/state/ssa-tg/last_id_<topic>
+Маркер последнего прочитанного — per-topic: <state-профиля>/last_id_<topic>
 (--since-id перекрывает маркер разово; --no-save не двигает маркер).
 
-Зависимость: telethon (системно). Секреты — только ~/.config/ssa-tg/tg.env.
+Зависимость: telethon (системно). Секреты — только env-файл профиля.
 """
 import asyncio
 import json
 import os
 import sys
 
-ENV_FILE = os.path.expanduser("~/.config/ssa-tg/tg.env")
-SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
-STATE_DIR = os.path.expanduser("~/.local/state/ssa-tg")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tg_profile  # noqa: E402
+
+_PROFILE = tg_profile.profile()
+ENV_FILE, SESSION, STATE_DIR = tg_profile.paths()
 
 USAGE = """tg-read --topic ID [--limit N] [--since-id ID] [--no-save]
   --topic ID   ID форумного топика (обязателен; без него чтения нет)
@@ -29,28 +32,6 @@ USAGE = """tg-read --topic ID [--limit N] [--since-id ID] [--no-save]
   --since-id ID  читать только новее ID (разово, маркер не трогает)
   --no-save    не двигать per-topic маркер last_id_<topic>
 Вывод: JSON {id, topic, date, from, text}."""
-
-
-def load_env(path):
-    env = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip().strip("'\"")
-    return env
-
-
-def parse_proxy(url):
-    """socks5://host:port -> кортеж для telethon. Пусто -> None (прямое)."""
-    url = (url or "").strip()
-    if not url:
-        return None
-    scheme, _, rest = url.partition("://")
-    host, _, port = rest.partition(":")
-    return (scheme or "socks5", host, int(port or "1080"))
 
 
 async def main():
@@ -85,18 +66,25 @@ async def main():
     if topic is None:
         sys.exit("tg-read: нет --topic ID — живое чтение запрещено "
                  "(fail-closed, group-wide read отключён; см. --help)")
+    # whitelist чтения профиля (dv: только свой кабинет) — отказ ДО сети
+    read_scope = _PROFILE.get("read_topics")
+    if read_scope is not None and topic not in read_scope:
+        tg_profile.journal_append({"action": "read-refused", "topic": topic,
+                                   "reason": "outside-read-scope"})
+        sys.exit(f"tg-read: профиль {_PROFILE['name']}: чтение только топиков "
+                 f"{sorted(read_scope)} — отказ ДО сети (см. --help)")
     last_file = os.path.join(STATE_DIR, f"last_id_{topic}")
     if since is None and os.path.exists(last_file):
         with open(last_file) as f:
             since = int((f.read().strip() or "0"))
 
-    env = load_env(ENV_FILE)
+    env = tg_profile.load_env(ENV_FILE)
     api_id = env.get("TG_API_ID", "")
     api_hash = env.get("TG_API_HASH", "")
-    group = env.get("SSA_GROUP_ID", "")
-    proxy = parse_proxy(env.get("TG_PROXY", ""))
+    group = env.get(_PROFILE["group_key"], "")
+    proxy = tg_profile.parse_proxy(env.get("TG_PROXY", ""))
     if not api_id or not api_hash or not group:
-        sys.exit("tg-read: заполни TG_API_ID/TG_API_HASH/SSA_GROUP_ID в " + ENV_FILE)
+        sys.exit(f"tg-read: заполни TG_API_ID/TG_API_HASH/{_PROFILE['group_key']} в " + ENV_FILE)
     try:
         from telethon import TelegramClient
     except ImportError:
