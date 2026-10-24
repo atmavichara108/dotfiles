@@ -9,6 +9,12 @@
   ],
   "fragments": [
     {
+      "fragment": "[A-Za-zа-яёА-ЯЁ_]",
+      "reason": "законный двуязычный класс символов в regex (лексические анализаторы FRONTMATTER-ключей) — не decode-мусор; verifier: ложное срабатывание на 10-Deck/_gen/quests_data.py:93 (Deck-верификация 2026-10-24)",
+      "owner": "sysop",
+      "added": "2026-10-24"
+    },
+    {
       "path": "docs/handoffs/2026-10-06-sysop-team-hello.md",
       "fragment": "«подтверждаю всё»);多久 лишь коротко",
       "reason": "артефакт decode-глюка 2026-10-06 (2d9f5c2, чужая зона librarian) — в истории, не трогается",
