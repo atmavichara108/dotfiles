@@ -267,7 +267,7 @@ def main(argv):
     api_id = env.get("TG_API_ID", "")
     api_hash = env.get("TG_API_HASH", "")
     group = env.get(watch._PROFILE["group_key"], "")
-    proxy = watch.parse_proxy(env.get("TG_PROXY", ""))
+    proxy = watch.tg_profile.parse_proxy(env.get("TG_PROXY", ""))
     if not api_id or not api_hash or not group:
         sys.exit("dv-tg-guard: заполни TG_API_ID/TG_API_HASH/SSA_GROUP_ID в "
                  + watch.ENV_FILE)
