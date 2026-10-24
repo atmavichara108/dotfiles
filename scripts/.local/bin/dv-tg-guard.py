@@ -13,7 +13,7 @@ dv-tg в lineage. Read-only: send/edit/delete в коде нет.
 раздел «Постоянный канал tg-guard»):
   - ядро = tg-watch.py с TG_PROFILE=dv (push-слушатель, Telethon events.NewMessage, без
     поллинга, read-only) — импортируется как модуль, не копируется;
-  - каждое сообщение топика 33 (входящие + исходящие, для аудита) — одна
+  - каждое сообщение топика 1399 (входящие + исходящие, для аудита) — одна
     JSON-строка в append-only журнал
     ~/.local/state/dv-tg/guard-journal.jsonl: метаданные + text_preview
     <= 200 символов; без полного тела, без секретов;
