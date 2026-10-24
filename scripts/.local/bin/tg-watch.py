@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""tg-watch — пуш-гейт топика 33: событийное (не поллинг) чтение в JSON-поток.
+"""tg-watch — пуш-гейт топика: событийное (не поллинг) чтение в JSON-поток.
+(профиль SSA по умолчанию — топик 33; TG_PROFILE=dv — кабинет dv-hub, топик 1399)
 
 Что делает:
   - слушает НОВЫЕ сообщения форумного топика 33 («Тэсты») группы SSA через
@@ -50,12 +51,15 @@ import signal
 import sys
 import time
 
-ENV_FILE = os.path.expanduser("~/.config/ssa-tg/tg.env")
-SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
-STATE_DIR = os.path.expanduser("~/.local/state/ssa-tg")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import tg_profile  # noqa: E402
 
-# Живое чтение — только этот topic (симметрия tg-send/tg-attach).
-ALLOWED_TOPICS = {33}
+_PROFILE = tg_profile.profile()
+ENV_FILE, SESSION, STATE_DIR = tg_profile.paths()
+
+# Живое чтение — только топики scope профиля (симметрия tg-send/tg-attach).
+ALLOWED_TOPICS = set(_PROFILE["allowed_topics"])
+_SESSION_STEM = os.path.splitext(os.path.basename(SESSION))[0]
 DEFAULT_SUFFIX = "-watch"
 PREVIEW_LIMIT = 200
 
@@ -81,25 +85,8 @@ text_preview — только текст поста, максимум 200 сим
 
 
 def load_env(path):
-    env = {}
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip().strip("'\"")
-    return env
-
-
-def parse_proxy(url):
-    """socks5://host:port -> кортеж для telethon. Пусто -> None (прямое)."""
-    url = (url or "").strip()
-    if not url:
-        return None
-    scheme, _, rest = url.partition("://")
-    host, _, port = rest.partition(":")
-    return (scheme or "socks5", host, int(port or "1080"))
+    """Оставлено для совместимости (см. tg_profile.load_env)."""
+    return tg_profile.load_env(path)
 
 
 def _int_or_exit(name, raw):
@@ -123,7 +110,7 @@ def prepare_session(suffix):
     if not _valid_suffix(suffix):
         sys.exit(f"tg-watch: небезопасный --session-suffix {suffix!r} — "
                  f"отказ (только имя файла без путей, см. --help)")
-    session = os.path.join(STATE_DIR, f"ssa{suffix}.session")
+    session = os.path.join(STATE_DIR, f"{_SESSION_STEM}{suffix}.session")
     if not os.path.exists(session):
         if not os.path.exists(SESSION):
             sys.exit("tg-watch: нет базовой сессии " + SESSION +
@@ -264,10 +251,10 @@ def main(argv):
     env = load_env(ENV_FILE)
     api_id = env.get("TG_API_ID", "")
     api_hash = env.get("TG_API_HASH", "")
-    group = env.get("SSA_GROUP_ID", "")
-    proxy = parse_proxy(env.get("TG_PROXY", ""))
+    group = env.get(_PROFILE["group_key"], "")
+    proxy = tg_profile.parse_proxy(env.get("TG_PROXY", ""))
     if not api_id or not api_hash or not group:
-        sys.exit("tg-watch: заполни TG_API_ID/TG_API_HASH/SSA_GROUP_ID в " + ENV_FILE)
+        sys.exit(f"tg-watch: заполни TG_API_ID/TG_API_HASH/{_PROFILE['group_key']} в " + ENV_FILE)
     try:
         from telethon import TelegramClient, events
     except ImportError:
