@@ -3,10 +3,11 @@ description: Strict acceptance verifier. Checks work against DoD. Returns PASS/F
 mode: subagent
 model: nvidia/z-ai/glm-5.3-flash
 temperature: 0.1
-steps: 12
+steps: 40
 permission:
   edit: deny
   task: deny
+  todowrite: allow
   read: allow
   external_directory:
     "*": allow

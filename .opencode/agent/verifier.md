@@ -3,10 +3,11 @@ description: "Верификатор dotfiles. Проверяет примени
 mode: subagent
 model: nvidia/z-ai/glm-5.3-flash
 temperature: 0.1
-steps: 15
+steps: 40
 permission:
   task: deny
   doom_loop: allow
+  todowrite: allow
   external_directory:
     "*": allow
     "**/.env*": deny
