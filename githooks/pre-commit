@@ -167,5 +167,22 @@ if [ "${MOJIBAKE_OK:-0}" != "1" ]; then
   fi
 fi
 
+# --- Гейт 7: экспозиция инструментов (инцидент 2026-10-25) -------------------
+# Ловушка: policies без allow-all для shell/edit/read/glob/grep или
+# catch-all deny в bash permission агентских файлов => инструмент молча
+# не экспонируется («No tool named shell»). Сторож: tools/agent-perms/check.py.
+# Обход: AGENT_PERMS_OK=1 (осознанно, с причиной в сообщении коммита).
+if [ "${AGENT_PERMS_OK:-0}" != "1" ]; then
+  _root7=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+  _apc="$_root7/tools/agent-perms/check.py"
+  if [ -f "$_apc" ]; then
+    if ! python3 "$_apc"; then
+      echo "❌ agent-perms: нарушен инвариант экспозиции инструментов (см. вывод выше)." >&2
+      echo "   Обход осознанный: AGENT_PERMS_OK=1 git commit ... (причина в сообщении)" >&2
+      exit 1
+    fi
+  fi
+fi
+
 echo "✅ tree-hygiene: ветка/маркеры/зоны в порядке"
 exit 0
