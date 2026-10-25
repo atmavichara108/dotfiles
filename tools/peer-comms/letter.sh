@@ -32,6 +32,22 @@
 # остаётся в очереди (event=drain-budget). Постановка в очередь журналируется
 # (event=queued) — отправитель видит «принято» в журнале, а не только в stderr.
 # Провенанс: --from-алиакс дополняется from_sid из $OPENCODE_SESSION_ID.
+#
+# Честная доставка (инцидент peer-mail-loss-20261024, мандат владельца):
+# канал молча терял письма (79 из 377): drain глотал отказ доставки `|| true`,
+# письмо уже удалено из очереди -> вечный «sent» в журнале. Теперь события
+# журнала различают состояния:
+#   sent        — письмо ПРИНЯТО каналом (инжект начат), это НЕ доставка
+#   queued      — положено в отложенную очередь (адресат занят)
+#   delivered   — доставка ПОДТВЕРЖДЕНА rc=0 (единственный признак успеха)
+#   failed      — попытка провалилась rc!=0; запись возвращается в очередь
+#   dead-letter — попытки исчерпаны (LETTER_MAX_ATTEMPTS, default 3):
+#                 payload -> pending/dead/, bounce -> pending/bounce/<mid>.txt
+# Входные гейты (REFUSE на входе, exit 1, fail-CLOSED):
+#   * сессия адресата должна существовать (opencode api get /api/session/<id>
+#     вернул data). Fail-open здесь ЗАПРЕЩЁН — иначе теряем снова.
+#   * адрес с «— (агент не назначен)» в реестре — отказ, если не передан
+#     --allow-no-agent (тогда event=warn-no-agent и письмо принимается).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,6 +70,9 @@ Usage:
   letter.sh --to <sessionID> [--title <t>] --text "<message>"
   letter.sh --drain              обслужить отложенную очередь и выйти
 
+Флаги приёма:
+  --allow-no-agent            принять письмо адресату без назначенного агента
+
 Receipt-флаги (B18, двойной ack):
   --from <id>                 отправитель в журнал (дефолт $OPENCODE_SESSION_ID)
   --scope <s>                 метка scope в журнал
@@ -66,6 +85,22 @@ Receipt-флаги (B18, двойной ack):
 Journal (append-only, metadata-only, без тела письма):
   ${PEER_MAIL_DIR:-~/.local/state/opencode/mail}/receipts-out.jsonl
   идемпотентность: повтор того же message_id (hash тела + день + from) — отклоняется.
+  События: sent=принято каналом (НЕ доставка), queued=отложено (адресат занят),
+  delivered=доставлено (rc=0, единственный признак успеха), failed=провал
+  попытки (rc!=0, возврат в очередь), dead-letter=кладбище после
+  LETTER_MAX_ATTEMPTS попыток, warn-no-agent=адрес без агента (--allow-no-agent).
+
+Входные гейты (REFUSE, exit 1, fail-closed):
+  * сессия адресата не существует -> «адресат не найден, письмо не принято»
+  * в реестре у адреса нет агента («—»/«не назначен») -> отказ; принять
+    осознанно: --allow-no-agent (в журнал event=warn-no-agent)
+
+Очередь: MAIL_DIR/pending.jsonl + pending/<mid>.txt; после LETTER_MAX_ATTEMPTS
+(default 3) отказавших попыток payload -> pending/dead/, отправителю bounce
+pending/bounce/<mid>.txt (только метаданные, тело письма не копируется).
+
+Валидатор реестра: tools/peer-comms/validate-registry.py (живость сессий
+и наличие агентов по строкам ведомств; exit 1 при любом не-OK).
 
 Guard (B15 model-lock, мандат владельца 2026-10-18):
   --model      -> REFUSE (exit 3) всегда: канал не меняет модель адресата
@@ -90,6 +125,10 @@ sha256_of() { printf '%s' "$1" | sha256sum | cut -d' ' -f1; }
 
 # Agent адресата из peer-registry (Scope C, временная мера). Пусто = нет записи.
 # Нормализация: "Dr.Who" -> dr-who (id агента — lowercase, точки -> дефисы).
+# Пустые значения (печать — НЕ агент): "", "Агент" (шапка), "-", "—", "–",
+# «— (агент не назначен)» и любой текст со словом «не назнач»
+# (фикс peer-mail-loss-20261024: em-dash с пояснением раньше утекал как имя
+# агента -> «Agent not found»).
 registry_agent() {
   local target="${1:?}"
   [[ -r "${REGISTRY_FILE}" ]] || return 0
@@ -98,7 +137,9 @@ registry_agent() {
       v = $4
       gsub(/\*/, "", v)
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-      if (v == "" || v == "Агент" || /^-+$/) v = ""
+      if (v == "" || v == "Агент") v = ""
+      if (v ~ /^[-\xe2\x80\x93\xe2\x80\x94]+$/) v = ""
+      if (tolower(v) ~ /не назнач/) v = ""
       print v
       exit
     }' "${REGISTRY_FILE}" 2>/dev/null \
@@ -110,6 +151,19 @@ PENDING_DIR="${MAIL_DIR}/pending"
 QUEUE_TTL="${LETTER_QUEUE_TTL:-1800}"   # форс-таймаут, сек (default 30 мин)
 DRAIN_BUDGET="${LETTER_DRAIN_BUDGET:-30}"  # бюджет drain-фазы за вызов, сек
 DRAIN_TMO="${LETTER_DRAIN_TIMEOUT:-45}"    # таймаут одного drain-инжекта, сек
+MAX_ATTEMPTS="${LETTER_MAX_ATTEMPTS:-3}"   # попыток до кладбища (dead-letter)
+
+# Живость сессии-адресата (peer-mail-loss-20261024): строгий гейт, fail-CLOSED.
+# true = сессия существует (API вернул data.id). В отличие от session_busy здесь
+# сбой API НЕ трактуется как «жива»: письмо на несуществующую сессию теряется
+# молча — инцидент мёртвого адреса ЦУ (seq 722-757).
+session_alive() {
+  local target="${1:?}"
+  local json
+  json="$(opencode api get "/api/session/${target}" 2>/dev/null)" || return 1
+  jq -e '.data.id? != null and (.data.id | startswith("ses"))' \
+    >/dev/null 2>&1 <<< "${json}"
+}
 
 # busy адресата по API (мандат: API-путь предпочтителен).
 # busy = time.updated > time.idle. Сбой API = свободен (fail-open, не голодает).
@@ -135,12 +189,18 @@ _run() {
   ragent="$(registry_agent "${target}")"
   if [[ -n "${ragent}" ]]; then
     errf="${TMPDIR:-/tmp}/opencode-letter-err-${mid}.txt"
-    if "${tmo[@]}" opencode run -s "${target}" "$@" --agent "${ragent}" -- "${payload}" \
-        >/dev/null 2>"${errf}"; then
+    # КОРЕНЬ ИНЦИДЕНТА peer-mail-loss-20261024: rc первой попытки ловится
+    # ТОЛЬКО через `|| rrc=$?`. Прежний вариант `if cmd; then …; fi; rrc=$?`
+    # захватывал статус САМОГО if-блока: у if без else при провале условия
+    # это всегда 0 -> любой провал доставки с агентом превращался в rc=0
+    # (delivered), run-rc не писался, письма терялись молча (79 из 377).
+    rrc=0
+    "${tmo[@]}" opencode run -s "${target}" "$@" --agent "${ragent}" -- "${payload}" \
+      >/dev/null 2>"${errf}" || rrc=$?
+    if (( rrc == 0 )); then
       rm -f "${errf}"
       return 0
     fi
-    rrc=$?
     # Scope C fallback ТОЛЬКО по настоящему отказу агента («Agent not found»):
     # таймаут/иное — сообщение могло уже дойти, повтор запрещён (двойная
     # доставка не допускается).
@@ -188,7 +248,55 @@ _inject() {
       scope:$scope, ref:$ref, ts:(now|floor)}
       + (if $from_sid == "" then {} else {from_sid:$from_sid} end)')"
   echo "RECEIPT: ${mid} -> ${target} (journal: ${MAIL_DIR}/receipts-out.jsonl)" >&2
-  _run "${mid}" "${target}" "${payload}" "$@"
+  # Честная доставка (peer-mail-loss-20261024): sent выше = «принято каналом»,
+  # не доставка. rc НЕ глотаем:
+  #   rc=0  -> event=delivered (единственный признак успеха)
+  #   rc!=0 -> event=failed + stderr «НЕ ДОСТАВЛЕНО rc=N» + ненулевой return
+  local rrc=0
+  _run "${mid}" "${target}" "${payload}" "$@" || rrc=$?
+  if (( rrc == 0 )); then
+    journal_append "${MAIL_DIR}" "$(jq -cn \
+      --arg id "${mid}" --arg to "${target}" \
+      '{event:"delivered", message_id:$id, to:$to, ts:(now|floor)}')"
+    return 0
+  fi
+  journal_append "${MAIL_DIR}" "$(jq -cn \
+    --arg id "${mid}" --argjson rc "${rrc}" --arg to "${target}" \
+    --arg stage "direct" \
+    '{event:"failed", message_id:$id, rc:$rc, to:$to, stage:$stage, ts:(now|floor)}')" || true
+  echo "НЕ ДОСТАВЛЕНО rc=${rrc}: ${mid} -> ${target} (event=failed в журнале)" >&2
+  return "${rrc}"
+}
+
+# Кладбище письма после исчерпания попыток (dead-letter, peer-mail-loss-20261024).
+# payload -> pending/dead/, bounce-файл отправителю. В bounce — ТОЛЬКО метаданные
+# (message_id, rc, to, from, причина по-человечески): тело письма НЕ копируем,
+# иначе bounce становится вторым местом утечки секретов (канон «никаких секретов»).
+# $1=mid, $2=rc, $3=to, $4=from, $5=attempts, $6=payload_path
+_dead_letter() {
+  local mid="$1" rc="$2" to="$3" from="$4" attempts="$5" pp="$6"
+  local dead_dir="${PENDING_DIR}/dead" bounce_dir="${PENDING_DIR}/bounce"
+  mkdir -p "${dead_dir}" "${bounce_dir}"
+  if [[ -n "${pp}" && -f "${pp}" ]]; then
+    mv "${pp}" "${dead_dir}/" 2>/dev/null || true
+  fi
+  {
+    printf 'ПИСЬМО НЕ ДОСТАВЛЕНО (dead-letter)\n\n'
+    printf 'message_id : %s\n' "${mid}"
+    printf 'адресат    : %s\n' "${to}"
+    printf 'отправитель: %s\n' "${from}"
+    printf 'попыток    : %s (лимит LETTER_MAX_ATTEMPTS)\n' "${attempts}"
+    printf 'причина    : доставка отклонена, rc=%s\n' "${rc}"
+    printf 'время      : %s\n\n' "$(date -Is)"
+    printf 'Верни отправителю %s: письмо не ушло, содержимое осталось в\n' "${from}"
+    printf '%s (тело в bounce не копируется — канон «никаких секретов»).\n' "${dead_dir}/${mid}.txt"
+  } > "${bounce_dir}/${mid}.txt"
+  journal_append "${MAIL_DIR}" "$(jq -cn \
+    --arg event "dead-letter" --arg id "${mid}" --arg to "${to}" \
+    --arg from "${from}" --argjson rc "${rc:-1}" --argjson attempts "${attempts}" \
+    '{event:$event, message_id:$id, to:$to, from:$from, rc:$rc,
+      attempts:$attempts, ts:(now|floor)}')"
+  echo "DEAD-LETTER: ${mid} -> кладбище после ${attempts} попыток (rc=${rc}); bounce: ${bounce_dir}/${mid}.txt" >&2
 }
 
 # Обслужить отложенную очередь: свободен -> доставить; занят дольше QUEUE_TTL ->
@@ -200,10 +308,10 @@ _inject() {
 drain_queue() {
   [[ -s "${PENDING_FILE}" ]] || return 0
   local tmp line mid dg pt qs target from_f from_sid_f scope_f busy payload_line
-  local ev note age rrc injected=0 kept=0
+  local ev note age rrc injected=0 kept=0 attempts=0
   tmp="${PENDING_FILE}.tmp"
   : > "${tmp}"
-  mkdir -p "${PENDING_DIR}/done"
+  mkdir -p "${PENDING_DIR}/done" "${PENDING_DIR}/dead" "${PENDING_DIR}/bounce"
   local deadline=$(( $(date +%s) + DRAIN_BUDGET ))
   while IFS= read -r line; do
     [[ -z "${line}" ]] && continue
@@ -256,10 +364,38 @@ drain_queue() {
         scope:$scope, wait_ms:$wait_ms, ts:(now|floor)}
         + (if $from_sid == "" then {} else {from_sid:$from_sid} end)')"
     echo "RECEIPT: ${mid} -> ${target}${note} (journal)" >&2
+    # Честная доставка (peer-mail-loss-20261024): rc НЕ глотаем. Успех — только
+    # rc=0 (event=delivered); отказ -> failed, запись ВОЗВРАЩАЕТСЯ в очередь
+    # с attempts+1, payload остаётся на месте. Исчерпали лимит -> dead-letter.
+    rrc=0
     RUN_TMO="${DRAIN_TMO}" STAGE="drain" \
-      _run "${mid}" "${target}" "${payload_line}" || true
-    mv "${pt}" "${PENDING_DIR}/done/" 2>/dev/null || true
-    injected=$((injected+1))
+      _run "${mid}" "${target}" "${payload_line}" || rrc=$?
+    attempts="$(jq -r '.attempts // 0' <<< "${line}" 2>/dev/null)"
+    [[ "${attempts}" =~ ^[0-9]+$ ]] || attempts=0
+    attempts=$(( attempts + 1 ))
+    if (( rrc == 0 )); then
+      journal_append "${MAIL_DIR}" "$(jq -cn \
+        --arg id "${mid}" --arg to "${target}" \
+        '{event:"delivered", message_id:$id, to:$to, ts:(now|floor)}')"
+      mv "${pt}" "${PENDING_DIR}/done/" 2>/dev/null || true
+      injected=$((injected+1))
+      continue
+    fi
+    journal_append "${MAIL_DIR}" "$(jq -cn \
+      --arg id "${mid}" --argjson rc "${rrc}" --argjson attempts "${attempts}" \
+      --arg stage "drain" \
+      '{event:"failed", message_id:$id, rc:$rc, attempts:$attempts,
+        stage:$stage, ts:(now|floor)}')"
+    echo "drain: НЕ ДОСТАВЛЕНО mid=${mid} rc=${rrc} (попытка ${attempts}/${MAX_ATTEMPTS})" >&2
+    if (( attempts >= MAX_ATTEMPTS )); then
+      _dead_letter "${mid}" "${rrc}" "${target}" "${from_f}" "${attempts}" "${pt}"
+      continue
+    fi
+    # возврат в очередь: attempts+1, queued_ts обновляем (новый отсчёт TTL)
+    printf '%s\n' "$(jq -c \
+      --argjson attempts "${attempts}" --argjson ts "$(date +%s)" \
+      '.attempts = $attempts | .queued_ts = $ts' <<< "${line}")" >> "${tmp}"
+    kept=$((kept+1))
   done < "${PENDING_FILE}"
   mv "${tmp}" "${PENDING_FILE}"
   if (( kept > 0 )); then
@@ -302,10 +438,11 @@ enqueue_pending() {
 main() {
   local to="" title="" text="" file=""
   local from="${OPENCODE_SESSION_ID:-unknown}" scope="" receipt="" ref=""
-  local DRAIN=0
+  local DRAIN=0 ALLOW_NO_AGENT=0
   while (( $# > 0 )); do
     case "$1" in
       --drain)       DRAIN=1; shift ;;
+      --allow-no-agent) ALLOW_NO_AGENT=1; shift ;;
       --to)          to="${2:?--to requires a value}"; shift 2 ;;
       --model)       echo "REFUSE: --model запрещён (B15 model-lock, мандат владельца 2026-10-18): канал не меняет модель адресата; смена модели — только владелец штатными средствами" >&2; exit 3 ;;
       --title)       title="${2:?--title requires a value}"; shift 2 ;;
@@ -333,6 +470,38 @@ main() {
   if [[ -n "${receipt}" ]]; then
     [[ "${receipt}" =~ ^(started|finished|cannot)$ ]] || fail "--receipt: started|finished|cannot"
     [[ -n "${ref}" ]] || fail "--receipt requires --ref <message_id оригинала>"
+  fi
+
+  # --- Входные гейты (peer-mail-loss-20261024) — ДО очереди, журнала и инжекта.
+  # Здесь fail-CLOSED: молчаливая потеря недопустима, лучше отказать отправителю
+  # сразу. (session_busy ниже — по-прежнему fail-open, это отдельное решение.)
+  # Гейт 1: сессия адресата существует? Сбой API трактуется как «нет адресата» —
+  # письмо на несуществующую сессию теряется молча (инцидент мёртвого адреса ЦУ).
+  # Гейт 2: адресат из реестра БЕЗ назначенного агента («— (агент не назначен)»).
+  # Без агента письмо уйдёт без переключения агента и, скорее всего, не будет
+  # подхвачено — осознанный обход: --allow-no-agent (в журнал event=warn-no-agent).
+  # Оба гейта обходятся SKIP_ALIVE_GATE=1 ТОЛЬКО в тестах (tests-mail-fix.sh):
+  # там доставка гоняется на изолированном фейковом opencode-шиме, боевые
+  # гейты остаются fail-closed.
+  if [[ "${SKIP_ALIVE_GATE:-0}" != "1" ]]; then
+    if ! session_alive "${to}"; then
+      echo "REFUSE: адресат не найден, письмо не принято (сессия ${to} не существует или API недоступен)." >&2
+      echo "REFUSE: проверь адрес по peer-registry; живость: opencode api get /api/session/<id>" >&2
+      exit 1
+    fi
+    local ragent_check
+    ragent_check="$(registry_agent "${to}")"
+    if [[ -z "${ragent_check}" ]]; then
+      if (( ALLOW_NO_AGENT == 1 )); then
+        journal_append "${MAIL_DIR}" "$(jq -cn \
+          --arg event "warn-no-agent" --arg to "${to}" --arg from "${from}" \
+          '{event:$event, to:$to, from:$from, ts:(now|floor)}')"
+        echo "WARN: адресат без назначенного агента — принимаю по --allow-no-agent (event=warn-no-agent)" >&2
+      else
+        echo "REFUSE: адресат без назначенного агента (смотритель ДВ-Хаб): письмо потеряется, назначь агента или передай --allow-no-agent" >&2
+        exit 1
+      fi
+    fi
   fi
 
   # --file: текст письма читается из файла (канон против shell-quote багов)
