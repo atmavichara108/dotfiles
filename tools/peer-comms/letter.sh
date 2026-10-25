@@ -436,6 +436,24 @@ enqueue_pending() {
 }
 
 main() {
+  # --- Канон Р-028 (2026-10-25): канал в РЕЗЕРВЕ -------------------------
+  # Почта Корабля — ship-mail (tools/ship-mail/ship-mail.sh): отправка =
+  # атомарный файл в ящике, чтение первым шагом хода, ack. Этот скрипт
+  # остаётся резервом (deprecated): живая инжеккция хода модели, аврал,
+  # релей владельца. Молчаливой отправки по старому протоколу больше нет:
+  # требуется явный PEER_COMMS_RESERVE=1 (осознанный резерв) или --drain.
+  # Ручная очередь --drain остаётся штатной (читать/доставлять оставшееся).
+  case "${1:-}" in
+    --drain) : ;;
+    --help|-h) : ;;
+    *) if [[ "${PEER_COMMS_RESERVE:-0}" != "1" ]]; then
+         echo "letter.sh: DEPRECATED (канон Р-028) — письма отправляй через" >&2
+         echo "  ship-mail.sh send --to <sid> --from <sid> ..." >&2
+         echo "Осознанный резерв (живая инжеккция хода): PEER_COMMS_RESERVE=1 letter.sh ..." >&2
+         exit 6
+       fi ;;
+  esac
+
   local to="" title="" text="" file=""
   local from="${OPENCODE_SESSION_ID:-unknown}" scope="" receipt="" ref=""
   local DRAIN=0 ALLOW_NO_AGENT=0
