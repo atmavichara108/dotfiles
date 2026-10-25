@@ -198,7 +198,6 @@ _run() {
     "${tmo[@]}" opencode run -s "${target}" "$@" --agent "${ragent}" -- "${payload}" \
       >/dev/null 2>"${errf}" || rrc=$?
     if (( rrc == 0 )); then
-      rm -f "${errf}"
       return 0
     fi
     # Scope C fallback ТОЛЬКО по настоящему отказу агента («Agent not found»):
@@ -220,16 +219,24 @@ _run() {
     fi
     rm -f "${errf}" 2>/dev/null || true
   else
-    if "${tmo[@]}" opencode run -s "${target}" "$@" -- "${payload}" >/dev/null 2>/dev/null; then
-      rrc=0
-    else
-      rrc=$?
-    fi
+    errf="${TMPDIR:-/tmp}/opencode-letter-err-${mid}.txt"
+    "${tmo[@]}" opencode run -s "${target}" "$@" -- "${payload}" \
+      >/dev/null 2>"${errf}" || rrc=$?
   fi
   if (( rrc != 0 )); then
+    # dvhub-inbound-20261024 / INC-18: stderr раньше стирался -> причину
+    # падения поймать было нечем. Теперь хвост идёт в журнал (event=failed),
+    # полный файл остаётся на диске.
+    local errdir="${MAIL_DIR}/errors" errsave errtail=""
+    mkdir -p "${errdir}"
+    errsave="${errdir}/${mid}.txt"
+    if [[ -f "${errf}" ]]; then cp -f "${errf}" "${errsave}" 2>/dev/null || true; fi
+    errtail="$(tail -c 600 "${errsave}" 2>/dev/null | tr -d '\000' | tr '\n' ' ' | tr -s ' ')"
     journal_append "${MAIL_DIR}" "$(jq -cn \
       --arg id "${mid}" --argjson rc "${rrc}" --arg stage "${STAGE:-}" \
-      '{event:"run-rc", message_id:$id, rc:$rc, ts:(now|floor)}
+      --arg err "${errtail}" --arg errfile "${errsave}" \
+      '{event:"failed", message_id:$id, rc:$rc, ts:(now|floor),
+        stderr_tail:$err, stderr_file:$errfile}
         + (if $stage == "" then {} else {stage:$stage} end)')" || true
   fi
   return "${rrc}"
