@@ -46,17 +46,33 @@ def quotes_from_line(line: str) -> list[str]:
 
 
 def load_corpus() -> list[dict]:
-    """Корпус = строки с кавычками (basis: quoted — решения владельца)."""
+    """Корпус = строки с кавычками (basis: quoted — решения владельца).
+    А2-усиление (ХПФ гейт): дата+статус каждой цитаты (действует/superseded);
+    изъятое (redacted) не выдаётся — честный след без содержания."""
     corpus: list[dict] = []
     for repo, rel in SOURCES:
         path = repo / rel
         if not path.exists():
             continue
         sha = git_sha(repo)
-        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for i, line in enumerate(lines, 1):
+            # А2: детект изъятия — строка помечена redacted/изъято (протокол забывания ХПФ)
+            if "REDACTED" in line or "изъято" in line.lower():
+                continue  # честный след: не выдаётся; реестр изъятий — дата+причина
             for q in quotes_from_line(line):
+                # А2: контекстная привязка — ищем статус и дату в ближайших строках
+                status = "действует"
+                date = ""
+                for j in range(max(0, i - 5), min(len(lines), i + 3)):
+                    if "superseded" in lines[j].lower() or "отменено" in lines[j].lower():
+                        status = "superseded"
+                    m = re.search(r"(\d{4}-\d{2}-\d{2})", lines[j])
+                    if m and not date:
+                        date = m.group(1)
                 corpus.append({
-                    "text": q, "repo": str(repo), "file": rel, "line": i, "sha": sha
+                    "text": q, "repo": str(repo), "file": rel, "line": i, "sha": sha,
+                    "status": status, "date": date
                 })
     return corpus
 
@@ -76,8 +92,12 @@ def spravka(query: str) -> str:
             ref=f"корпус {len(corpus)} цитат")
     out = []
     for h in hits:
-        out.append(f"«{h['text']}»\n  {h['file']}:{h['line']} (SHA {h['sha']})")
-    return "\n\n".join(out) + MARKER.format(
+        # А2: контекстная привязка — дата+статус на каждой цитате (гейт ХПФ п.1)
+        status_tag = f" [{h.get('status', 'действует')}]"
+        date_tag = f" ({h.get('date', '')})" if h.get('date') else ""
+        out.append(f"«{h['text']}»{status_tag}{date_tag}\n  {h['file']}:{h['line']} (SHA {h['sha']})")
+    # А2: машиночитаемое поле origin (гейт ХПФ п.3) — verifier сверяет 100%
+    return "\n\n".join(out) + "\n\n{origin: model, not_rudra}" + MARKER.format(
         ref=f"{len(hits)} из {len(corpus)} цитат")
 
 
