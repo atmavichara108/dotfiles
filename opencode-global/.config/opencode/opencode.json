@@ -7,7 +7,7 @@
       "name": "APInex",
       "options": {
         "baseURL": "https://api.apinex.bond/v1",
-        "apiKey": "sk-apx79a5d0b43725e39e85aec283ef16144d13f188409d6f63d"
+        "apiKey": "{env:APINEX_API_KEY}"
       },
       "models": {
         "free/claude-opus-4.6": {
@@ -55,7 +55,7 @@
       "name": "APInex",
       "settings": {
         "baseURL": "https://api.apinex.bond/v1",
-        "apiKey": "[redacted]"
+        "apiKey": "{env:APINEX_API_KEY}"
       },
       "models": {
         "free/claude-opus-4.6": {
