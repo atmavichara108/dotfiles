@@ -7,7 +7,13 @@ steps: 25
 permission:
   doom_loop: allow
   external_directory:
-    "*": allow
+    "*": deny
+    "/home/rudra/Projects/OpenCode-Vault/.obsidian/plugins/**": allow
+    "/home/rudra/Projects/OpenCode-Vault-plugins-sandbox/**": allow
+    "/home/rudra/Projects/OpenCode-Vault/**": allow
+    "/home/rudra/dotfiles/**": allow
+    "/home/rudra/.config/opencode/**": allow
+    "/tmp/opencode/**": allow
     "**/.env*": deny
     "**/credentials.json": deny
     "**/*.pem": deny
@@ -15,7 +21,11 @@ permission:
     "**/id_rsa*": deny
     "**/id_ed25519*": deny
     "**/.secrets/**": deny
-  edit: allow
+  edit:
+    "*": deny
+    "/home/rudra/Projects/OpenCode-Vault/.obsidian/plugins/**": allow
+    "/home/rudra/Projects/OpenCode-Vault-plugins-sandbox/**": allow
+    "**/AGENTS.md": ask
   bash:
     "*": allow
     "sudo *": deny
