@@ -1,0 +1,10 @@
+[Unit]
+Description=probe-rotator каждые 3600с (health по расписанию, DoD-2)
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=3600s
+AccuracySec=60s
+
+[Install]
+WantedBy=timers.target

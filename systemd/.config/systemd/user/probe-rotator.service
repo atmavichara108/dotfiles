@@ -1,0 +1,8 @@
+[Unit]
+Description=probe-rotator — расписанная телеметрия провайдеров (read-only, без smoke)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/homeostasis/probe-rotator.py
+StandardOutput=journal
+StandardError=journal
