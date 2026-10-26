@@ -23,6 +23,13 @@ CONFIG = os.path.expanduser("~/.config/promo-provider-probe/config.json")
 PROBE = os.path.expanduser("~/dotfiles/scripts/.local/bin/promo-provider-probe")
 OUT_DIR = os.path.expanduser("~/.local/state/opencode/rotator")
 JOURNAL = os.path.join(OUT_DIR, "journal.jsonl")
+# Согласованный с УАС/ЦУ путь телеметрии (2026-10-27): живой прогон — кэш в
+# state (быстро, локально), каноническая свод — append-only в волт (тот же
+# файл, что пишет УАС-стандарт). Один источник правды для прибора «Ротатор».
+VAULT_TELEMETRY = os.environ.get(
+    "VAULT_TELEMETRY",
+    os.path.expanduser(
+        "~/Projects/OpenCode-Vault/control-plane/telemetry/provider-health.jsonl"))
 
 
 def providers():
@@ -44,14 +51,52 @@ def probe(pid):
         r = subprocess.run([sys.executable, PROBE, pid, "--json"],
                            capture_output=True, text=True, timeout=60)
     except Exception as e:  # noqa: BLE001
-        return {"provider": pid, "status": "ERROR",
-                "reason": f"{type(e).__name__}"}
+        return {"provider_id": pid, "status": "ERROR",
+                "models_count": 0, "usable_balance": None,
+                "balance_kind": None, "warnings": [type(e).__name__]}
     out = (r.stdout or "").strip()
     try:
-        return json.loads(out)
+        d = json.loads(out)
+        d.setdefault("provider_id", pid)
+        d["source"] = "probe-rotator"
+        return d
     except Exception:  # noqa: BLE001
-        return {"provider": pid, "status": "UNPARSED",
-                "rc": r.returncode, "stderr_tail": (r.stderr or "")[-200:]}
+        return {"provider_id": pid, "status": "UNPARSED",
+                "models_count": 0, "usable_balance": None,
+                "balance_kind": None, "warnings": ["unparsed"],
+                "source": "probe-rotator"}
+
+
+def telemetry_line(row, ts):
+    """Строка в формате УАС-стандарта (тей же ключи; секретов нет —
+    probe выводит только коды/структуры)."""
+    return {
+        "ts": ts,
+        "provider_id": row.get("provider_id") or row.get("provider"),
+        "status": row.get("status"),
+        "models_count": row.get("models_count"),
+        "usable_balance": row.get("usable_balance"),
+        "balance_kind": row.get("balance_kind"),
+        "warnings": row.get("warnings") or [],
+        "latency_ms": row.get("latency_ms"),
+        "redacted": True,
+        "source": "probe-rotator",
+    }
+
+
+def vault_append(rows, ts):
+    """Append-only свод в канонический файл волта (SSOT для прибора)."""
+    try:
+        os.makedirs(os.path.dirname(VAULT_TELEMETRY), exist_ok=True)
+        with open(VAULT_TELEMETRY, "a", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(telemetry_line(row, ts),
+                                   ensure_ascii=False) + "\n")
+        return True
+    except Exception as e:  # noqa: BLE001
+        journal({"ts": int(time.time()), "class": "telemetry-append-failed",
+                 "path": VAULT_TELEMETRY, "reason": type(e).__name__})
+        return False
 
 
 def main(argv):
@@ -67,8 +112,10 @@ def main(argv):
     if only:
         pids = [p for p in pids if p in only]
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     rows = [probe(pid) for pid in pids]
     ok = sum(1 for r in rows if r.get("status") == "ACTIVE")
+    vault_append(rows, ts_iso)
     payload = {"ts": ts, "providers": rows,
                "summary": {"total": len(rows), "active": ok}}
     os.makedirs(OUT_DIR, exist_ok=True)
