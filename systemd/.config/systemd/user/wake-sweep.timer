@@ -1,0 +1,10 @@
+[Unit]
+Description=wake-sweep каждые 300с (слаженность без человека)
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec=300s
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
