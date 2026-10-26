@@ -69,6 +69,20 @@ def check_global():
     return problems
 
 
+def policies_index():
+    """action -> [(resource, effect)] из глобального policies."""
+    try:
+        cfg = json.loads(strip_jsonc(open(GLOBAL_CFG, encoding="utf-8").read()))
+    except Exception:  # noqa: BLE001
+        return {}
+    out = {}
+    for p in (cfg.get("permissions") or []):
+        if isinstance(p, dict) and p.get("action"):
+            out.setdefault(p["action"], []).append(
+                (p.get("resource"), p.get("effect")))
+    return out
+
+
 def iter_agent_files():
     for root, dirs, files in os.walk(os.path.join(REPO, ".opencode/agent")):
         dirs[:] = [d for d in dirs if d != "node_modules"]
@@ -111,7 +125,35 @@ def check_agents():
                 problems.append(
                     f"{path}: permission.{key} catch-all deny — старая ловушка "
                     f"(форма: allow + deny-list опасных)")
+        # Канон Мастерской (inc-shell вердикт): инструмент, упомянутый в
+        # агентском файле, обязан иметь allow в глобальном слое — иначе
+        # агентский файл бессилен (класс инцидента shell). Allow считается
+        # и из policies (массив), и из старого стиля permission.<tool>.
+        pol = policies_index()
+        legacy = global_legacy_permissions()
+        for tool, spec in perm.items():
+            if tool in ("doom_loop",):
+                continue
+            pol_ok = any(e == "allow" for _, e in pol.get(tool, []))
+            leg = legacy.get(tool)
+            leg_ok = leg == "allow" or (isinstance(leg, dict)
+                                        and leg.get("*") == "allow")
+            if spec not in (None, "deny") and not pol_ok and not leg_ok:
+                problems.append(
+                    f"{path}: permission.{tool} есть в агенте, но в глобальном "
+                    f"слое (policies и permission) нет allow — агентский файл "
+                    f"бессилен (класс инцидента shell). Добавь allow-all.")
     return problems
+
+
+def global_legacy_permissions():
+    """Старый стиль: permission.<tool> в глобальном opencode.jsonc."""
+    try:
+        cfg = json.loads(strip_jsonc(open(GLOBAL_CFG, encoding="utf-8").read()))
+    except Exception:  # noqa: BLE001
+        return {}
+    p = cfg.get("permission")
+    return p if isinstance(p, dict) else {}
 
 
 def main():

@@ -25,25 +25,20 @@ permission:
     "/home/rudra/Projects/OpenCode-Vault/10-Deck/**": allow
     "**/AGENTS.md": ask
   bash:
-    "rg*": allow
-    "ls*": allow
-    "cat*": allow
-    "bat*": allow
-    "eza*": allow
-    "head*": allow
-    "tail*": allow
-    "wc*": allow
-    "jq*": allow
-    "find*": allow
-    "fd*": allow
-    "md5sum*": allow
-    "python3*": allow
-    "git status*": allow
-    "git log*": allow
-    "git diff*": allow
-    "git show*": allow
-    "git branch*": allow
-    "*": deny
+    "*": allow
+    "sudo *": deny
+    "chown *": deny
+    "chmod *": deny
+    "git push --force*": deny
+    "git reset --hard*": deny
+    "git clean*": deny
+    "rm -rf*": deny
+    "rm*": deny
+    "ssh*": deny
+    "npm publish*": deny
+    "systemctl stop*": deny
+    "systemctl disable*": deny
+    "systemctl mask*": deny
   task: deny
   glob: allow
   grep: allow
