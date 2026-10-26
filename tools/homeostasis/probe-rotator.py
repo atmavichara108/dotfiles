@@ -68,16 +68,30 @@ def probe(pid):
 
 
 def telemetry_line(row, ts):
-    """Строка в формате УАС-стандарта (тей же ключи; секретов нет —
-    probe выводит только коды/структуры)."""
+    """Строка в формате УАС-стандарта (те же ключи; секретов нет —
+    probe выводит только коды/структуры).
+
+    Канон классификации (УАС, коммит 302073b6, 2026-10-27): статус описывает
+    доступность/качество ОТВЕТА; баланс и латентность — отдельные
+    nullable-поля. Поэтому DEGRADED, причиной которого является ТОЛЬКО
+    неизвестный баланс, в канонической строке → ACTIVE с
+    usable_balance: null (отсутствие данных — пустое поле, не состояние).
+    """
+    status = row.get("status")
+    warnings = list(row.get("warnings") or [])
+    balance_only = warnings and all(
+        any(k in w.lower() for k in ("balance", "баланс")) for w in warnings)
+    if status == "DEGRADED" and balance_only:
+        status = "ACTIVE"
+        warnings = warnings + ["canon:balance-unknown-not-degraded"]
     return {
         "ts": ts,
         "provider_id": row.get("provider_id") or row.get("provider"),
-        "status": row.get("status"),
+        "status": status,
         "models_count": row.get("models_count"),
         "usable_balance": row.get("usable_balance"),
         "balance_kind": row.get("balance_kind"),
-        "warnings": row.get("warnings") or [],
+        "warnings": warnings,
         "latency_ms": row.get("latency_ms"),
         "redacted": True,
         "source": "probe-rotator",
@@ -114,7 +128,8 @@ def main(argv):
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     ts_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     rows = [probe(pid) for pid in pids]
-    ok = sum(1 for r in rows if r.get("status") == "ACTIVE")
+    canon = [telemetry_line(r, ts_iso) for r in rows]
+    ok = sum(1 for r in canon if r.get("status") == "ACTIVE")
     vault_append(rows, ts_iso)
     payload = {"ts": ts, "providers": rows,
                "summary": {"total": len(rows), "active": ok}}
