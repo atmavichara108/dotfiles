@@ -188,6 +188,7 @@ TOOLS = [
                 "event": {"type": "string", "description": "id события из events.json"},
                 "what": {"type": "string", "description": "Какой секрет и зачем (без самого секрета)"},
                 "hint": {"type": "string", "description": "Где взять (панель/URL), если известно"},
+                "target": {"type": "string", "description": "Имя файла внутри ~/.secrets/ (без путей): сервер сам запишет значение (600), минуя слой редактирования результатов. Без target значение вернётся агенту (может быть отредактировано слоем)."},
             },
             ["event", "what"],
         ),
@@ -325,11 +326,26 @@ def tool_call(msg_id, name, args):
     if name == "ask_secret":
         what = args.get("what", "")
         hint = args.get("hint", "")
+        target = (args.get("target") or "").strip()
+        if target and (("/" in target) or ("\\" in target)
+                       or target.startswith(".") or ".." in target):
+            result(msg_id, tool_result({
+                "ok": False, "action": "refused", "reason": "bad-target",
+                "message": "target — только имя файла внутри ~/.secrets/ "
+                           "(без путей), иначе отказ.",
+            }))
+            return
         ans = elicit(
             msg_id,
             f"❗ Вставь секрет: {what}\n\n[{event_id}] {ev.get('title','')}"
             + (f"\nПодсказка: {hint}" if hint else "")
-            + "\nЗначение уйдёт агенту этим же вызовом; в журнал/репо не попадёт.",
+            + ("\nЗначение будет записано файлом ~/.secrets/"
+               + target + " (600); в журнал/репо/вывод не попадёт."
+               if target else
+               "\nЗначение уйдёт агенту этим же вызовом; в журнал/репо не "
+               "попадёт. ВНИМАНИЕ: слой исполнения может редактировать "
+               "секретоподобные строки в результате — для надёжности "
+               "передавай target."),
             {
                 "type": "object",
                 "properties": {
@@ -346,6 +362,35 @@ def tool_call(msg_id, name, args):
                                         "message": "Секрет не получен."}))
             return
         val = str((ans.get("content") or {}).get("secret", ""))
+        if target:
+            # Серверная запись: значение не покидает процесс Ворот — мимо
+            # слоя редактирования результатов (инцидент apinex/Мастерская).
+            path = os.path.expanduser("~/.secrets/" + target)
+            try:
+                os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                             0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(val)
+            except Exception as e:  # noqa: BLE001
+                journal({"tool": name, "event": event_id,
+                         "action": "accept", "secret_len": len(val),
+                         "target": target, "write": "failed"})
+                result(msg_id, tool_result({
+                    "ok": False, "action": "accept", "target": target,
+                    "message": f"запись не удалась: {type(e).__name__} "
+                               f"(значение не сохранено)",
+                }))
+                return
+            journal({"tool": name, "event": event_id, "action": "accept",
+                     "secret_len": len(val), "target": target,
+                     "write": "ok"})
+            result(msg_id, tool_result({
+                "ok": True, "action": "accept", "target": target,
+                "secret_len": len(val),
+                "message": f"записано {path} (600, серверная запись)",
+            }))
+            return
         journal({"tool": name, "event": event_id, "action": "accept",
                  "secret_len": len(val)})  # длиной, не значением
         result(msg_id, tool_result({"ok": True, "action": "accept", "secret": val}))
