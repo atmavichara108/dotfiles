@@ -1,0 +1,8 @@
+[Unit]
+Description=session-cop — сверка peer-registry с живыми сессиями (Р-031)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/homeostasis/session-cop.py
+StandardOutput=journal
+StandardError=journal

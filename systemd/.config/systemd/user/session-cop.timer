@@ -1,0 +1,10 @@
+[Unit]
+Description=session-cop каждые 1800с (реестр vs реальность)
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=1800s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

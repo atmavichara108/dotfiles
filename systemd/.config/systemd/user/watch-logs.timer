@@ -1,0 +1,10 @@
+[Unit]
+Description=watch-logs каждые 60с (сбой в логе ≠ тишина)
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

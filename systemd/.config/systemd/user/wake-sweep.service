@@ -1,0 +1,8 @@
+[Unit]
+Description=wake-sweep — зов сессий с непрочитанной почтой (предпроверка + лимит)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/ship-mail/wake.py --sweep
+StandardOutput=journal
+StandardError=journal
