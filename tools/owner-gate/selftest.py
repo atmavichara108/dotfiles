@@ -132,6 +132,28 @@ def main():
         payload = json.loads(r["result"]["content"][0]["text"])
         check("secret accept→значение ушло агенту", payload.get("secret") == "re_TESTVALUE12345")
 
+        # 5b. ask_secret с target-из-события (selftest-target): серверная запись,
+        # значение агенту НЕ отдаётся (инцидент apinex 2026-10-27)
+        import os as _os
+        _p = _os.path.expanduser("~/.secrets/apinex.key")
+        _existed = _os.path.isfile(_p)
+        c.call("tools/call", {"name": "ask_secret", "arguments": {
+            "event": "apinex.secret", "what": "тест серверной записи"}})
+        req = c.recv()
+        c.send({"jsonrpc": "2.0", "id": req["id"],
+                "result": {"action": "accept",
+                           "content": {"secret": "ap_TESTVALUE12345"}}})
+        r = c.recv()
+        payload = json.loads(r["result"]["content"][0]["text"])
+        tgt_ok = ("secret" not in payload
+                  and payload.get("target") == "apinex.key"
+                  and _os.path.isfile(_p))
+        # тестовое значение удаляем, чтобы не затирать реальный ключ (если он есть)
+        if tgt_ok and not _existed:
+            _os.remove(_p)
+        check("secret target-из-события→серверная запись, агенту без значения",
+              tgt_ok, json.dumps(payload, ensure_ascii=False))
+
         # 6. неизвестное событие — отказ без формы
         c.call("tools/call", {"name": "ask_confirm", "arguments": {
             "event": "нет-такого-события", "question": "провокация",
