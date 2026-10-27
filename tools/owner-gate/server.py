@@ -326,7 +326,10 @@ def tool_call(msg_id, name, args):
     if name == "ask_secret":
         what = args.get("what", "")
         hint = args.get("hint", "")
-        target = (args.get("target") or "").strip()
+        # target берём из аргумента, иначе из объявления события (secret_file):
+        # транспорт аргументов MCP может отбросить необязательные поля (incident
+        # apinex 2026-10-27), объявление события — надёжный источник.
+        target = (args.get("target") or "").strip() or (ev.get("secret_file") or "").strip()
         if target and (("/" in target) or ("\\" in target)
                        or target.startswith(".") or ".." in target):
             result(msg_id, tool_result({

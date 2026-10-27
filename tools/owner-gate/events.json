@@ -53,7 +53,8 @@
       "tools": [
         "ask_secret"
       ],
-      "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600"
+      "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600",
+      "secret_file": "apinex.key"
     }
   ]
 }

@@ -1,0 +1,7 @@
+[
+  {
+    "provider": "apinex",
+    "env": "APINEX_API_KEY",
+    "secret_file": "apinex.key"
+  }
+]
