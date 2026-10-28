@@ -919,3 +919,26 @@ tg-upload (три файла, офлайн-режим) и поднимал во�
 - **Почта Р-028 ship-first (повторение для новой сессии)**: первый шаг любого хода — `~/.local/bin/ship-mail.sh inbox <sid>`, потом `ack`; letter.sh — резерв (PEER_COMMS_RESERVE=1). Несоответствие = инцидент класса «письма не доходят».
 - **obsidian-plugin-dev active (чистый вердикт УАС)**: манифест+реестр (8fa1b9cb), файл в main (6adbd34/750b32d), зоны удержаны машиной (edit deny+2 зоны, external_directory scoped, секреты deny, task deny). Мандат ЦУ obsidian-plugin-agent-20261025 закрыт. Урок контура: расхождение «реквизиты vs факт» (обещано в тексте, allow в факте) поймано УАС-сверкой, исправлено в течение часа — правило «сверка фактом, не доверие слову» сработало с обеих сторон.
 - **Ворота: ask_secret(target)** — серверная запись секрета в ~/.secrets/600 (фикс инцидента apinex); ждёт применения для ключа.
+
+## Dream — сессия 2026-10-28 (ship)
+
+### Факты (проверенные, не гипотезы)
+- Модель `nvidia/z-ai/glm-5.3-flash` умерла EOL 2026-10-28T08:00Z. Код 451 был способом NVIDIA сказать «модель недоступна», а не geo-блок. GET /models отвечал 200, POST inference — 451.
+- NVIDIA жив: `nvidia/meta/muse-glimmer-30b`, `nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, `nvidia/nvidia/nemotron-3-ultra-550b-a55b` отвечают «ok».
+- Nemotron ненадёжен как primary (владелец: 2 раза ложал, приходилось исправлять). На verifier и obsidian-servant поставлены muse-glimmer-30b и amd-radeon/GLM-5.3-Flash.
+- model-watch gate (tools/model-watch/model-watch.py) не отслеживал nvidia (только opencode/opencode-go builtin + declared providers). Добавлен nvidia в BUILTIN_PROVIDERS — теперь 52 модели NVIDIA в ежедневном снапшоте.
+- Gate не ловит EOL: models.dev всё ещё отдаёт EOL-модели как «доступные». Единственный способ узнать — живой прогон.
+- Happ работал в режиме прокси (systemProxy=true, tun=false). После аварийного обесточивания Happ восстановился с российским сервером (ru17.importmsk.net) — IP не маскировался. OpenCode игнорирует SOCKS-прокси (ALL_PROXY) — ходит напрямую.
+- owner-gate: ask_secret с target — серверная запись в ~/.secrets/ (600), значение не покидает процесс ворот. Доказано selftest 12/12.
+- provider-keys: реестр «провайдер→ENV_VAR→файл-секрет» + мост secrets→environment.d. Новый провайдер = одна команда.
+- УАС получил задание: исследовать все 11 моделей Nemotron (NVIDIA) — что можно, что нет.
+
+### Уроки (проверенные)
+- «Долго отвечает / таймаут» ≠ «нет доступа» — до вердикта обязателен прогон с живым инструментом и текстом ошибки.
+- Правка скрипта канала (letter.sh) НЕ делается кусками — либо целиком одним блоком с bash -n, либо python-патчем с assert на каждый якорь.
+- Двойное определение агента (проект vs глобал) — дефект: один агент = один источник.
+
+### Открытые хвосты
+- Ключ apinex: форма ворот работает на старом коде в текущей сессии (нужен рестарт) или прямая вставка в ~/.secrets/apinex.key.
+- Тест Session.ID (subagent-resume) — не доведён.
+- /ship выполнен.
