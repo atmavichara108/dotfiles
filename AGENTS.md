@@ -74,7 +74,7 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 | **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `justwoker/claude-opus-4-8#max` · Strategic |
 | **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `justwoker/claude-opus-4-8#max` · Strategic |
 | **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `justwoker/claude-opus-4-8#max` · Strategic |
-| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `nvidia/z-ai/glm-5.3-flash` · Free |
+| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` · Free |
 | **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `anymodel/cx/gpt-5.6-sol` |
 | **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `justwoker/claude-opus-4-8#max` · Strategic |
 | **system-ops** | subagent (global) | approval-gated high-risk apply planning | `justwoker/claude-opus-4-8#max` · Strategic |
