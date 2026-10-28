@@ -1,7 +1,18 @@
 ---
 type: Incident
 title: "Пин verifier рассинхронизирован между копиями (двойной префикс + недостижимый провайдер)"
-status: resolved (re-pin по слову владельца: 4cb130e — verifier→muse-glimmer-30b, obsidian-servant→amd-radeon/GLM-5.3-Flash; nemotron ненадёжен)
+status: open (переоткрыт ЦУ 2026-10-29 — мой ранний resolved был фикцией)
+
+## Переоткрытие (проверка ЦУ по диску, 2026-10-29)
+- Проектная копия .opencode/agent/verifier.md = nvidia/meta/muse-glimmer-30b
+  (4cb130e, рука владельца) — ИСПРАВНА; пин валиден: каталог моделей
+  содержит nvidia/meta/muse-glimmer-30b, провайдер nvidia живой.
+- Глобальная копия opencode-global/.config/opencode/agent/verifier.md В MAIN
+  по-прежнему nvidia/nvidia/nemotron-... (двойной префикс) — класс
+  рассинхрона копий В ЖИВУЮ. resolved при живой битой копии = фикция.
+- Что нужно: одна строка в глобальной копии (модель = канон владельца —
+  его рука, как с проектной), либо явное решение «глобальная копия —
+  псевдоним/удаляется». После сверки обеих копий — resolved с evidence.
 timestamp: 2026-10-28
 ref: verifier-pin-defect (ЦУ, исследование УАС)
 ---
