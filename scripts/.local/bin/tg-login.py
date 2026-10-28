@@ -26,13 +26,27 @@ def load_env(path):
 
 async def main():
     if "--help" in sys.argv or "-h" in sys.argv:
-        print("tg-login [--help]: интерактивный логин владельца, сеть — "
-              "только auth; ничего не читает и не отправляет.")
+        print("tg-login [--session-name NAME]: интерактивный логин "
+              "владельца, сеть — только auth; ничего не читает и не "
+              "отправляет.")
         return
-    stray = [a for a in sys.argv[1:] if a.startswith("-")]
+    args = list(sys.argv[1:])
+    session_name = ""
+    if "--session-name" in args:
+        i = args.index("--session-name")
+        if i + 1 >= len(args):
+            sys.exit("tg-login: --session-name без значения — отказ")
+        session_name = args[i + 1]
+        if ("/" in session_name or "\\" in session_name
+                or session_name.startswith(".")):
+            sys.exit("tg-login: --session-name — только имя файла в "
+                     "state профиля (без путей)")
+        del args[i:i + 2]
+    stray = [a for a in args if a.startswith("-")]
     if stray:
-        sys.exit(f"tg-login: неизвестные аргументы {stray} — отказ "
-                 "(принимается только --help)")
+        sys.exit(f"tg-login: неизвестные аргументы {stray} — отказ")
+    session_path = (os.path.join(_STATE_DIR, session_name)
+                    if session_name else SESSION)
     env = load_env(ENV_FILE)
     if not env.get("TG_API_ID") or not env.get("TG_API_HASH"):
         sys.exit("tg-login: заполни TG_API_ID/TG_API_HASH в " + ENV_FILE)
@@ -44,7 +58,7 @@ async def main():
         except ImportError:
             sys.exit("tg-login: нужен python-socks "
                      "(pip install --user --break-system-packages 'python-socks[asyncio]')")
-    async with TelegramClient(SESSION, int(env["TG_API_ID"]),
+    async with TelegramClient(session_path, int(env["TG_API_ID"]),
                               env["TG_API_HASH"], proxy=proxy) as client:
         me = await client.get_me()
         print(f"tg-login: ok, вошёл как @{me.username} id={me.id}")

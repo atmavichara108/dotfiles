@@ -283,6 +283,65 @@ def main(argv):
                 sys.exit(f"tg-watch: топика {topic} нет в группе "
                          f"(есть: {sorted(topics)}) — отказ")
 
+            # --- Heartbeat + outage-visibility (инцидент tg-guard-journal-
+            # silent-20261028): молчащий сторож = недопустимая тишина.
+            # Биение каждые 30с в stderr (видно journald); N последовательных
+            # обрывов → запись outage в state профиля + exit(75) — systemd
+            # Restart=always поднимает демона заново, и он пере-читает env
+            # (актуальный прокси-режим). События не теряются: доставка
+            # возобновляется на живом клиенте.
+            outage_file = os.path.join(STATE_DIR, "guard-outage.jsonl")
+            fails = 0
+            HEARTBEAT_EVERY = 30
+            FAILS_BEFORE_RESTART = int(
+                os.environ.get("TG_FAILS_BEFORE_RESTART", "4"))
+
+            def _outage(reason):
+                try:
+                    os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
+                    import json as _json
+                    with open(outage_file, "a", encoding="utf-8") as f:
+                        f.write(_json.dumps({
+                            "ts": int(time.time()),
+                            "iso": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime()),
+                            "class": "connection-outage",
+                            "profile": _PROFILE["name"],
+                            "topic": topic, "reason": reason[:200],
+                        }, ensure_ascii=False) + "\n")
+                except Exception:  # noqa: BLE001
+                    pass
+
+            async def heartbeat():
+                nonlocal fails
+                ticks = 0
+                while not stop.is_set():
+                    await asyncio.sleep(HEARTBEAT_EVERY)
+                    if stop.is_set():
+                        return
+                    ticks += 1
+                    if not client.is_connected():
+                        fails += 1
+                        sys.stderr.write(
+                            f"tg-watch: heartbeat: НЕТ СВЯЗИ ({fails}/"
+                            f"{FAILS_BEFORE_RESTART}) — события не идут\n")
+                        if fails >= FAILS_BEFORE_RESTART:
+                            _outage(f"connection failed x{fails} — "
+                                    f"restart for fresh env")
+                            sys.stderr.write(
+                                "tg-watch: outage -> exit(75), systemd "
+                                "перезапустит с актуальным env\n")
+                            os._exit(75)
+                    else:
+                        if fails:
+                            sys.stderr.write(
+                                "tg-watch: связь восстановлена\n")
+                        fails = 0
+                    if ticks % 10 == 0:  # ~5 мин живое биение
+                        sys.stderr.write(
+                            f"tg-watch: alive topic={topic} connected="
+                            f"{client.is_connected()} seen={seen}\n")
+
             async def on_new_message(event):
                 nonlocal seen
                 m = event.message
@@ -293,6 +352,29 @@ def main(argv):
                 row = await _row(client, m, topic)
                 print(json.dumps(row, ensure_ascii=False), flush=True)
                 seen += 1
+
+            client.add_event_handler(
+                on_new_message,
+                events.NewMessage(chats=ent, incoming=True, outgoing=True))
+            sys.stderr.write(f"tg-watch: как {me.username or me.id} -> "
+                             f"{group} topic={topic} слушается "
+                             f"(сессия-копия {os.path.basename(session)}, "
+                             f"лимит {limit_seconds or '∞'}с, "
+                             f"heartbeat {HEARTBEAT_EVERY}с)\n")
+
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                try:
+                    loop.add_signal_handler(sig, stop.set)
+                except NotImplementedError:
+                    pass  # не-posix: дефолтное поведение сигнала
+
+            hb = asyncio.create_task(heartbeat())
+            try:
+                await _wait_or_stop(stop, limit_seconds)
+            finally:
+                hb.cancel()
+            await client.disconnect()
 
             client.add_event_handler(
                 on_new_message,
