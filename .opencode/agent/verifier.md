@@ -1,7 +1,7 @@
 ---
 description: "Верификатор dotfiles. Проверяет применимость изменений перед apply: синтаксис, dry-run stow, конфликты симлинков. Не редактирует, только вердикт PASS/FAIL."
 mode: subagent
-model: nvidia/z-ai/glm-5.3-flash
+model: nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 temperature: 0.1
 steps: 15
 permission:
