@@ -331,7 +331,8 @@ async def _download(client, m, name):
     os.makedirs(ATTACH_DIR, mode=0o700, exist_ok=True)
     safe = "".join(c for c in name if c not in "/\\\0").strip() or "file"
     dest = os.path.join(ATTACH_DIR, f"{m.id}_{safe}")
-    return await client.download_media(m, file=dest)
+    return await _with_timeout("download " + safe,
+                               client.download_media(m, file=dest))
 
 
 def _photo_size(m):
@@ -353,7 +354,22 @@ async def _download_images(client, m, fname):
         dest = os.path.join(ATTACH_DIR, safe)
     else:
         dest = os.path.join(ATTACH_DIR, f"{m.id}_{safe}")
-    return await client.download_media(m, file=dest)
+    return await _with_timeout("images " + safe,
+                               client.download_media(m, file=dest))
+
+
+ATTACH_TIMEOUT = int(os.environ.get("TG_ATTACH_TIMEOUT", "60"))
+
+
+async def _with_timeout(what, coro):
+    """Явный таймаут вместо молчаливого hang (инцидент control-top
+    2026-10-28: в tor-режиме download висел 120с без вывода)."""
+    try:
+        return await asyncio.wait_for(coro, timeout=ATTACH_TIMEOUT)
+    except asyncio.TimeoutError:
+        sys.exit(f"tg-attach: ТАЙМАУТ {ATTACH_TIMEOUT}с на {what} — отказ "
+                 f"(не молчаливый hang). Проверь прокси-режим "
+                 f"(TG_PROXY) и повтори.")
 
 
 def _sha256(path):

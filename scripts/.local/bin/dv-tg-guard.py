@@ -343,6 +343,53 @@ def main(argv):
                                      % (type(e).__name__, e))
                 seen += 1
 
+            # Heartbeat + outage (инцидент tg-guard-journal-silent-20261028)
+            outage_file = os.path.join(
+                os.path.dirname(JOURNAL), "guard-outage.jsonl")
+            fails_dv = 0
+
+            def _outage_dv(reason):
+                try:
+                    os.makedirs(os.path.dirname(outage_file), exist_ok=True)
+                    with open(outage_file, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "ts": int(time.time()),
+                            "iso": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime()),
+                            "class": "connection-outage",
+                            "profile": "dv", "topic": topic,
+                            "reason": reason[:200]}, ensure_ascii=False) + "\n")
+                except Exception:  # noqa: BLE001
+                    pass
+
+            async def heartbeat_dv():
+                nonlocal fails_dv
+                ticks = 0
+                while True:
+                    await asyncio.sleep(30)
+                    ticks += 1
+                    if not client.is_connected():
+                        fails_dv += 1
+                        sys.stderr.write(
+                            f"dv-tg-guard: heartbeat: НЕТ СВЯЗИ ({fails_dv}/4)\n")
+                        if fails_dv >= 4:
+                            _outage_dv(f"connection failed x{fails_dv}")
+                            sys.stderr.write(
+                                "dv-tg-guard: outage -> exit(75), systemd "
+                                "перезапустит\n")
+                            os._exit(75)
+                    else:
+                        if fails_dv:
+                            sys.stderr.write(
+                                "dv-tg-guard: связь восстановлена\n")
+                        fails_dv = 0
+                    if ticks % 10 == 0:
+                        sys.stderr.write(
+                            f"dv-tg-guard: alive topic={topic} "
+                            f"connected={client.is_connected()}\n")
+
+            asyncio.create_task(heartbeat_dv())
+
             client.add_event_handler(
                 on_new_message,
                 events.NewMessage(chats=ent, incoming=True, outgoing=True))
