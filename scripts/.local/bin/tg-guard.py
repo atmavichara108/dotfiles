@@ -335,6 +335,55 @@ def main(argv):
             client.add_event_handler(
                 on_new_message,
                 events.NewMessage(chats=ent, incoming=True, outgoing=True))
+
+            # Heartbeat + outage-visibility (инцидент tg-guard-journal-
+            # silent-20261028): тишина стоража ≠ здоровье. Каждые 30с
+            # состояние связи; 4 последовательных обрыва → outage-запись в
+            # state профиля + exit(75) — systemd перезапустит с свежим env.
+            outage_file = os.path.join(
+                os.path.dirname(JOURNAL), "guard-outage.jsonl")
+            fails = 0
+
+            def _outage(reason):
+                try:
+                    os.makedirs(os.path.dirname(outage_file), exist_ok=True)
+                    with open(outage_file, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "ts": int(time.time()),
+                            "iso": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                 time.gmtime()),
+                            "class": "connection-outage",
+                            "profile": "ssa", "topic": topic,
+                            "reason": reason[:200]}, ensure_ascii=False) + "\n")
+                except Exception:  # noqa: BLE001
+                    pass
+
+            async def heartbeat():
+                nonlocal fails
+                ticks = 0
+                while True:
+                    await asyncio.sleep(30)
+                    ticks += 1
+                    if not client.is_connected():
+                        fails += 1
+                        sys.stderr.write(
+                            f"tg-guard: heartbeat: НЕТ СВЯЗИ ({fails}/4)\n")
+                        if fails >= 4:
+                            _outage(f"connection failed x{fails}")
+                            sys.stderr.write(
+                                "tg-guard: outage -> exit(75), systemd "
+                                "перезапустит\n")
+                            os._exit(75)
+                    else:
+                        if fails:
+                            sys.stderr.write("tg-guard: связь восстановлена\n")
+                        fails = 0
+                    if ticks % 10 == 0:
+                        sys.stderr.write(f"tg-guard: alive topic={topic} "
+                                          f"connected={client.is_connected()}\n")
+
+            hb = asyncio.create_task(heartbeat())
+
             sys.stderr.write(
                 f"tg-guard: как {me.username or me.id} -> {group} "
                 f"topic={topic}, журнал {JOURNAL}, wake fail-open -> "
