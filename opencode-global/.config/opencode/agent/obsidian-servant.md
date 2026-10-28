@@ -3,7 +3,7 @@ description: "SerO Служитель Обсидиан — primary-агент э
 mode: primary
 temperature: 0.2
 steps: 60
-model: nvidia/z-ai/glm-5.3-flash
+model: nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 permission:
   doom_loop: ask
   external_directory:

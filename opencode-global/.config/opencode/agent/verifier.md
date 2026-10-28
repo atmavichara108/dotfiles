@@ -1,7 +1,7 @@
 ---
 description: Strict acceptance verifier. Checks work against DoD. Returns PASS/FAIL, never edits.
 mode: subagent
-model: nvidia/z-ai/glm-5.3-flash
+model: nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
 temperature: 0.1
 steps: 12
 permission:
