@@ -23,7 +23,7 @@ DEFAULT_CONFIG = DOTFILES / "opencode-global/.config/opencode/opencode.jsonc"
 DEFAULT_SNAPSHOT = Path.home() / "Projects/OpenCode-Vault/control-plane/model-catalog.json"
 API_URL = "https://models.dev/api.json"
 # Встроенные провайдеры OpenCode: не объявлены в конфиге, но резолвятся runtime.
-BUILTIN_PROVIDERS = ("opencode", "opencode-go")
+BUILTIN_PROVIDERS = ("opencode", "opencode-go", "nvidia")
 
 
 def load_jsonc(path: Path) -> dict:
