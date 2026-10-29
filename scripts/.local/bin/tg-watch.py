@@ -106,10 +106,20 @@ def _valid_suffix(suffix):
 
 
 def prepare_session(suffix):
-    """Копия сессии для изоляции конкуренции. -> путь к сессии watch."""
+    """Сессия watch: ПРЕДПОЧТИТЕЛЬНО отдельный логин (own), иначе копия.
+
+    Инцидент INC-23: копия базовой сессии = тот же auth-key, события уходят
+    основному клиенту, watch молчит без ошибок. Поэтому:
+      1. если есть own-сессия (своя auth): <stem>-own<suffix>.session —
+         используем её (создаётся владельцем: tg-login --session-name);
+      2. иначе — прежняя копия (легаси, с предупреждением в stderr).
+    """
     if not _valid_suffix(suffix):
         sys.exit(f"tg-watch: небезопасный --session-suffix {suffix!r} — "
                  f"отказ (только имя файла без путей, см. --help)")
+    own = os.path.join(STATE_DIR, f"{_SESSION_STEM}-own{suffix}.session")
+    if os.path.exists(own):
+        return own
     session = os.path.join(STATE_DIR, f"{_SESSION_STEM}{suffix}.session")
     if not os.path.exists(session):
         if not os.path.exists(SESSION):
@@ -117,8 +127,10 @@ def prepare_session(suffix):
                      " — сначала залогинься (tg-login.py) — отказ")
         os.makedirs(STATE_DIR, mode=0o700, exist_ok=True)
         shutil.copyfile(SESSION, session)
-        sys.stderr.write(f"tg-watch: копия сессии создана из базовой -> "
-                         f"{session} (независимый логин, конкуренции нет)\n")
+        sys.stderr.write(f"tg-watch: ВНИМАНИЕ: копия базовой сессии "
+                         f"(инцидент INC-23 — события могут не приходить). "
+                         f"Отдельный вход: tg-login.py --session-name "
+                         f"{_SESSION_STEM}-own{suffix}.session\n")
     return session
 
 
