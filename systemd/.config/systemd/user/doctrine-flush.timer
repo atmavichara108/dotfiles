@@ -1,0 +1,10 @@
+[Unit]
+Description=doctrine-flush каждые 300с (tension-пары → ребра automatically)
+
+[Timer]
+OnBootSec=120s
+OnUnitActiveSec=300s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
