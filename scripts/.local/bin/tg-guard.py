@@ -70,8 +70,8 @@ JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
 OUR_USER = os.environ.get("TG_OWNER", "Atma_Vichara108")  # username владельца
 COORD_SID = os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова (если задан)
-COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
-               or _os.environ.get("DV_WAKE_SESSION_TITLE")
+COORD_TITLE = (os.environ.get("TG_WAKE_SESSION_TITLE")
+               or os.environ.get("DV_WAKE_SESSION_TITLE")
                or "Control top")  # иначе — резолв по названию
 SERVICE_JSON = os.path.expanduser("~/.config/opencode/service.json")
 OPENCODE_ENDPOINT = os.environ.get("OPENCODE_ENDPOINT",
@@ -317,7 +317,7 @@ def main(argv):
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
                 chat_scope = bool(watch._PROFILE.get("chat_scope"))
-                incoming = (row.get("from") or "") != OUR_USER
+                incoming = (row.get("from") or "") != (me.username or OUR_USER)  # свой = аккаунт моста (переобувка 10-29)
                 if chat_scope:
                     # Жёсткая граница портала: чужие пишутся только в
                     # журнал; зов координатора — ТОЛЬКО от владельца.

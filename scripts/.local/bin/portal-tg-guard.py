@@ -260,7 +260,8 @@ def main(argv):
     if topic is None:
         sys.exit("portal-tg-guard: нет --topic ID — отказ "
                  "(fail-closed, group-wide запрещён; см. --help)")
-    if topic not in ALLOWED_TOPICS:
+    chat_scope = bool(watch._PROFILE.get("chat_scope"))
+    if not chat_scope and topic not in ALLOWED_TOPICS:
         sys.exit(f"portal-tg-guard: topic {topic} вне разрешённого scope "
                  f"(разрешён: {sorted(ALLOWED_TOPICS)}) — отказ ДО env/сети "
                  f"(см. --help)")
@@ -303,16 +304,18 @@ def main(argv):
                                   proxy=proxy) as client:
             me = await client.get_me()
             ent = await client.get_entity(int(group))
-            topics = await watch._topic_ids(client, ent)
-            if topic not in topics:
-                sys.exit(f"portal-tg-guard: топика {topic} нет в группе "
-                         f"(есть: {sorted(topics)}) — отказ")
+            if not chat_scope:
+                topics = await watch._topic_ids(client, ent)
+                if topic not in topics:
+                    sys.exit(f"portal-tg-guard: топика {topic} нет в группе "
+                             f"(есть: {sorted(topics)}) — отказ")
 
             async def on_new_message(event):
                 nonlocal seen, woken
                 m = event.message
-                # Фильтр топика в обработчике (как в ядре): наружу — только 33.
-                if watch._thread_of(m) != topic:
+                # Фильтр топика в обработчике (как в ядре): chat-scope — весь чат,
+                # форум-профили — только свой топик.
+                if not chat_scope and watch._thread_of(m) != topic:
                     return
                 try:
                     row = await watch._row(client, m, topic)
@@ -324,6 +327,10 @@ def main(argv):
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
                 incoming = (row.get("from") or "") != OUR_USER
+                if chat_scope:
+                    # Жёсткая граница портала: чужие пишутся только в
+                    # журнал; зов координатора — ТОЛЬКО от владельца.
+                    incoming = (row.get("from") or "") == OUR_USER
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
                 if incoming:
