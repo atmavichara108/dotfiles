@@ -89,7 +89,6 @@ def reshoe(name, maya, backup_dir, apply_):
                 shutil.move(session, dst)
         else:
             actions.append("сессия: уже maya-размера (возможно, переобута) — сверка whoami обязательна")
-    shutil.copytree_noop = None  # noqa
     if not os.path.exists(session):
         actions.append(f"сессия: копия Maya -> {session}")
         if apply_:
