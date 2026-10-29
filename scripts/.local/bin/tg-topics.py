@@ -28,6 +28,7 @@ USAGE = """tg-topics <list|create|rename> ...
   list                      форум-топики чата: id + title
   create "<название>"        создать топик (нужны права админа)
   rename <topic_id> "<...>"  переименовать топик
+  pin <topic_id> <message_id>  закрепить сообщение в топике
 Профиль: TG_PROFILE=portal (обёртка portal-tg-topics)."""
 
 
@@ -49,7 +50,7 @@ async def main():
     from telethon import TelegramClient
     from telethon.tl.functions.messages import (
         CreateForumTopicRequest, EditForumTopicRequest,
-        GetForumTopicsRequest)
+        GetForumTopicsRequest, UpdatePinnedForumTopicRequest)
 
     async with TelegramClient(SESSION, int(env["TG_API_ID"]),
                               env["TG_API_HASH"],
@@ -96,6 +97,20 @@ async def main():
                          + type(e).__name__ + "): " + str(e)[:200])
             print(json.dumps({"renamed": True, "id": int(argv[1]),
                               "title": argv[2].strip()}, ensure_ascii=False))
+            return
+
+        if cmd == "pin":
+            if len(argv) < 3:
+                sys.exit("tg-topics: pin требует topic_id и message_id")
+            tid, mid = int(argv[1]), int(argv[2])
+            try:
+                await client(UpdatePinnedForumTopicRequest(
+                    peer=ent, topic_id=tid, message_id=mid))
+            except Exception as e:  # noqa: BLE001
+                sys.exit("tg-topics: закрепление не удалось ("
+                         + type(e).__name__ + "): " + str(e)[:200])
+            print(json.dumps({"pinned": True, "topic": tid,
+                              "message": mid}, ensure_ascii=False))
             return
 
         sys.exit("tg-topics: неизвестная команда (см. --help)")
