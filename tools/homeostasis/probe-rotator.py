@@ -23,11 +23,14 @@ CONFIG = os.path.expanduser("~/.config/promo-provider-probe/config.json")
 PROBE = os.path.expanduser("~/dotfiles/scripts/.local/bin/promo-provider-probe")
 OUT_DIR = os.path.expanduser("~/.local/state/opencode/rotator")
 JOURNAL = os.path.join(OUT_DIR, "journal.jsonl")
-# Согласованный с УАС/ЦУ путь телеметрии (2026-10-27): живой прогон — кэш в
-# state (быстро, локально), каноническая свод — append-only в волт (тот же
-# файл, что пишет УАС-стандарт). Один источник правды для прибора «Ротатор».
+# Вердикт ЦУ 2026-10-29 (portal-formalities-done п.4): канонический писатель
+# журнала телеметрии — ОДИН (зонд УАСа, control-plane/telemetry/provider-
+# health.jsonl). Эта проба остаётся ЛОКАЛЬНЫМ кэшем: пишет только в state
+# (~/.local/state/opencode/rotator/), в волт-журнал — НИКОГДА по умолчанию.
+# Запись в волт возможна лишь явным opt-in (VAULT_TELEMETRY=1) для отладки.
 VAULT_TELEMETRY = os.environ.get(
     "VAULT_TELEMETRY",
+    "" if os.environ.get("VAULT_TELEMETRY_OPT_IN") != "1" else
     os.path.expanduser(
         "~/Projects/OpenCode-Vault/control-plane/telemetry/provider-health.jsonl"))
 
@@ -99,7 +102,9 @@ def telemetry_line(row, ts):
 
 
 def vault_append(rows, ts):
-    """Append-only свод в канонический файл волта (SSOT для прибора)."""
+    """Опциональная (opt-in) сводка в волт — по умолчанию выключена."""
+    if not VAULT_TELEMETRY:
+        return False
     try:
         os.makedirs(os.path.dirname(VAULT_TELEMETRY), exist_ok=True)
         with open(VAULT_TELEMETRY, "a", encoding="utf-8") as f:
