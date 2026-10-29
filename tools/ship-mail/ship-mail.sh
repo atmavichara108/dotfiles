@@ -155,6 +155,11 @@ cmd_inbox() {
     title="$(frontmatter_field "$f" title)"
     printf '%s  %s  %s\n' "$(basename "$f")" "$from" "$title"
   done < <(unread_files "$sid")
+  # --- «Активное ожидание» (слово владельца 2026-10-27): пустое ожидание
+  # дольше TTL = дефект. Блок просроченного показывается при каждом inbox.
+  if [ -x "$(command -v python3)" ] && [ -f "$MAIL_HOME/waits.jsonl" ]; then
+    python3 "$(dirname "$0")/waits.py" overdue 2>/dev/null | rg 'ПРОСРОЧЕНО|WAITS-OVERDUE' || true
+  fi
 }
 
 cmd_show() {
