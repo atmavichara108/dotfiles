@@ -70,17 +70,17 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 | Агент | Тип | Роль | Модель (ярус) |
 |-------|-----|------|---------------|
 | **sysop** | primary | Оператор-оркестратор Manjaro: планирует, пишет, делегирует субагентам | `opencode/muse-spark-1.3-contributor-free` · Free |
-| **qtile-dev** | subagent | Qtile (WM, виджеты, Python) | `justwoker/claude-opus-4-8#max` · Strategic |
-| **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `justwoker/claude-opus-4-8#max` · Strategic |
-| **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `justwoker/claude-opus-4-8#max` · Strategic |
-| **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `justwoker/claude-opus-4-8#max` · Strategic |
+| **qtile-dev** | subagent | Qtile (WM, виджеты, Python) | `amd-radeon/DeepSeek-V4.1-Flash` · Strategic |
+| **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `amd-radeon/DeepSeek-V4.1-Flash` · Strategic |
+| **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `amd-radeon/DeepSeek-V4.1-Flash` · Strategic |
+| **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `amd-radeon/GLM-5.3-Flash` · Strategic |
 | **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `nvidia/meta/muse-glimmer-30b` · Free |
 | **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `anymodel/cx/gpt-5.6-sol` |
-| **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `justwoker/claude-opus-4-8#max` · Strategic |
-| **system-ops** | subagent (global) | approval-gated high-risk apply planning | `justwoker/claude-opus-4-8#max` · Strategic |
-| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `justwoker/claude-opus-4-8#max` · Strategic |
+| **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `amd-radeon/GLM-5.3-Flash` · Strategic |
+| **system-ops** | subagent (global) | approval-gated high-risk apply planning | `amd-radeon/DeepSeek-V4.1-Flash` · Strategic |
+| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `amd-radeon/GLM-5.3-Flash` · Strategic |
 | **researcher** | subagent (global) | Read-only research: code, files, git, docs, web | `opencode-go/glm-5.3-flash` · Go |
-| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `justwoker/claude-opus-4-8#max` · Strategic |
+| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `amd-radeon/GLM-5.3-Flash` · Strategic |
 
 Роутинг субагентов задаёт primary `sysop`: `task(agent=…)` под конкретную задачу. Нет задачи из чьей-то зоны → primary делает сам, для несвойственной себе работы не молча отдаёт `general`.
 
