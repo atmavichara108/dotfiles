@@ -3,7 +3,7 @@
   "model": "opencode-go/glm-5.3-flash",
   "agent": {},
   "agents": {},
-  "experimental": { "todo": true },
+  "experimental": { "todo": true, "image_generate": true },
   "mcp": {
     "owner-gate": {
       "type": "local",
