@@ -68,10 +68,33 @@ _SPEC.loader.exec_module(watch)  # безопасно: main под __main__-га
 JOURNAL_DIR = os.path.expanduser("~/.local/state/ssa-tg")
 JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
-OUR_USER = os.environ.get("TG_OWNER", "Atma_Vichara108")  # username владельца
-COORD_SID = os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова (если задан)
-COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
-               or _os.environ.get("DV_WAKE_SESSION_TITLE")
+# OWN — аккаунт СЕССИИ (чьим ключом работает сторож); OWNER — капитан
+# (чьи команды будят координатора). Без явных TG_OWN/TG_OWNER в chat-scope
+# сторож откажет (не угадывает — урок инверсии границы, ЦУ 2026-10-29).
+OUR_USER = (os.environ.get("TG_OWN")
+            or os.environ.get("DV_OUR_USER", "Atma_Vichara108"))
+OWNER = os.environ.get("TG_OWNER", "")
+COORD_SID = os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова
+
+
+def classify_sender(frm, chat_scope, our_user=None, owner=None):
+    """-> (cls, reason): wake | own | non-owner.
+
+    Легаси (не chat-scope): чужое → wake, своё → own.
+    Portal (chat-scope): капитан → wake; аккаунт сессии (эхо) → own;
+    прочие → non-owner (только журнал, зова нет).
+    """
+    our_user = our_user if our_user is not None else OUR_USER
+    owner = owner if owner is not None else OWNER
+    if not chat_scope:
+        return ("wake" if (frm or "") != our_user else "own", "legacy")
+    if (frm or "") == owner:
+        return ("wake", "owner-command")
+    if (frm or "") == our_user:
+        return ("own", "session-echo")
+    return ("non-owner", "portal:only-owner")
+COORD_TITLE = (os.environ.get("TG_WAKE_SESSION_TITLE")
+               or os.environ.get("DV_WAKE_SESSION_TITLE")
                or "Control top")  # иначе — резолв по названию
 SERVICE_JSON = os.path.expanduser("~/.config/opencode/service.json")
 OPENCODE_ENDPOINT = os.environ.get("OPENCODE_ENDPOINT",
@@ -256,6 +279,9 @@ def main(argv):
                  f"(см. --help)")
     if watch._PROFILE.get("chat_scope") and topic is None:
         topic = 0  # chat-scope (portal): весь чат
+    if watch._PROFILE.get("chat_scope") and not (OUR_USER and OWNER):
+        sys.exit("tg-guard: chat-scope требует TG_OWN (аккаунт сессии) и "
+                 "TG_OWNER (капитан) — отказ без них (не угадываем)")
 
     env = watch.load_env(watch.ENV_FILE)
     api_id = env.get("TG_API_ID", "")
@@ -317,11 +343,10 @@ def main(argv):
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
                 chat_scope = bool(watch._PROFILE.get("chat_scope"))
-                incoming = (row.get("from") or "") != OUR_USER
-                if chat_scope:
-                    # Жёсткая граница портала: чужие пишутся только в
-                    # журнал; зов координатора — ТОЛЬКО от владельца.
-                    incoming = (row.get("from") or "") == OUR_USER
+                cls, reason = classify_sender(
+                    row.get("from"), chat_scope,
+                    our_user=OUR_USER, owner=OWNER)
+                incoming = cls == "wake"
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
                 if incoming:
@@ -333,11 +358,11 @@ def main(argv):
                         entry["wake_err"] = err
                     if status == "ok":
                         woken += 1
-                elif not chat_scope:
+                elif not chat_scope or cls == "own":
                     entry["wake"] = "skipped"  # своё — только аудит
                 else:
                     entry["wake"] = "skipped-non-owner"
-                    entry["boundary"] = "portal:only-owner"
+                    entry["boundary"] = reason
                 try:
                     journal_append(entry)
                 except Exception as e:  # noqa: BLE001
