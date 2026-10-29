@@ -1,0 +1,8 @@
+[Unit]
+Description=doctrine-flush — писатель рёбер contradicts (Р-030 бой доктрины)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/doctrine-flush/flush.py scan --write
+StandardOutput=journal
+StandardError=journal
