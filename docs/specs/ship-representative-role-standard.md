@@ -3,7 +3,7 @@ type: Spec
 kind: standard
 project: dotfiles
 title: Роль «представитель Корабля» — стандарт (кейс @AllIsMaya)
-status: canon-candidate
+status: canon (слово владельца 2026-10-29, реестр Р-Д-001/002/003; §6 портал включён)
 spec-home: docs/specs/
 timestamp: 2026-10-29
 owner: sysop (УАС — куратор по Р-004/Р-014)

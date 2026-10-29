@@ -3,7 +3,7 @@ type: Spec
 kind: standard
 project: dotfiles
 title: Роль «смотритель проекта» — стандарт (первый кейс: ДВ-Хаб)
-status: canon-candidate
+status: canon (слово владельца 2026-10-29 «утверждаю стандарт смотрителя», реестр Р-Д-003)
 spec-home: docs/specs/
 timestamp: 2026-10-25
 owner: sysop (УАС — куратор по Р-004/Р-014)
