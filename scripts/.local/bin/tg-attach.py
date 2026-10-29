@@ -39,6 +39,7 @@ metadata), никакого group-wide read.
 
 Зависимость: telethon (системно). Секреты — только ~/.config/ssa-tg/tg.env.
 """
+import asyncio
 import hashlib
 import json
 import os
