@@ -57,6 +57,20 @@ PROFILES = {
         "group_default": "-1004481532605",
         "journal": "journal.jsonl",
     },
+    "portal": {
+        "name": "portal",
+        "env_file": "~/.config/portal-tg/tg.env",
+        "session": "~/.local/state/portal-tg/portal.session",
+        "state_dir": "~/.local/state/portal-tg",
+        "group_key": "PORTAL_GROUP_ID",
+        # Капитанский портал: весь чат без форум-топиков (мандат ЦУ
+        # portal-profile-mandate 2026-10-29). scope = группа, не топик.
+        "chat_scope": True,
+        "allowed_topics": None,
+        "read_topics": None,
+        "group_default": "-1003786610623",
+        "journal": "journal.jsonl",
+    },
 }
 
 PREVIEW_MAX = 200
