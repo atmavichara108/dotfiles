@@ -80,7 +80,9 @@ JOURNAL_DIR = os.path.expanduser("~/.local/state/dv-tg")
 JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
 OUR_USER = _os.environ.get("DV_OUR_USER", "Atma_Vichara108")
-COORD_TITLE = _os.environ.get("DV_WAKE_SESSION_TITLE", "Control top")
+COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
+                 or _os.environ.get("DV_WAKE_SESSION_TITLE")
+                 or "Control top")
 SERVICE_JSON = os.path.expanduser("~/.config/opencode/service.json")
 OPENCODE_ENDPOINT = os.environ.get("OPENCODE_ENDPOINT",
                                    "http://127.0.0.1:49374")

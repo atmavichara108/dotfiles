@@ -44,6 +44,19 @@ PROFILES = {
         "group_default": "-1003818507530",  # только для dry-run до создания env
         "journal": "journal.jsonl",
     },
+    "serp": {
+        "name": "serp",
+        "env_file": "~/.config/serp-tg/tg.env",
+        "session": "~/.local/state/serp-tg/serp.session",
+        "state_dir": "~/.local/state/serp-tg",
+        "group_key": "SERP_GROUP_ID",
+        "allowed_topics": {186},
+        "read_topics": {186},
+        # тот же чат, что у SSA (t.me/c/4481532605 → -1004481532605),
+        # топик 186 — сервисный центр SERPlux (мандат ЦУ 2026-10-29)
+        "group_default": "-1004481532605",
+        "journal": "journal.jsonl",
+    },
 }
 
 PREVIEW_MAX = 200

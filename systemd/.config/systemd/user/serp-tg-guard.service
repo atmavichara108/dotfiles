@@ -1,0 +1,19 @@
+[Unit]
+Description=serp-tg-guard — постоянный push-сторож кабинета SERPlux (TG-топик 186: журнал + wake координатора)
+# Wake-канал — opencode-serve (fail-open: событие остаётся в журнале).
+# Название сессии координатора задаётся здесь; по умолчанию «Control top»
+# (если у SERPlux свой координатор — поправь строкой ниже по слову владельца).
+After=network-online.target opencode-serve.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/serp-tg-guard.py --topic 186
+Environment=TG_WAKE_SESSION_TITLE=Control top
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
