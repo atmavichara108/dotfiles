@@ -68,15 +68,18 @@ _SPEC.loader.exec_module(watch)  # безопасно: main под __main__-га
 JOURNAL_DIR = os.path.expanduser("~/.local/state/ssa-tg")
 JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
-OUR_USER = "Atma_Vichara108"  # username владельца = отправитель tg-send
-COORD_TITLE = "Control top"   # название сессии координатора (handshake)
+OUR_USER = os.environ.get("TG_OWNER", "Atma_Vichara108")  # username владельца
+COORD_SID = os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова (если задан)
+COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
+               or _os.environ.get("DV_WAKE_SESSION_TITLE")
+               or "Control top")  # иначе — резолв по названию
 SERVICE_JSON = os.path.expanduser("~/.config/opencode/service.json")
 OPENCODE_ENDPOINT = os.environ.get("OPENCODE_ENDPOINT",
                                    "http://127.0.0.1:49374")
 OPENCODE_SERVICE_USER = os.environ.get("OPENCODE_SERVICE_USER", "opencode")
 WAKE_TIMEOUT = 10.0
 PREVIEW = 200
-ALLOWED_TOPICS = watch.ALLOWED_TOPICS  # {33} — строже, из ядра
+ALLOWED_TOPICS = set(watch.ALLOWED_TOPICS)  # из ядра — строже, из ядра
 
 USAGE = """tg-guard --topic 33
 Постоянный push-сторож топика 33 (user-юнит tg-guard.service, Restart=always).
@@ -190,7 +193,7 @@ def wake_coord(row: dict):
             tok = _service_token()
             if not tok:
                 return "failed", "no service token (%s)" % SERVICE_JSON
-            sid = _coord_session_id or _resolve_coord_session(tok)
+            sid = COORD_SID or _coord_session_id or _resolve_coord_session(tok)
             if not sid:
                 return "failed", (
                     "coordinator session not found (title %r)" % COORD_TITLE)
@@ -247,10 +250,12 @@ def main(argv):
     if topic is None:
         sys.exit("tg-guard: нет --topic ID — отказ "
                  "(fail-closed, group-wide запрещён; см. --help)")
-    if topic not in ALLOWED_TOPICS:
+    if not watch._PROFILE.get("chat_scope") and topic not in ALLOWED_TOPICS:
         sys.exit(f"tg-guard: topic {topic} вне разрешённого scope "
                  f"(разрешён: {sorted(ALLOWED_TOPICS)}) — отказ ДО env/сети "
                  f"(см. --help)")
+    if watch._PROFILE.get("chat_scope") and topic is None:
+        topic = 0  # chat-scope (portal): весь чат
 
     env = watch.load_env(watch.ENV_FILE)
     api_id = env.get("TG_API_ID", "")
@@ -299,8 +304,9 @@ def main(argv):
                 nonlocal seen, woken
                 m = event.message
                 # Фильтр топика в обработчике (как в ядре): наружу — только 33.
-                if watch._thread_of(m) != topic:
-                    return
+                if not watch._PROFILE.get("chat_scope"):
+                    if watch._thread_of(m) != topic:
+                        return
                 try:
                     row = await watch._row(client, m, topic)
                 except Exception as e:  # noqa: BLE001 — одно сбойное
@@ -310,7 +316,12 @@ def main(argv):
                     return
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
+                chat_scope = bool(watch._PROFILE.get("chat_scope"))
                 incoming = (row.get("from") or "") != OUR_USER
+                if chat_scope:
+                    # Жёсткая граница портала: чужие пишутся только в
+                    # журнал; зов координатора — ТОЛЬКО от владельца.
+                    incoming = (row.get("from") or "") == OUR_USER
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
                 if incoming:
@@ -322,8 +333,11 @@ def main(argv):
                         entry["wake_err"] = err
                     if status == "ok":
                         woken += 1
+                elif not chat_scope:
+                    entry["wake"] = "skipped"  # своё — только аудит
                 else:
-                    entry["wake"] = "skipped"  # своё сообщение — только аудит
+                    entry["wake"] = "skipped-non-owner"
+                    entry["boundary"] = "portal:only-owner"
                 try:
                     journal_append(entry)
                 except Exception as e:  # noqa: BLE001

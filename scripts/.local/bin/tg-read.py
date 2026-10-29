@@ -64,8 +64,13 @@ async def main():
     if stray:
         sys.exit(f"tg-read: неизвестные аргументы {stray} — отказ (см. --help)")
     if topic is None:
-        sys.exit("tg-read: нет --topic ID — живое чтение запрещено "
-                 "(fail-closed, group-wide read отключён; см. --help)")
+        if _PROFILE.get("chat_scope"):
+            # chat-scope (portal): чтение ВСЕГО чата — легальный режим
+            # профиля, а не group-wide read (для обычных профилей запрещён).
+            pass
+        else:
+            sys.exit("tg-read: нет --topic ID — живое чтение запрещено "
+                     "(fail-closed, group-wide read отключён; см. --help)")
     # whitelist чтения профиля (dv: только свой кабинет) — отказ ДО сети
     read_scope = _PROFILE.get("read_topics")
     if read_scope is not None and topic not in read_scope:
@@ -73,7 +78,9 @@ async def main():
                                    "reason": "outside-read-scope"})
         sys.exit(f"tg-read: профиль {_PROFILE['name']}: чтение только топиков "
                  f"{sorted(read_scope)} — отказ ДО сети (см. --help)")
-    last_file = os.path.join(STATE_DIR, f"last_id_{topic}")
+    chat_scope = _PROFILE.get("chat_scope")
+    last_file = os.path.join(STATE_DIR, f"last_id_{topic}") if not chat_scope \
+        else os.path.join(STATE_DIR, "last_id_chat")
     if since is None and os.path.exists(last_file):
         with open(last_file) as f:
             since = int((f.read().strip() or "0"))
@@ -85,6 +92,10 @@ async def main():
     proxy = tg_profile.parse_proxy(env.get("TG_PROXY", ""))
     if not api_id or not api_hash or not group:
         sys.exit(f"tg-read: заполни TG_API_ID/TG_API_HASH/{_PROFILE['group_key']} в " + ENV_FILE)
+    if not os.path.exists(SESSION) or os.path.getsize(SESSION) == 0:
+        sys.exit("tg-bridge: нет действующей сессии " + SESSION + " — "
+                 "сначала вход: tg-login.py (профиль " + _PROFILE["name"]
+                 + "); пустой файл сессии убери, если появился")
     try:
         from telethon import TelegramClient
     except ImportError:
@@ -99,12 +110,16 @@ async def main():
     async with TelegramClient(SESSION, int(api_id), api_hash,
                               proxy=proxy) as client:
         ent = await client.get_entity(int(group))
-        topics = await _topic_ids(client, ent)
-        if topic not in topics:
-            sys.exit(f"tg-read: топика {topic} нет в группе "
-                     f"(есть: {sorted(topics)}) — отказ")
-        msgs = await client.get_messages(ent, limit=limit, min_id=since or 0,
-                                         reply_to=topic)
+        if chat_scope:
+            topics = None
+        else:
+            topics = await _topic_ids(client, ent)
+            if topic not in topics:
+                sys.exit(f"tg-read: топика {topic} нет в группе "
+                         f"(есть: {sorted(topics)}) — отказ")
+        msgs = await client.get_messages(
+            ent, limit=limit, min_id=since or 0,
+            **({} if chat_scope else {"reply_to": topic}))
         out = []
         for m in sorted(msgs, key=lambda x: x.id):
             sender = ""
@@ -125,7 +140,8 @@ async def main():
         if save and out:
             with open(last_file, "w") as f:
                 f.write(str(out[-1]["id"]))
-        sys.stderr.write(f"tg-read: topic={topic} новых={len(out)} "
+        scope_txt = "chat" if chat_scope else f"topic={topic}"
+        sys.stderr.write(f"tg-read: {scope_txt} новых={len(out)} "
                          f"(since={since or 0})\n")
 
 

@@ -58,7 +58,7 @@ _PROFILE = tg_profile.profile()
 ENV_FILE, SESSION, STATE_DIR = tg_profile.paths()
 
 # Живое чтение — только топики scope профиля (симметрия tg-send/tg-attach).
-ALLOWED_TOPICS = set(_PROFILE["allowed_topics"])
+ALLOWED_TOPICS = set(_PROFILE.get("allowed_topics") or [])
 _SESSION_STEM = os.path.splitext(os.path.basename(SESSION))[0]
 DEFAULT_SUFFIX = "-watch"
 PREVIEW_LIMIT = 200
@@ -252,10 +252,12 @@ def main(argv):
     if topic is None:
         sys.exit("tg-watch: нет --topic ID — живое слушание запрещено "
                  "(fail-closed, group-wide watch отключён; см. --help)")
-    if topic not in ALLOWED_TOPICS:
+    if not _PROFILE.get("chat_scope") and topic not in ALLOWED_TOPICS:
         sys.exit(f"tg-watch: topic {topic} вне разрешённого scope "
                  f"(разрешён: {sorted(ALLOWED_TOPICS)}) — отказ ДО env/сети "
                  f"(см. --help)")
+    if _PROFILE.get("chat_scope") and topic is None:
+        topic = 0  # chat-scope: чат слушается целиком
     if limit_seconds < 0:
         sys.exit("tg-watch: --limit-seconds не может быть отрицательным — "
                  "отказ (см. --help)")
@@ -359,7 +361,9 @@ def main(argv):
                 m = event.message
                 # Фильтр топика в обработчике (как _thread_of в canon):
                 # событие приходит на всю группу, наружу — только topic 33.
-                if _thread_of(m) != topic:
+                if _PROFILE.get("chat_scope"):
+                    pass  # chat-scope (portal): весь чат
+                elif _thread_of(m) != topic:
                     return
                 row = await _row(client, m, topic)
                 print(json.dumps(row, ensure_ascii=False), flush=True)

@@ -37,7 +37,7 @@ ENV_FILE, SESSION, _STATE_DIR = tg_profile.paths()
 
 # Живая отправка — только эти topics профиля (симметрия tg-attach/tg-upload);
 # --dry-run не ограничен и не ходит в сеть.
-ALLOWED_TOPICS = set(_PROFILE["allowed_topics"])
+ALLOWED_TOPICS = set(_PROFILE.get("allowed_topics") or [])
 
 USAGE = """tg-send --topic ID [--format md|plain] [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
   --topic ID   ID форумного топика (обязателен; без него отправки нет)
@@ -153,10 +153,10 @@ def main(argv):
     text = text.strip()
     if not text:
         sys.exit("tg-send: пустой текст — нечего отправлять")
-    if topic is None:
+    if topic is None and not _PROFILE.get("chat_scope"):
         sys.exit("tg-send: нет --topic ID — отправка запрещена "
                  "(fail-closed; см. --help)")
-    if not dry and topic not in ALLOWED_TOPICS:
+    if not dry and not _PROFILE.get("chat_scope") and topic not in ALLOWED_TOPICS:
         sys.exit(f"tg-send: topic {topic} вне разрешённого scope для живой "
                  f"отправки (разрешён: {sorted(ALLOWED_TOPICS)}) — отказ "
                  f"ДО env/сети; --dry-run безвреден для любого topic "
@@ -175,6 +175,10 @@ def main(argv):
         # placeholder группы из профиля, секретов нет, сеть не нужна
         tg_profile.journal_append({"action": "dry-run-noenv", "topic": topic,
                                    "reason": "env-missing-placeholder"})
+    if not os.path.exists(SESSION) or os.path.getsize(SESSION) == 0:
+        sys.exit("tg-bridge: нет действующей сессии " + SESSION + " — "
+                 "сначала вход: tg-login.py (профиль " + _PROFILE["name"]
+                 + "); пустой файл сессии убери, если появился")
     try:
         from telethon import TelegramClient
     except ImportError:
@@ -191,7 +195,8 @@ def main(argv):
     if warning:
         sys.stderr.write(warning + "\n")
     if dry:
-        _print_dry_run(group, topic, fmt, text, wire, entities)
+        _print_dry_run(group, topic if topic else "chat", fmt, text, wire,
+                       entities)
         tg_profile.journal_append({"action": "dry-run", "topic": topic, "fmt": fmt,
                                    "entities": len(entities) if entities else 0,
                                    "text_preview": tg_profile.preview(text)})
@@ -202,16 +207,22 @@ def main(argv):
                                   proxy=proxy) as client:
             me = await client.get_me()
             ent = await client.get_entity(int(group))
-            topics = await _topic_ids(client, ent)
-            if topic not in topics:
-                sys.exit(f"tg-send: топика {topic} нет в группе "
-                         f"(есть: {sorted(topics)}) — отказ")
+            chat_scope = bool(_PROFILE.get("chat_scope"))
+            if chat_scope:
+                topics = None
+            else:
+                topics = await _topic_ids(client, ent)
+                if topic not in topics:
+                    sys.exit(f"tg-send: топика {topic} нет в группе "
+                             f"(есть: {sorted(topics)}) — отказ")
+            scope_txt = "chat" if chat_scope else f"topic={topic}"
             sys.stderr.write(f"tg-send: как {me.username or me.id} -> {group} "
-                             f"topic={topic} format={fmt}\n")
-            msg = await client.send_message(ent, wire, reply_to=topic,
-                                            parse_mode=None,
-                                            formatting_entities=entities)
-            print(f"tg-send: ok id={msg.id} topic={topic}")
+                             f"{scope_txt} format={fmt}\n")
+            msg = await client.send_message(
+                ent, wire,
+                **({} if chat_scope else {"reply_to": topic}),
+                parse_mode=None, formatting_entities=entities)
+            print(f"tg-send: ok id={msg.id} {scope_txt}")
             tg_profile.journal_append({"action": "sent", "topic": topic,
                                        "msg_id": msg.id, "fmt": fmt,
                                        "text_preview": tg_profile.preview(text)})
