@@ -36,7 +36,7 @@ permission:
     "git clean*": deny
     "rm -rf*": deny
     "rm*": deny
-    "ssh*": deny
+    "ssh*": ask
     "npm publish*": deny
     "systemctl stop*": deny
     "systemctl disable*": deny
