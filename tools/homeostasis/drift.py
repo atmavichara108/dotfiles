@@ -133,11 +133,13 @@ def axis_claims(alive_cache=None):
 
 
 def _find_by_prefix(prefix):
-    """Живая сессия, чей id начинается с prefix (лечение усечённых id)."""
+    """Живая сессия, чей id начинается с prefix (лечение усечённых id).
+
+    Список сессий постраничный (envelope + cursor) — обходим страницы
+    (учло: 1000+ сессий, полный id может быть на любой странице).
+    """
     if not prefix.startswith("ses_"):
         return None
-    import base64
-    import urllib.request
     try:
         tok = json.load(open(os.path.expanduser(
             "~/.config/opencode/service.json"),
@@ -146,17 +148,25 @@ def _find_by_prefix(prefix):
         return None
     if not tok:
         return None
-    req = urllib.request.Request(
-        "http://127.0.0.1:49374/api/session",
-        headers={"Authorization": "Basic " + base64.b64encode(
-            f"opencode:{tok}".encode()).decode()})
+    headers = {"Authorization": "Basic " + base64.b64encode(
+        f"opencode:{tok}".encode()).decode()}
+    url = "http://127.0.0.1:49374/api/session"
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
-            body = json.loads(r.read().decode())
-        rows = body.get("data", body) if isinstance(body, dict) else body
-        for s in rows:
-            if isinstance(s, dict) and str(s.get("id", "")).startswith(prefix):
-                return s.get("id")
+        for _ in range(20):
+            with urllib.request.urlopen(urllib.request.Request(
+                    url, headers=headers), timeout=15) as r:
+                body = json.loads(r.read().decode())
+            rows = body.get("data", body) if isinstance(body, dict) else body
+            for sess in rows:
+                if isinstance(sess, dict) and \
+                        str(sess.get("id", "")).startswith(prefix):
+                    return sess.get("id")
+            nxt = body.get("cursor", {}).get("next") \
+                if isinstance(body, dict) else None
+            if not (isinstance(nxt, str) and nxt):
+                return None
+            url = ("http://127.0.0.1:49374/api/session?cursor="
+                   + urllib.parse.quote(nxt, safe=""))
     except Exception:  # noqa: BLE001
         pass
     return None
