@@ -1,7 +1,7 @@
 ---
 description: Специалист по файловым операциям dotfiles. Массовый stow, реструктуризация пакетов, исправление дрейфа, создание симлинков, миграция конфигов из ~/.config в dotfiles.
 mode: subagent
-model: amd-radeon/GLM-5.3-Flash
+model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
 steps: 25
 permission:

@@ -1,7 +1,7 @@
 ---
 description: "Мастерская Багфикс (Mechanic) — primary потока оперативного ремонта: инциденты INC, багфиксы на лету, метод incident-fix. Чинит сломанное, создаёт — Инженерный Центр (Master-enginer)."
 mode: primary
-model: amd-radeon/GLM-5.3-Flash
+model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
 steps: 30
 permission:

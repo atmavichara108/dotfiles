@@ -1,7 +1,7 @@
 ---
 description: "Инженерный Центр (ИЦ) — primary департамента разработки dotfiles: интеграция, фичи, операционное ядро. Создаёт новое; чинит сломанное — через поток Мастерской (Mechanic)."
 mode: primary
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.2
 steps: 30
 permission:
