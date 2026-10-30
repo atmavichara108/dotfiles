@@ -31,6 +31,29 @@ CARD_MAX_AGE_D = 1.0
 INCIDENT_MAX_AGE_D = 7.0
 PROTECTED_RISKS = ("high", "critical")
 
+# Канон Р-035 (danger-patterns.md, слово владельца 2026-10-30):
+# детерминированный сканер вместо выборочного чтения глазами.
+# Попадание = исключение → только владельцу; не попало = шум → авто-закрытие.
+DANGER_PATTERNS = {
+    "удаление": ["rm -rf", "git reset --hard", "git clean", "git branch -D"],
+    "секреты": ["~/.secrets", ".env", "токен", "ключ", "парол"],
+    "наружу": ["git push", "curl", "wget", "smtp", "resend"],
+    "полномочия": ["sudo", "chmod", "systemctl", "ssh"],
+    "чужая-зона": [".mcode/", ".ssh/", "~/.config/opencode"],
+    "обход-гейтов": ["GARBAGE_OK=1", "FRONTMATTER_OK=1", "MIXED_OK=1",
+                     "AGENT_PERMS_OK=1", "MOJIBAKE_OK=1", "--force"],
+}
+
+
+def _danger_match(d):
+    """Первое попадание под паттерн (или None). Ищем в pattern/reason/title."""
+    blob = " ".join(str(d.get(k, "")) for k in ("pattern", "reason", "title"))
+    for label, needles in DANGER_PATTERNS.items():
+        for n in needles:
+            if n.lower() in blob.lower():
+                return f"{label}:{n}"
+    return None
+
 
 def _age_d(ts):
     """Возраст в днях: unix-int или ISO-строка."""
@@ -51,7 +74,8 @@ def _append(path, row):
 
 def scan_cards(write=False):
     """Карточки: resolved-auto / protected-mark."""
-    stats = {"total": 0, "auto": 0, "protected": 0, "kept": 0}
+    stats = {"total": 0, "auto": 0, "protected": 0, "exception": 0,
+             "kept": 0}
     now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     for fn in sorted(os.listdir(CARDS)):
         if not fn.endswith(".json"):
@@ -73,21 +97,25 @@ def scan_cards(write=False):
             continue
         risk = str(d.get("risk", "")).lower()
         if risk in PROTECTED_RISKS:
-            # спец-пункт ЦУ: high/critical НЕ закрывать авто-закрытием —
-            # только метка (выборочная сверка владельцем 30 шт. — его слово)
-            if not d.get("gravewalk_mark"):
-                d["gravewalk_mark"] = now_iso
-                if write:
-                    with open(path, "w", encoding="utf-8") as f:
-                        json.dump(d, f, ensure_ascii=False)
-                _append(ARCHIVE, {"ts": now_iso, "kind": "card-protected",
-                                  "id": d.get("id"), "risk": risk,
-                                  "age_d": round(age, 1),
-                                  "note": "high/critical-with-allow: метка "
-                                          "только, авто-закрытие запрещено "
-                                          "до сверки владельцем"})
-            stats["protected"] += 1
-            continue
+            # Политика Р-035: сканер по danger-patterns. Попадание =
+            # исключение (показ владельцу); не попало = авто-закрытие
+            # с меткой policy-pass.
+            hit = _danger_match(d)
+            if hit:
+                if not d.get("gravewalk_exception"):
+                    d["gravewalk_exception"] = now_iso
+                    if write:
+                        with open(path, "w", encoding="utf-8") as f:
+                            json.dump(d, f, ensure_ascii=False)
+                    _append(os.path.expanduser(
+                        "~/.local/state/opencode/gravewalk/exceptions.jsonl"),
+                        {"ts": now_iso, "id": d.get("id"), "risk": risk,
+                         "match": hit, "age_d": round(age, 1),
+                         "pattern": str(d.get("pattern", ""))[:200],
+                         "note": "исключение Р-035: показ владельцу"})
+                stats["exception"] = stats.get("exception", 0) + 1
+                continue
+            d["gravewalk_policy_pass"] = now_iso
         d["status"] = "resolved-auto"
         d["resolved_auto_ts"] = now_iso
         if write:
