@@ -6,6 +6,19 @@ description: Режим одной цели: фиксация цели хода/
 
 Аргументы: `$ARGUMENTS`
 
+## CLI-инвокатор (headless)
+
+Для headless-вызовов (opencode run) slash-команда /goal недоступна.
+Используй cmdline-инвокатор:
+```
+python3 ~/dotfiles/tools/goal/goal.py set "objective" [--criteria "c1" "c2"] [--kill "условие"]
+python3 ~/dotfiles/tools/goal/goal.py show
+python3 ~/dotfiles/tools/goal/goal.py done [--evidence "факт"]
+python3 ~/dotfiles/tools/goal/goal.py drop [--reason "причина"]
+python3 ~/dotfiles/tools/goal/goal.py pause | resume | clear
+```
+Хранилище общее: ~/.local/state/opencode/goal.json.
+
 ## Хранилище
 
 Цель хранится в `~/.local/state/opencode/goal.json` (переживает ходы и компакт).
