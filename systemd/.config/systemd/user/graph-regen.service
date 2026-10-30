@@ -1,0 +1,8 @@
+[Unit]
+Description=graph-regen — цикл регенерации графа/hotmem (Task 5, мандат ЦУ)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/graph-regen/regen.py
+StandardOutput=journal
+StandardError=journal
