@@ -68,7 +68,7 @@ _SPEC.loader.exec_module(watch)  # безопасно: main под __main__-га
 JOURNAL_DIR = os.path.expanduser("~/.local/state/ssa-tg")
 JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
-OUR_USER = os.environ.get("TG_OWNER", "Atma_Vichara108")  # username владельца
+OWNERS = {x.lower() for x in os.environ.get("TG_OWNERS", "Atma_Vichara108,allismaya").split(",")}  # allow-list отправителей топика 33 (слово владельца 2026-10-30: Майя говорит за канал)
 COORD_SID = os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова (если задан)
 COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
                or _os.environ.get("DV_WAKE_SESSION_TITLE")
@@ -97,7 +97,7 @@ OPENCODE_ENDPOINT); сессия координатора — по назван�
 слушать; реакция по журналу при следующей сессии.
 Read-only: send/edit/delete в коде нет. Секреты — только в env/service.json.
 Запуск: python3 tg-guard.py --topic 33 (или через юнит).
-""" % (OUR_USER, OPENCODE_ENDPOINT, COORD_TITLE)
+""" % (OWNERS, OPENCODE_ENDPOINT, COORD_TITLE)
 
 
 def journal_append(entry: dict) -> None:
@@ -317,11 +317,11 @@ def main(argv):
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
                 chat_scope = bool(watch._PROFILE.get("chat_scope"))
-                incoming = (row.get("from") or "") != OUR_USER
+                incoming = (row.get("from") or "").lower() not in OWNERS
                 if chat_scope:
                     # Жёсткая граница портала: чужие пишутся только в
                     # журнал; зов координатора — ТОЛЬКО от владельца.
-                    incoming = (row.get("from") or "") == OUR_USER
+                    incoming = (row.get("from") or "").lower() in OWNERS
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
                 if incoming:
