@@ -31,6 +31,61 @@ CARD_MAX_AGE_D = 1.0
 INCIDENT_MAX_AGE_D = 7.0
 PROTECTED_RISKS = ("high", "critical")
 
+# Канон Р-035 (danger-patterns.md, слово владельца 2026-10-30):
+# детерминированный сканер вместо выборочного чтения глазами.
+# Попадание = исключение → только владельцу; не попало = шум → авто-закрытие.
+DANGER_PATTERNS = {
+    "удаление": ["rm -rf", "git reset --hard", "git clean", "git branch -D"],
+    "секреты": ["~/.secrets", ".env", "токен", "ключ", "парол"],
+    "наружу": ["git push", "curl", "wget", "smtp", "resend"],
+    "полномочия": ["sudo", "chmod", "systemctl", "ssh"],
+    "чужая-зона": [".mcode/", ".ssh/", "~/.config/opencode"],
+    "обход-гейтов": ["GARBAGE_OK=1", "FRONTMATTER_OK=1", "MIXED_OK=1",
+                     "AGENT_PERMS_OK=1", "MOJIBAKE_OK=1", "--force"],
+}
+
+
+ALLOWED_WORK = [
+    # уточнение политики (аудит ЦУ 327, Р-035, 2026-10-30): allowed-work,
+    # а не исключения — иначе панель заливает ложным.
+    ("git push в свои репо (на своей ветке)", "git push"),
+    ("rm в /tmp/opencode (своя песочница)", "/tmp"),
+    ("read-only команды со словом секрет (поиск, не утечка)",
+     "rg"), ("read-only команды со словом секрет (поиск, не утечка)", "grep"),
+    ("read-only команды со словом секрет (поиск, не утечка)", "cat"),
+    ("read-only команды со словом секрет (поиск, не утечка)", "echo"),
+    ("осознанный обход гейта с причиной", "GARBAGE_OK"),
+    ("осознанный обход гейта с причиной", "MIXED_OK"),
+    ("осознанный обход гейта с причиной", "MOJIBAKE_OK"),
+]
+
+
+def _allowed_match(d):
+    """Allowed-work (не исключение): сначала эта проверка."""
+    blob = " ".join(str(d.get(k, "")) for k in ("pattern", "reason", "title"))
+    low = blob.lower()
+    for label, needle in ALLOWED_WORK:
+        if needle.lower() in low:
+            if needle == "/tmp" and "/tmp/opencode" not in low:
+                continue  # rm где угодно, кроме песочницы — не allowed
+            if needle == "git push":
+                repos = ("dotfiles", "opencode-vault", "ability-lab",
+                         "dv-hub", "ssa")
+                if not any(r in low for r in repos):
+                    continue
+            return label
+    return None
+
+
+def _danger_match(d):
+    """Первое попадание под паттерн (или None). Ищем в pattern/reason/title."""
+    blob = " ".join(str(d.get(k, "")) for k in ("pattern", "reason", "title"))
+    for label, needles in DANGER_PATTERNS.items():
+        for n in needles:
+            if n.lower() in blob.lower():
+                return f"{label}:{n}"
+    return None
+
 
 def _age_d(ts):
     """Возраст в днях: unix-int или ISO-строка."""
@@ -51,7 +106,8 @@ def _append(path, row):
 
 def scan_cards(write=False):
     """Карточки: resolved-auto / protected-mark."""
-    stats = {"total": 0, "auto": 0, "protected": 0, "kept": 0}
+    stats = {"total": 0, "auto": 0, "protected": 0, "exception": 0,
+             "allowed_work": 0, "kept": 0}
     now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     for fn in sorted(os.listdir(CARDS)):
         if not fn.endswith(".json"):
@@ -73,21 +129,41 @@ def scan_cards(write=False):
             continue
         risk = str(d.get("risk", "")).lower()
         if risk in PROTECTED_RISKS:
-            # спец-пункт ЦУ: high/critical НЕ закрывать авто-закрытием —
-            # только метка (выборочная сверка владельцем 30 шт. — его слово)
-            if not d.get("gravewalk_mark"):
-                d["gravewalk_mark"] = now_iso
+            # Политика Р-035: сканер по danger-patterns. Попадание =
+            # исключение (показ владельцу); не попало = авто-закрытие
+            # с меткой policy-pass.
+            aw = _allowed_match(d)
+            if aw:
+                # allowed-work = шум по политике (аудит ЦУ) → авто-закрытие
+                # с меткой причины (не исключение, не вечный pending).
+                d["status"] = "resolved-auto"
+                d["resolved_auto_ts"] = now_iso
+                d["gravewalk_allowed"] = aw
                 if write:
                     with open(path, "w", encoding="utf-8") as f:
                         json.dump(d, f, ensure_ascii=False)
-                _append(ARCHIVE, {"ts": now_iso, "kind": "card-protected",
-                                  "id": d.get("id"), "risk": risk,
-                                  "age_d": round(age, 1),
-                                  "note": "high/critical-with-allow: метка "
-                                          "только, авто-закрытие запрещено "
-                                          "до сверки владельцем"})
-            stats["protected"] += 1
-            continue
+                    _append(ARCHIVE, {"ts": now_iso, "kind": "card-allowed",
+                                      "id": d.get("id"), "allowed": aw,
+                                      "age_d": round(age, 1)})
+                stats["allowed_work"] += 1
+                stats["auto"] += 1
+                continue
+            hit = _danger_match(d)
+            if hit:
+                if not d.get("gravewalk_exception"):
+                    d["gravewalk_exception"] = now_iso
+                    if write:
+                        with open(path, "w", encoding="utf-8") as f:
+                            json.dump(d, f, ensure_ascii=False)
+                    _append(os.path.expanduser(
+                        "~/.local/state/opencode/gravewalk/exceptions.jsonl"),
+                        {"ts": now_iso, "id": d.get("id"), "risk": risk,
+                         "match": hit, "age_d": round(age, 1),
+                         "pattern": str(d.get("pattern", ""))[:200],
+                         "note": "исключение Р-035: показ владельцу"})
+                stats["exception"] = stats.get("exception", 0) + 1
+                continue
+            d["gravewalk_policy_pass"] = now_iso
         d["status"] = "resolved-auto"
         d["resolved_auto_ts"] = now_iso
         if write:
@@ -141,13 +217,60 @@ def scan_incidents(write=False):
     return stats
 
 
+
+def apply_labels(write=False):
+    """Ярлыки классов от Мастерской (gravewalk 2026-10-30):
+    provider-error-generic + route=sysop-report → provider-quota
+    (opencode-go, primary); записи >14д — expire с меткой classified.
+    Append-only: исходные строки не трогаем, ярлыки — в labels.jsonl."""
+    labels = []
+    stats = {"labeled": 0, "expired_classified": 0}
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if not os.path.isdir(INCIDENTS):
+        return stats
+    for fn in sorted(os.listdir(INCIDENTS)):
+        if not fn.endswith(".djsonl") or fn == "_archive":
+            continue
+        for line in open(os.path.join(INCIDENTS, fn), encoding="utf-8"):
+            try:
+                d = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if d.get("safe_hint") != "provider-error-generic":
+                continue
+            if not str(d.get("recommended_route", "")).startswith("sysop-report"):
+                continue
+            cid = d.get("capture_id", "")
+            labels.append({"ts": now_iso, "capture_id": cid,
+                           "class": "provider-quota",
+                           "primary": "opencode-go",
+                           "source_hint": d.get("safe_hint"),
+                           "events": int(d.get("count", 1) or 1),
+                           "labeled_by": "Мастерская (gravewalk разбор)"})
+            stats["labeled"] += 1
+            age = _age_d(d.get("ts") or d.get("first_ts") or 0)
+            if age > 14 and write:
+                _append(os.path.expanduser(
+                    "~/.local/state/opencode/gravewalk/expired.jsonl"),
+                    {"ts": now_iso, "capture_id": cid,
+                     "cls": "provider-quota", "age_d": round(age, 1),
+                     "note": "classified+expired (retry-then-stop исполнен)"})
+                stats["expired_classified"] += 1
+    if write:
+        for lb in labels:
+            _append(os.path.expanduser(
+                "~/.local/state/opencode/gravewalk/labels.jsonl"), lb)
+    return stats
+
+
 def main():
     p = argparse.ArgumentParser(prog="gravewalk")
     p.add_argument("--write", action="store_true")
     args = p.parse_args()
     cs = scan_cards(write=args.write)
     ins = scan_incidents(write=args.write)
-    verdict = {"cards": cs, "incidents": ins,
+    ls = apply_labels(write=args.write)
+    verdict = {"cards": cs, "incidents": ins, "labels": ls,
                "write": args.write}
     print("GRAVEWALK " + json.dumps(verdict, ensure_ascii=False))
     return 0

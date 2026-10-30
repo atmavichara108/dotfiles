@@ -6,3 +6,4 @@ Type=oneshot
 ExecStart=/usr/bin/python3 %h/dotfiles/tools/homeostasis/session-cop.py
 StandardOutput=journal
 StandardError=journal
+SuccessExitStatus=1
