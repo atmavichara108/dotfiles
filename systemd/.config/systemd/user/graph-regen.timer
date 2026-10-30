@@ -1,0 +1,10 @@
+[Unit]
+Description=graph-regen каждый 3600с (свежесть ≤24ч — критерий приёмки)
+
+[Timer]
+OnBootSec=300s
+OnUnitActiveSec=3600s
+AccuracySec=60s
+
+[Install]
+WantedBy=timers.target
