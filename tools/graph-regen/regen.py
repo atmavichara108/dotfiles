@@ -106,6 +106,19 @@ def main():
                           "isolated_lt_10": isolated_pct < 10},
                "graph_unchanged": d.get("graph_unchanged")}
         journal(row)
+        # список дыр (uncovered без hit) — для работы Лабы (карточки-кандидаты)
+        holes = [{"id": r.get("id"), "title": r.get("title"),
+                  "msgs": r.get("msgs")}
+                 for r in d.get("rows", [])
+                 if r.get("class") == "uncovered" and not r.get("hit")]
+        holes_file = os.path.join(
+            VAULT, "tools/idea-graph/generated/holes-ids.txt")
+        try:
+            with open(holes_file, "w", encoding="utf-8") as f:
+                for h in holes:
+                    f.write(f"{h['id']}\t{h['msgs']}\t{h['title']}\n")
+        except OSError:
+            pass
         print("REGEN " + json.dumps(row, ensure_ascii=False))
         return 0
     except Exception as e:  # noqa: BLE001
