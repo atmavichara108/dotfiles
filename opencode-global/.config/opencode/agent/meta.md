@@ -1,7 +1,7 @@
 ---
 description: Meta-infra editor. Правит агентную инфраструктуру OpenCode из любого проекта. НЕ трогает код приложений.
 mode: subagent
-model: amd-radeon/GLM-5.3-Flash
+model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
 steps: 20
 permission:

@@ -1,7 +1,7 @@
 ---
 description: "system-audit: глобальный read-only аудит системы и экосистемы по sourced evidence"
 mode: subagent
-model: amd-radeon/GLM-5.3-Flash
+model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
 steps: 20
 permission:

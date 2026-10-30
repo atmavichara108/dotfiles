@@ -3,7 +3,7 @@ description: "SerO Служитель Обсидиан — primary-агент э
 mode: primary
 temperature: 0.2
 steps: 60
-model: amd-radeon/GLM-5.3-Flash
+model: nvidia/meta/muse-glimmer-30b
 permission:
   doom_loop: ask
   external_directory:
