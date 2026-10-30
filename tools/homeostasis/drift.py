@@ -89,17 +89,27 @@ def axis_claims(alive_cache=None):
     if not os.path.exists(LEDGER):
         return problems
     reg = registry_ids()
-    # всё, что не похоже на ses_* — имена, не сессии (легаси-id стиля)
+    all_rows = []
+    for line in open(LEDGER, encoding="utf-8"):
+        try:
+            all_rows.append(json.loads(line))
+        except Exception:  # noqa: BLE001
+            continue
+    # закрытые claims: пара (session_id, ref) с последующим claim-release
+    released = set()
+    for r in all_rows:
+        if "claim" in r.get("edge", "") and "op=release" in r.get("note", ""):
+            released.add((r.get("session_id", ""), r.get("ref", "")))
     for line in open(LEDGER, encoding="utf-8"):
         try:
             d = json.loads(line)
         except Exception:  # noqa: BLE001
             continue
-        if "claim" not in d.get("edge", ""):
-            continue
         note = d.get("note", "")
-        if "op=release" in note:
-            continue  # снятый claim
+        if "claim" not in d.get("edge", "") or "op=release" in note:
+            continue
+        if (d.get("session_id", ""), d.get("ref", "")) in released:
+            continue  # claim закрыт release'ом (лечение усечённых id)
         sid = d.get("session_id", "")
         if not sid or sid in reg:
             continue
