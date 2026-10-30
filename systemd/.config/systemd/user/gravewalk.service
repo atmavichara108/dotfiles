@@ -1,0 +1,8 @@
+[Unit]
+Description=gravewalk — протокол архивации могильников (Task 2 Лабы, мандат ЦУ)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/gravewalk/flush.py --write
+StandardOutput=journal
+StandardError=journal
