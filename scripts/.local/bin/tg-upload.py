@@ -33,7 +33,7 @@ ENV_FILE = os.path.expanduser("~/.config/ssa-tg/tg.env")
 SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
 
 ALLOWED_TOPICS = {33}
-OWNER_USERNAME = "atma_vichara108"  # как tg-edit: чужая сессия — отказ
+ALLOWED_SENDERS = {"atma_vichara108", "allismaya"}  # allow-list topic 33 (слово владельца 2026-10-30: Майя говорит за канал)
 HARD_MAX_BYTES = 2 * 1024**3          # 2 ГиБ — жёсткий лимит Telethon
 PRACTICAL_WARN_BYTES = 100 * 1024**2  # практический порог: предупреждение
 
@@ -170,9 +170,9 @@ def main(argv):
         async with TelegramClient(SESSION, int(api_id), api_hash,
                                   proxy=proxy) as client:
             me = await client.get_me()
-            if (me.username or "").lower() != OWNER_USERNAME:
+            if (me.username or "").lower() not in ALLOWED_SENDERS:
                 sys.exit(f"tg-upload: сессия не владельца "
-                         f"(ожидался {OWNER_USERNAME}) — отказ")
+                         f"(ожидался один из {sorted(ALLOWED_SENDERS)}) — отказ")
             ent = await client.get_entity(int(group))
             topics = await _topic_ids(client, ent)
             if topic not in topics:

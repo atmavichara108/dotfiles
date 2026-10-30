@@ -26,7 +26,7 @@ SESSION = os.path.expanduser("~/.local/state/ssa-tg/ssa.session")
 ALLOWED_TOPIC = 33
 ALLOWED_IDS = {34, 41, 42}
 ALLOWED_DELETE_IDS = {41, 42}  # 34 удалять запрещено всегда
-OWNER_USERNAME = "atma_vichara108"
+ALLOWED_SENDERS = {"atma_vichara108", "allismaya"}  # allow-list topic 33 (слово владельца 2026-10-30: Майя говорит за канал)
 
 USAGE = """tg-edit --topic 33 (--edits edits.json | --delete 41,42) [--dry-run]
   --topic 33        разрешён ровно topic 33 (другое — отказ)
@@ -139,9 +139,9 @@ def main(argv):
         async with TelegramClient(SESSION, int(api_id), api_hash,
                                   proxy=proxy) as client:
             me = await client.get_me()
-            if (me.username or "").lower() != OWNER_USERNAME:
+            if (me.username or "").lower() not in ALLOWED_SENDERS:
                 sys.exit(f"tg-edit: сессия не владельца "
-                         f"(ожидался {OWNER_USERNAME}) — отказ")
+                         f"(ожидался один из {sorted(ALLOWED_SENDERS)}) — отказ")
             ent = await client.get_entity(int(group))
             if not await _topic_exists(client, ent, topic):
                 sys.exit(f"tg-edit: топика {topic} нет в группе — отказ")
