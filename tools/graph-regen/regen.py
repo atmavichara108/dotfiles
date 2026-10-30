@@ -77,6 +77,12 @@ def main():
         except OSError:
             pass
         isolated = len(nodes - edged)
+        edges_count = 0
+        try:
+            with open(os.path.join(dg, "edges.jsonl"), encoding="utf-8") as ef:
+                edges_count = sum(1 for _ in ef)
+        except OSError:
+            pass
         isolated_pct = round(isolated * 100.0 / len(nodes), 1) if nodes else 0.0
         classes = {}
         try:
@@ -117,6 +123,7 @@ def main():
                "coverage_pct": cov_pct, "uncovered_pct": unc_pct,
                "uncovered_classes": classes,
                "isolated": isolated, "isolated_pct": isolated_pct,
+               "nodes_count": len(nodes), "edges_count": edges_count,
                "fresh_h": fresh_h,
                "holes_count": holes_count,
                "holes_zero": holes_count == 0,
