@@ -124,11 +124,8 @@ def main():
         else:
             report.append((sid, agent, home, canonical or pid, "ок"))
 
-    # --- Оси дрейфа (знаки канала) ---
-    reg = registry_ids()
-    divergences += axis_channel()
-    divergences += axis_claims(reg)
-    divergences += axis_inbox_names()
+    # --- Оси дрейфа (знаки канала): канал + claims + имена ---
+    divergences += drift.axes((1, 2, 3))
 
     os.makedirs(STATE_DIR, exist_ok=True)
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
@@ -148,97 +145,9 @@ def _now():
     return time.time()
 
 
-# --- Оси дрейфа (мандат sign-rules-to-infra, ЦУ 2026-10-30) -----------------
-
-MAIL_DIR = os.path.expanduser("~/.local/state/opencode/mail")
-RECEIPTS = os.path.join(MAIL_DIR, "receipts-out.jsonl")
-INBOX = os.path.expanduser("~/.local/share/ship-mail/inbox")
-LEDGER = os.path.expanduser("~/.local/state/opencode/lineage/ledger.jsonl")
-DB = os.path.expanduser("~/.local/share/opencode/opencode.db")
-
-
-def axis_channel(limit=40):
-    """Ось 1: sent/queued без delivered у получателя (read-gate sqlite)."""
-    problems = []
-    if not os.path.exists(RECEIPTS) or not os.path.exists(DB):
-        return problems
-    import sqlite3
-    rows = []
-    for line in open(RECEIPTS, encoding="utf-8"):
-        try:
-            rows.append(json.loads(line))
-        except Exception:  # noqa: BLE001
-            continue
-    sent = [r for r in rows if r.get("event") in ("sent", "queued")]
-    sent = sent[-limit:]
-    con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
-    for r in sent:
-        to, mid = r.get("to"), r.get("message_id", "")
-        got = con.execute(
-            "SELECT 1 FROM session_message WHERE session_id=? AND type='user' "
-            "AND data LIKE ?", (to, f"%{mid[:16]}%")).fetchone()
-        if not got:
-            problems.append({"axis": "channel", "class": "sent-without-delivered",
-                             "sid": to, "message_id": mid,
-                             "event": r.get("event")})
-    return problems
-
-
-def axis_claims(registry_ids):
-    """Ось 2: активные claims (ledger) вне peer-registry."""
-    problems = []
-    if not os.path.exists(LEDGER):
-        return problems
-    for line in open(LEDGER, encoding="utf-8"):
-        try:
-            d = json.loads(line)
-        except Exception:  # noqa: BLE001
-            continue
-        edge = d.get("edge", "")
-        if "claim" not in edge:
-            continue
-        note = d.get("note", "")
-        if "ttl" in note and "op=release" in note:
-            continue  # снятый claim
-        sid = d.get("session_id", "")
-        ref = d.get("ref", "")
-        if sid and sid not in registry_ids:
-            problems.append({"axis": "claims", "class": "claim-outside-registry",
-                             "sid": sid, "ref": ref, "edge": edge,
-                             "note": note[:120]})
-    return problems
-
-
-def axis_inbox_names():
-    """Ось 3: имя файла inbox vs программно извлечённый from."""
-    problems = []
-    if not os.path.isdir(INBOX):
-        return problems
-    for sid in os.listdir(INBOX):
-        box = os.path.join(INBOX, sid)
-        if not os.path.isdir(box):
-            continue
-        for fn in os.listdir(box):
-            if not fn.endswith(".md"):
-                continue
-            m = re.search(r"__(ses_[A-Za-z0-9]+)\.md$", fn)
-            if not m:
-                continue
-            file_sid = m.group(1)
-            path = os.path.join(box, fn)
-            try:
-                head = open(path, encoding="utf-8").read(2000)
-            except OSError:
-                continue
-            fm = re.search(r"^from:\s*(ses_[A-Za-z0-9]+)", head, flags=re.M)
-            fm_sid = fm.group(1) if fm else ""
-            if fm_sid and fm_sid != file_sid:
-                problems.append({"axis": "inbox-names",
-                                 "class": "name-vs-frontmatter",
-                                 "sid": sid, "file": fn,
-                                 "file_sid": file_sid, "fm_sid": fm_sid})
-    return problems
-
+# --- Оси дрейфа — общий модуль (мандат sign-rules-to-infra) ---------------
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import drift  # noqa: E402
 
 def registry_ids():
     ids = set()
