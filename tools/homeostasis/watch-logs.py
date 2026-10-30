@@ -129,6 +129,33 @@ def run():
 
     lines = data.splitlines()
     found = 0
+    # --- Оси дрейфа канала (мандат sign-rules-to-infra, решение ЦУ 2026-10-30):
+    # оси 1 (sent/queued без delivered) и 2 (claims вне реестра) ловим здесь,
+    # чтобы дрейф был виден без запуска session-cop. Dedup по seen-хешу.
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import drift
+        for row in drift.axes((1, 2)):
+            h = hashlib.sha256(json.dumps(row, sort_keys=True,
+                                          ensure_ascii=False).encode()).hexdigest()[:12]
+            if seen_has(h):
+                incident({"ts": int(time.time()),
+                          "class": "drift:" + str(row.get("class")),
+                          "axis": row.get("axis"), "repeat": h,
+                          "sid": row.get("sid", ""),
+                          "ref": row.get("ref", ""),
+                          "message_id": row.get("message_id", "")})
+                continue
+            seen_add(h)
+            incident({"ts": int(time.time()),
+                      "class": "drift:" + str(row.get("class")),
+                      "axis": row.get("axis"), "hash": h,
+                      "sid": row.get("sid", ""),
+                      "ref": row.get("ref", ""),
+                      "message_id": row.get("message_id", "")})
+            found += 1
+    except Exception as e:  # noqa: BLE001
+        sys.stderr.write(f"watch-logs: оси дрейфа не отработали ({e!r})\n")
     for i, line in enumerate(lines):
         for cls, needle in PATTERNS:
             if needle in line:
