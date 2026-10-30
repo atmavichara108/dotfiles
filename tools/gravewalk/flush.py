@@ -45,6 +45,38 @@ DANGER_PATTERNS = {
 }
 
 
+ALLOWED_WORK = [
+    # уточнение политики (аудит ЦУ 327, Р-035, 2026-10-30): allowed-work,
+    # а не исключения — иначе панель заливает ложным.
+    ("git push в свои репо (на своей ветке)", "git push"),
+    ("rm в /tmp/opencode (своя песочница)", "/tmp"),
+    ("read-only команды со словом секрет (поиск, не утечка)",
+     "rg"), ("read-only команды со словом секрет (поиск, не утечка)", "grep"),
+    ("read-only команды со словом секрет (поиск, не утечка)", "cat"),
+    ("read-only команды со словом секрет (поиск, не утечка)", "echo"),
+    ("осознанный обход гейта с причиной", "GARBAGE_OK"),
+    ("осознанный обход гейта с причиной", "MIXED_OK"),
+    ("осознанный обход гейта с причиной", "MOJIBAKE_OK"),
+]
+
+
+def _allowed_match(d):
+    """Allowed-work (не исключение): сначала эта проверка."""
+    blob = " ".join(str(d.get(k, "")) for k in ("pattern", "reason", "title"))
+    low = blob.lower()
+    for label, needle in ALLOWED_WORK:
+        if needle.lower() in low:
+            if needle == "/tmp" and "/tmp/opencode" not in low:
+                continue  # rm где угодно, кроме песочницы — не allowed
+            if needle == "git push":
+                repos = ("dotfiles", "opencode-vault", "ability-lab",
+                         "dv-hub", "ssa")
+                if not any(r in low for r in repos):
+                    continue
+            return label
+    return None
+
+
 def _danger_match(d):
     """Первое попадание под паттерн (или None). Ищем в pattern/reason/title."""
     blob = " ".join(str(d.get(k, "")) for k in ("pattern", "reason", "title"))
@@ -75,7 +107,7 @@ def _append(path, row):
 def scan_cards(write=False):
     """Карточки: resolved-auto / protected-mark."""
     stats = {"total": 0, "auto": 0, "protected": 0, "exception": 0,
-             "kept": 0}
+             "allowed_work": 0, "kept": 0}
     now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     for fn in sorted(os.listdir(CARDS)):
         if not fn.endswith(".json"):
@@ -100,6 +132,22 @@ def scan_cards(write=False):
             # Политика Р-035: сканер по danger-patterns. Попадание =
             # исключение (показ владельцу); не попало = авто-закрытие
             # с меткой policy-pass.
+            aw = _allowed_match(d)
+            if aw:
+                # allowed-work = шум по политике (аудит ЦУ) → авто-закрытие
+                # с меткой причины (не исключение, не вечный pending).
+                d["status"] = "resolved-auto"
+                d["resolved_auto_ts"] = now_iso
+                d["gravewalk_allowed"] = aw
+                if write:
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(d, f, ensure_ascii=False)
+                    _append(ARCHIVE, {"ts": now_iso, "kind": "card-allowed",
+                                      "id": d.get("id"), "allowed": aw,
+                                      "age_d": round(age, 1)})
+                stats["allowed_work"] += 1
+                stats["auto"] += 1
+                continue
             hit = _danger_match(d)
             if hit:
                 if not d.get("gravewalk_exception"):
