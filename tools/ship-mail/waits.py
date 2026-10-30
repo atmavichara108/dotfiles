@@ -54,9 +54,21 @@ def _wid(row):
         row, sort_keys=True, ensure_ascii=False)) % (16 ** 8))
 
 
+def _new_id():
+    # уникальность: ms-метка + суффикс при коллизии (дефект 1: два add
+    # в одну миллисекунду давали одинаковый id)
+    base = int(time.time() * 1000) % (16 ** 8)
+    existing = {r.get("id") for r in _rows(WAITS)} | {r.get("id") for r in _rows(DONE)}
+    for n in range(4096):
+        wid = "%08x" % ((base + n) % (16 ** 8))
+        if wid not in existing:
+            return wid
+    raise SystemExit("waits: не удалось сгенерировать уникальный id")
+
+
 def cmd_add(a):
     ttl = a.ttl_hours or (72 if a.owe == CU_SID else DEFAULT_TTL)
-    row = {"id": "%08x" % (int(time.time() * 1000) % (16 ** 8)),
+    row = {"id": _new_id(),
            "who_waits": a.by or "ses_ece7b76c8ffeOkYZqZe38QbTVx",
            "who_owes": a.owe, "what": a.what, "ref": a.ref or "",
            "since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -69,6 +81,13 @@ def cmd_done(wid):
     rows = _rows(WAITS)
     hit = [r for r in rows if r.get("id") == wid]
     if not hit:
+        # id нет в активных: возможно, уже закрыт раньше (повторный done) —
+        # честный ответ вместо «не найдено» (дефект 1, ИЦ 2026-10-31)
+        closed = [r for r in _rows(DONE) if r.get("id") == wid]
+        if closed:
+            print(f"waits: ожидание {wid} уже закрыто "
+                  f"({closed[0].get('closed', '?')}) — повтор не нужен")
+            return 0
         print(f"waits: ожидание {wid} не найдено")
         return 1
     rest = [r for r in rows if r.get("id") != wid]
