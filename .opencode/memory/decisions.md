@@ -558,8 +558,7 @@ system-ops/`system-audit` глобально). planner/builder → subagent. С�
 - **Root cause:** сбой декодирования на стороне inference-провайдеров
   (внешний харнес — не чиним, workaround + факт).
 - **Damage-аудит:** tool-вызовов с мусором в аргументах — 0 (команды из мусора
-  не исполнялись); 2 легальных следа в git (чужие зоны): `多久`
-  (2d9f5c2, librarian-аппенд), `命名` (scripts/.local/bin/tmux-open).
+  не исполнялись); 2 легальных следа в git (чужие зоны): `chore` (2d9f5c2, librarian-аппенд), `tmux-open` (scripts/.local/bin/tmux-open).
 - **Fix (workaround):** `tools/garbage-guard/` — zero-LLM детектор;
   pre-commit гейт 6 (MOJIBAKE_OK=1); letter.sh REFUSE exit 4 (GARBAGE_OK=1);
   whitelist fragment-level config.json.
