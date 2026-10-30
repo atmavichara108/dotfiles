@@ -141,13 +141,60 @@ def scan_incidents(write=False):
     return stats
 
 
+
+def apply_labels(write=False):
+    """Ярлыки классов от Мастерской (gravewalk 2026-10-30):
+    provider-error-generic + route=sysop-report → provider-quota
+    (opencode-go, primary); записи >14д — expire с меткой classified.
+    Append-only: исходные строки не трогаем, ярлыки — в labels.jsonl."""
+    labels = []
+    stats = {"labeled": 0, "expired_classified": 0}
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    if not os.path.isdir(INCIDENTS):
+        return stats
+    for fn in sorted(os.listdir(INCIDENTS)):
+        if not fn.endswith(".djsonl") or fn == "_archive":
+            continue
+        for line in open(os.path.join(INCIDENTS, fn), encoding="utf-8"):
+            try:
+                d = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if d.get("safe_hint") != "provider-error-generic":
+                continue
+            if not str(d.get("recommended_route", "")).startswith("sysop-report"):
+                continue
+            cid = d.get("capture_id", "")
+            labels.append({"ts": now_iso, "capture_id": cid,
+                           "class": "provider-quota",
+                           "primary": "opencode-go",
+                           "source_hint": d.get("safe_hint"),
+                           "events": int(d.get("count", 1) or 1),
+                           "labeled_by": "Мастерская (gravewalk разбор)"})
+            stats["labeled"] += 1
+            age = _age_d(d.get("ts") or d.get("first_ts") or 0)
+            if age > 14 and write:
+                _append(os.path.expanduser(
+                    "~/.local/state/opencode/gravewalk/expired.jsonl"),
+                    {"ts": now_iso, "capture_id": cid,
+                     "cls": "provider-quota", "age_d": round(age, 1),
+                     "note": "classified+expired (retry-then-stop исполнен)"})
+                stats["expired_classified"] += 1
+    if write:
+        for lb in labels:
+            _append(os.path.expanduser(
+                "~/.local/state/opencode/gravewalk/labels.jsonl"), lb)
+    return stats
+
+
 def main():
     p = argparse.ArgumentParser(prog="gravewalk")
     p.add_argument("--write", action="store_true")
     args = p.parse_args()
     cs = scan_cards(write=args.write)
     ins = scan_incidents(write=args.write)
-    verdict = {"cards": cs, "incidents": ins,
+    ls = apply_labels(write=args.write)
+    verdict = {"cards": cs, "incidents": ins, "labels": ls,
                "write": args.write}
     print("GRAVEWALK " + json.dumps(verdict, ensure_ascii=False))
     return 0
