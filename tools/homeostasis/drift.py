@@ -9,11 +9,15 @@
   2. claims: активные claims вне peer-registry;
   3. inbox-names: имя файла inbox vs программно извлечённый frontmatter from.
 """
+import base64
 import json
 import os
 import re
 import sqlite3
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 MAIL_DIR = os.path.expanduser("~/.local/state/opencode/mail")
 RECEIPTS = os.path.join(MAIL_DIR, "receipts-out.jsonl")
