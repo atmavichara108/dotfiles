@@ -137,7 +137,12 @@ def main():
             f.write(json.dumps(dv, ensure_ascii=False) + "\n")
     print(f"session-cop: строк реестра {len(rows)}, расхождений "
           f"{len(divergences)} (отчёт: {REPORT_FILE})")
-    return 1 if divergences else 0
+    # Находки — ДАННЫЕ (телеметрия), не поломка службы: exit 0 всегда,
+    # когда проход выполнен (Task 4 Лабы: exit-1 читался systemd как FAILED).
+    # Severity — в report.tsv + stdout-строке FINDINGS n.
+    print(f"FINDINGS {len(divergences)} (severity: report.tsv, "
+          f"не ошибка службы)")
+    return 0
 
 
 def _now():
