@@ -56,6 +56,36 @@ def main():
     try:
         d = json.load(open(GEN_JSON, encoding="utf-8"))
         agg = d.get("agg", {})
+        # изолированные узлы графа (без рёбер в edges.jsonl) — метрика приёмки
+        dg = os.path.join(VAULT, "04-Memory/idea-graph")
+        nodes, edged = set(), set()
+        try:
+            for ln in open(os.path.join(dg, "nodes.jsonl"), encoding="utf-8"):
+                try:
+                    nodes.add(json.loads(ln)["id"])
+                except Exception:  # noqa: BLE001
+                    continue
+            for ln in open(os.path.join(dg, "edges.jsonl"), encoding="utf-8"):
+                try:
+                    e = json.loads(ln)
+                    for k in ("from", "a", "source", "to", "b", "target"):
+                        v = e.get(k)
+                        if v:
+                            edged.add(v)
+                except Exception:  # noqa: BLE001
+                    continue
+        except OSError:
+            pass
+        isolated = len(nodes - edged)
+        isolated_pct = round(isolated * 100.0 / len(nodes), 1) if nodes else 0.0
+        classes = {}
+        try:
+            for r in d.get("rows", []):
+                if r.get("hit"):
+                    continue
+                classes[r.get("class", "?")] = classes.get(r.get("class", "?"), 0) + 1
+        except Exception:  # noqa: BLE001
+            pass
         total = int(agg.get("total", 0)) or 1
         covered = int(agg.get("covered", 0))
         uncovered = int(agg.get("uncovered", 0))
@@ -67,10 +97,13 @@ def main():
                "total": total, "covered": covered, "uncovered": uncovered,
                "repeat_process": repeat,
                "coverage_pct": cov_pct, "uncovered_pct": unc_pct,
+               "uncovered_classes": classes,
+               "isolated": isolated, "isolated_pct": isolated_pct,
                "fresh_h": fresh_h,
                "accept": {"coverage_ge_90": cov_pct >= 90,
                           "fresh_le_24h": fresh_h <= 24,
-                          "uncovered_lt_10": unc_pct < 10},
+                          "uncovered_lt_10": unc_pct < 10,
+                          "isolated_lt_10": isolated_pct < 10},
                "graph_unchanged": d.get("graph_unchanged")}
         journal(row)
         print("REGEN " + json.dumps(row, ensure_ascii=False))
