@@ -1,0 +1,10 @@
+[Unit]
+Description=gravewalk каждые 3600с (пасха могильников: карточки resolved-auto, инциденты expired, provider-агрегат)
+
+[Timer]
+OnBootSec=180s
+OnUnitActiveSec=3600s
+AccuracySec=60s
+
+[Install]
+WantedBy=timers.target
