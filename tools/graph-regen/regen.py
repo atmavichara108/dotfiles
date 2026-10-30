@@ -92,6 +92,24 @@ def main():
         repeat = int(agg.get("repeat_process", 0))
         cov_pct = round(covered * 100.0 / total, 1)
         unc_pct = round(uncovered * 100.0 / total, 1)
+        # Р-036 (ЦУ 2026-10-30): бинарная цель holes→0 — главная метрика
+        # (реальные дыры: class=uncovered без hit); strict — тренд без
+        # цели-числа; adjusted — резерв; знаменатель НЕ переопределяем.
+        holes = [r for r in d.get("rows", [])
+                 if r.get("class") == "uncovered" and not r.get("hit")]
+        holes_count = len(holes)
+        adjusted_pct = round(float(agg.get("adjusted_by_p0003_pct", 0)), 1)
+        prev_strict = None
+        try:
+            for ln in open(JOURNAL, encoding="utf-8"):
+                try:
+                    pv = json.loads(ln)
+                    prev_strict = pv.get("coverage_pct", prev_strict)
+                except Exception:  # noqa: BLE001
+                    continue
+        except OSError:
+            pass
+        strict_delta = None if prev_strict is None else round(cov_pct - prev_strict, 1)
         fresh_h = round((now - os.path.getmtime(GEN_JSON)) / 3600.0, 1)
         row = {"ts": int(now), "ok": True, "since": since,
                "total": total, "covered": covered, "uncovered": uncovered,
@@ -100,10 +118,15 @@ def main():
                "uncovered_classes": classes,
                "isolated": isolated, "isolated_pct": isolated_pct,
                "fresh_h": fresh_h,
-               "accept": {"coverage_ge_90": cov_pct >= 90,
+               "holes_count": holes_count,
+               "holes_zero": holes_count == 0,
+               "adjusted_pct": adjusted_pct,
+               "strict_delta": strict_delta,
+               "accept": {"holes_zero": holes_count == 0,
                           "fresh_le_24h": fresh_h <= 24,
-                          "uncovered_lt_10": unc_pct < 10,
-                          "isolated_lt_10": isolated_pct < 10},
+                          "isolated_lt_10": isolated_pct < 10,
+                          "strict_trend": "растёт" if (strict_delta or 0) >= 0
+                          else "падает"},
                "graph_unchanged": d.get("graph_unchanged")}
         journal(row)
         # список дыр (uncovered без hit) — для работы Лабы (карточки-кандидаты)
