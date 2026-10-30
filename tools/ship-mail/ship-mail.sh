@@ -179,6 +179,12 @@ cmd_show() {
     cat "$f"
     first=1
   done < <(unread_files "$sid")
+  # --- «Активное ожидание» (правило №6 waits): просроченные ожидания
+  # показываются в каждом inbox — телеметрия без жизненного цикла = дефект.
+  if [ -f "$MAIL_HOME/waits.jsonl" ]; then
+    python3 "$(dirname "$0")/waits.py" overdue 2>/dev/null \
+      | rg 'ПРОСРОЧЕНО|WAITS-OVERDUE' || true
+  fi
 }
 
 cmd_ack() {
