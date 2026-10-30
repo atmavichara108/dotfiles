@@ -992,3 +992,4 @@ hook при завершении задачи/коммите, который п�
 - Тест Session.ID (subagent-resume) — не доведён.
 - Ответ УАС по исследованию Nemotron — ожидается.
 - Приёмочные прогоны /goal (Лаба) — ожидается.
+- **Пилот голосового ввода — deps закрыты** (шаг владельца 2026-10-30): wmctrl 1.07, zenity 4.2, fnm 1.39, nodejs 26.10 (пакет НЕ node — Arch-имя nodejs), alacritty, ffmpeg, xdotool; fnm install 22 → v22.23.4 default (под .nvmrc Transcriptor 22.12). Лабе отправлено автоповещение (ref voice-input-20261025): старт офлайн-части (faster-whisper + Xephyr, критерии WER≤8%/p90≤3с/вставка 10/10/RAM≤1,5ГБ/шум≤+8п.п.), ключ Deepgram — через Ворота позже.
