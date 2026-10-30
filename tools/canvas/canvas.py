@@ -147,7 +147,7 @@ def _md_rows(path):
     for n, line in enumerate(open(path, encoding="utf-8"), 1):
         if line.startswith("|") and line.count("|") >= 4:
             cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if cells and re.match(r"^\w+-\d+$", cells[0]) and cells[0].split("-")[0].isalpha():
+            if cells and re.match(r"^\w+-\d+(\.\d+)*$", cells[0]) and cells[0].split("-")[0].isalpha():
                 out.append((n, cells))
     return out
 
