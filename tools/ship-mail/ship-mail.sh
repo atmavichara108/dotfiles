@@ -217,9 +217,28 @@ cmd_status() {
   echo "read: $read"
 }
 
+# Verify delivery: letter with id/substring in RECIPIENT inbox (any state).
+# After an aborted turn the sender cannot trust "DELIVERED" output — this
+# resolves doubt in one command (repair list, ИЦ 2026-10-31, defect 2).
+cmd_verify() {
+  local to="$1" needle="$2" dir
+  dir="$(inbox_dir "$to")"
+  [[ -d "$dir" ]] || { echo "НЕ ДОСТАВЛЕНО: ящик $to не существует" >&2; return 1; }
+  local hits
+  hits="$(find "$dir" -maxdepth 2 -type f -name '*.md' -print0 2>/dev/null \
+    | xargs -0 -r grep -l -F -- "$needle" 2>/dev/null | head -1 || true)"
+  if [[ -n "$hits" ]]; then
+    echo "ДОСТАВЛЕНО $hits"
+    return 0
+  fi
+  echo "НЕ ДОСТАВЛЕНО: письма с '$needle' в ящике $to нет" >&2
+  return 1
+}
+
 main() {
   case "${1:-}" in
     send) shift; cmd_send "$@" ;;
+    verify) shift; [[ -n "${1:-}" && -n "${2:-}" ]] || fail "verify: recipient session id and id|substring required" 1; cmd_verify "$1" "$2" ;;
     inbox) shift; [[ -n "${1:-}" ]] || fail "inbox: session id required" 1; cmd_inbox "$1" ;;
     show) shift; [[ -n "${1:-}" ]] || fail "show: session id required" 1; cmd_show "$@" ;;
     ack) shift; [[ -n "${1:-}" && -n "${2:-}" ]] || fail "ack: session id and filename|all required" 1; cmd_ack "$@" ;;
