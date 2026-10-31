@@ -1,0 +1,11 @@
+[Unit]
+Description=Суточная проверка релизов OpenCode (протокол «фичи на апрув», слово владельца 2026-10-31)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=24h
+AccuracySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
