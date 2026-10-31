@@ -238,6 +238,13 @@ _run() {
       '{event:"failed", message_id:$id, rc:$rc, ts:(now|floor),
         stderr_tail:$err, stderr_file:$errfile}
         + (if $stage == "" then {} else {stage:$stage} end)')" || true
+  else
+    # R2(б) И-53: ребро delivered-to в lineage-ledger при успешной доставке
+    # (flock на стороне lineage.py; ref — прямой фазы через dynamic scope,
+    # в drain-фазе пуст — там ребро связывает message_id).
+    python3 /home/rudra/dotfiles/tools/lineage/lineage.py append \
+      --kind fact --session-id "${target}" --edge delivered-to \
+      --ref "${LINEAGE_REF:-}" --note "mid=${mid}" >/dev/null 2>&1 || true
   fi
   return "${rrc}"
 }
@@ -247,6 +254,7 @@ _run() {
 # $1=mid, $2=digest, $3=to, $4=payload, остальные = флаги (--title ...).
 _inject() {
   local mid="$1" dg="$2" target="$3" payload="$4"; shift 4
+  local LINEAGE_REF="${REF}"   # R2(б): ref прямой фазы для ребра delivered-to
   journal_append "${MAIL_DIR}" "$(jq -cn \
     --arg event "${INJECT_EVENT:-sent}" --arg id "${mid}" --arg digest "${dg}" \
     --arg to "${target}" --arg from "${FROM}" --arg from_sid "${FROM_SID:-}" \
