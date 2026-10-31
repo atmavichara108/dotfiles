@@ -26,6 +26,30 @@ set -euo pipefail
 
 MAIL_HOME="${SHIP_MAIL_HOME:-$HOME/.local/share/ship-mail}"
 REGISTRY="${SHIP_MAIL_REGISTRY:-$HOME/Projects/OpenCode-Vault/04-Memory/peer-registry.md}"
+# Снапшот реестра адресов: рабочее дерево волта живёт под чужими ветками, и сессия,
+# ушедшая на ветку без 04-Memory/peer-registry.md, ломала отправку всем (INC: «registry
+# not readable»). Реестр берём из git-объекта той ветки, где он зафиксирован.
+REGISTRY_SNAPSHOT="${SHIP_MAIL_REGISTRY_SNAPSHOT:-$MAIL_HOME/peer-registry.snapshot.md}"
+VAULT="${SHIP_MAIL_VAULT:-$HOME/Projects/OpenCode-Vault}"
+
+refresh_registry_snapshot() {
+  # 1) живой файл доступен — обновляем снапшот и работаем как раньше
+  if [[ -r "$REGISTRY" ]]; then
+    cp -f "$REGISTRY" "$REGISTRY_SNAPSHOT" 2>/dev/null || true
+    return 0
+  fi
+  # 2) файла нет (чужая ветка) — берём последнюю зафиксированную версию из git
+  if [[ -d "$VAULT/.git" ]]; then
+    local c
+    c="$(git -C "$VAULT" log --all --format=%H -1 -- 04-Memory/peer-registry.md 2>/dev/null || true)"
+    if [[ -n "$c" ]] && git -C "$VAULT" show "$c:04-Memory/peer-registry.md" > "$REGISTRY_SNAPSHOT".tmp 2>/dev/null; then
+      mv -f "$REGISTRY_SNAPSHOT".tmp "$REGISTRY_SNAPSHOT"
+      REGISTRY="$REGISTRY_SNAPSHOT"
+      return 0
+    fi
+  fi
+  return 1
+}
 
 fail() {
   local code="${2:-1}"
@@ -49,7 +73,9 @@ sid_sane() {
 registry_check() {
   local sid="$1" role="$2"
   sid_sane "$sid" || fail "$role '$sid' is not a session id (ses_...)" 1
-  [[ -r "$REGISTRY" ]] || fail "registry not readable: $REGISTRY" 5
+  if [[ ! -r "$REGISTRY" ]]; then
+    refresh_registry_snapshot || fail "registry not readable: $REGISTRY (и git-снапшот недоступен)" 5
+  fi
   grep -q "$sid" "$REGISTRY" || \
     fail "$role '$sid' not in peer-registry — register the session first (INC-18)" 4
 }
