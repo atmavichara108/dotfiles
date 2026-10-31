@@ -11,6 +11,15 @@
   goal drop [--reason "причина"]
   goal pause | goal resume
   goal clear  # удалить цель полностью (осторожно)
+
+Общая цель на несколько ведомств (Р-044, слово владельца 2026-10-31):
+  goal share <slug> [--objective ...] [--criteria ...] [--kill ...] [--session SID]
+  goal join <slug> --session SID [--role "роль"]
+  goal contrib <slug> --session SID --status working|blocked|done [--evidence "факт"]
+  goal shared [<slug>]   # сводка: участники, их статусы, молчащие (TTL 24ч)
+
+Принцип: цель — объект, агрегат — производное. Каждый пишет ТОЛЬКО свой вклад
+(участник + сайдкар сессии), общий файл цели не перезаписывается целиком.
 """
 import argparse, json, os, sys
 from datetime import datetime, timezone
@@ -18,6 +27,154 @@ from datetime import datetime, timezone
 GOAL_FILE = os.path.expanduser("~/.local/state/opencode/goal.json")
 GOALS_DIR = os.path.expanduser("~/.local/state/opencode/goals")  # сайдкары Р-042
 os.makedirs(GOALS_DIR, exist_ok=True)
+
+
+SHARED_DIR = GOALS_DIR
+PARTICIPANT_SILENT_HOURS = 24
+
+
+def shared_path(slug):
+    return os.path.join(SHARED_DIR, f"goal-{slug}.json")
+
+
+def shared_load(slug):
+    p = shared_path(slug)
+    if not os.path.exists(p):
+        return None
+    try:
+        return json.load(open(p, encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def shared_save(g):
+    p = shared_path(g["slug"])
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(g, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, p)
+    return p
+
+
+def _now_s():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _hours_since(ts):
+    try:
+        t = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+    return (datetime.now(timezone.utc) - t).total_seconds() / 3600
+
+
+def shared_participants(slug, session_id, role=""):
+    g = shared_load(slug)
+    if g is None:
+        return None, None
+    parts = g.setdefault("participants", [])
+    found = None
+    for p in parts:
+        if p.get("session") == session_id:
+            found = p
+            break
+    if found is None:
+        found = {"session": session_id, "role": role or "", "status": "working",
+                 "evidence": [], "joined_at": _now_s()}
+        parts.append(found)
+    if role:
+        found["role"] = role
+    found["updated_at"] = _now_s()
+    return g, found
+
+
+def sidebar_list(g, session_id, ref=None):
+    g.setdefault("timeline", []).append(
+        {"at": _now_s(), "session": session_id, "ref": ref})
+    return g
+
+
+def cmd_share(a):
+    g = shared_load(a.slug)
+    if g is None:
+        g = {"slug": a.slug, "created_at": _now_s(), "participants": [], "timeline": []}
+    if a.objective:
+        g["objective"] = a.objective
+    if a.criteria:
+        g["criteria"] = a.criteria
+    if a.kill:
+        g["kill"] = a.kill
+        g["kill_author"] = a.session or ""
+    g.setdefault("status", "active")
+    if a.session:
+        parts = g.setdefault("participants", [])
+        found = next((x for x in parts if x.get("session") == a.session), None)
+        if found is None:
+            found = {"session": a.session, "role": a.role or "", "status": "working",
+                     "evidence": [], "joined_at": _now_s()}
+            parts.append(found)
+        if a.role:
+            found["role"] = a.role
+        found["updated_at"] = _now_s()
+    shared_save(g)
+    print(f"Общая цель '{a.slug}': {g.get('objective', '(без названия)')}")
+    print(f"Участников: {len(g.get('participants', []))}")
+    if g.get("criteria"):
+        print(f"Критерии: {g['criteria']}")
+
+
+def cmd_join(a):
+    g, me = shared_participants(a.slug, a.session, a.role)
+    if g is None:
+        print(f"Общей цели '{a.slug}' нет — сначала goal share {a.slug}")
+        sys.exit(1)
+    shared_save(g)
+    print(f"Присоединился к '{a.slug}': {me['session']} (роль: {me.get('role') or '—'}) "
+          f"· участников: {len(g['participants'])}")
+
+
+def cmd_contrib(a):
+    g, me = shared_participants(a.slug, a.session, a.role)
+    if g is None:
+        print(f"Общей цели '{a.slug}' нет — сначала goal share {a.slug}")
+        sys.exit(1)
+    me["status"] = a.status
+    if a.evidence:
+        me.setdefault("evidence", []).append({"at": _now_s(), "fact": a.evidence})
+    sidebar_list(g, a.session, ref=a.evidence or a.status)
+    shared_save(g)
+    print(f"Вклад '{a.slug}': {a.session} → {a.status}"
+          + (f" · evidence: {a.evidence}" if a.evidence else ""))
+
+
+def cmd_shared(a):
+    slugs = [a.slug] if a.slug else [
+        n[5:-5] for n in sorted(os.listdir(SHARED_DIR))
+        if n.startswith("goal-") and n.endswith(".json")]
+    if not slugs:
+        print("Общих целей нет.")
+        return
+    for slug in slugs:
+        g = shared_load(slug)
+        if not g:
+            print(f"— {slug}: файл нечитаем")
+            continue
+        print(f"═══ {slug} · {g.get('status')} ═══")
+        print(f"Цель: {g.get('objective', '(без названия)')}")
+        if g.get("criteria"):
+            print(f"Критерии: {g['criteria']}")
+        if g.get("kill"):
+            print(f"Останов: {g['kill']} (автор: {g.get('kill_author') or '—'})")
+        for p in g.get("participants", []):
+            h = _hours_since(p.get("updated_at") or p.get("joined_at") or "")
+            flag = ""
+            if h is not None and h > PARTICIPANT_SILENT_HOURS and p.get("status") == "working":
+                flag = f"  ← МОЛЧИТ {round(h)}ч (TTL {PARTICIPANT_SILENT_HOURS}ч)"
+            ev = p.get("evidence") or []
+            last = ev[-1]["fact"] if ev else "—"
+            print(f"  · {p.get('session')} [{p.get('status')}] роль: {p.get('role') or '—'}"
+                  f" · evidence: {str(last)[:70]}{flag}")
 
 
 def sidecar_path(session_id):
@@ -201,6 +358,34 @@ def main():
     r = sub.add_parser("resume", help="Возобновить")
     r.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии (для сайдкара)")
     r.set_defaults(func=cmd_resume)
+
+    sh2 = sub.add_parser("share", help="Создать/обновить общую цель на несколько ведомств")
+    sh2.add_argument("slug", help="короткое имя цели (латиницей, без пробелов)")
+    sh2.add_argument("--objective", default="", help="Цель (дословно)")
+    sh2.add_argument("--criteria", nargs="*", default=[], help="Проверяемые критерии")
+    sh2.add_argument("--kill", default="", help="Условие останова")
+    sh2.add_argument("--role", default="", help="Роль участника")
+    sh2.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""))
+    sh2.set_defaults(func=cmd_share)
+
+    j = sub.add_parser("join", help="Присоединиться к общей цели")
+    j.add_argument("slug")
+    j.add_argument("--role", default="")
+    j.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""))
+    j.set_defaults(func=cmd_join)
+
+    cb = sub.add_parser("contrib", help="Записать свой вклад в общую цель")
+    cb.add_argument("slug")
+    cb.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""))
+    cb.add_argument("--role", default="")
+    cb.add_argument("--status", default="working",
+                    choices=["working", "blocked", "done"])
+    cb.add_argument("--evidence", default="")
+    cb.set_defaults(func=cmd_contrib)
+
+    shr = sub.add_parser("shared", help="Сводка общих целей")
+    shr.add_argument("slug", nargs="?", default="")
+    shr.set_defaults(func=cmd_shared)
 
     c = sub.add_parser("clear", help="Удалить цель")
     c.set_defaults(func=cmd_clear)
