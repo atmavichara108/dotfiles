@@ -18,6 +18,11 @@
 #   4 address not in peer-registry (INC-18: ids from chat are not canonical)
 #   5 registry file missing/unreadable
 #
+# ВАЖНО (урок канала ЦСПиМ 2026-10-31): текст письма передавай через --file.
+#   --text принимает строку из shell: обратные кавычки, $( ), ${ }, ! и \ внутри неё
+#   исполняются оболочкой и ВЫРЕЗАЮТ содержимое — письмо уходит тронутым.
+#   Правило: тело письма с разметкой/переменными — только --file.
+#
 # Env:
 #   SHIP_MAIL_HOME     mailbox root (default ~/.local/share/ship-mail)
 #   SHIP_MAIL_REGISTRY peer-registry path (default OpenCode-Vault peer-registry.md)
@@ -108,6 +113,15 @@ cmd_send() {
   done
   [[ -n "$to" && -n "$from" ]] || fail "send: --to and --from are required" 1
   if [[ -n "$text" && -n "$src" ]]; then fail "send: --text XOR --file, not both" 1; fi
+  if [[ -n "$text" ]]; then
+    case "$text" in
+      *'`'*|*'$('*|*'${'*)
+        echo "ship-mail: ВНИМАНИЕ — в --text есть подстановки shell (\` , \$( , \${):" >&2
+        echo "  оболочка могла вырезать часть текста до вызова скрипта." >&2
+        echo "  Текст письма с разметкой/переменными передавай через --file." >&2
+        ;;
+    esac
+  fi
   if [[ -z "$text" && -z "$src" ]]; then fail "send: --text or --file required" 1; fi
 
   registry_check "$to" "recipient"
