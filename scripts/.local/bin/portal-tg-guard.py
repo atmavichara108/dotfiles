@@ -80,6 +80,7 @@ JOURNAL_DIR = os.path.expanduser("~/.local/state/portal-tg")
 JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
 OUR_USER = _os.environ.get("DV_OUR_USER", "Atma_Vichara108")
+COORD_SID = _os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова (если задан)
 COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
                  or _os.environ.get("DV_WAKE_SESSION_TITLE")
                  or "Control top")
@@ -203,7 +204,7 @@ def wake_coord(row: dict):
             tok = _service_token()
             if not tok:
                 return "failed", "no service token (%s)" % SERVICE_JSON
-            sid = _coord_session_id or _resolve_coord_session(tok)
+            sid = COORD_SID or _coord_session_id or _resolve_coord_session(tok)
             if not sid:
                 return "failed", (
                     "coordinator session not found (title %r)" % COORD_TITLE)
