@@ -3,7 +3,7 @@ description: "Кафедра контрагентов при УАСе (Rector) �
 mode: primary
 model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:

@@ -3,7 +3,7 @@ description: "Институт Передовых Технологий (Institut
 mode: primary
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.3
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory: allow

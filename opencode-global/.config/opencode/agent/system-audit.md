@@ -3,7 +3,7 @@ description: "system-audit: глобальный read-only аудит систе
 mode: subagent
 model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
-steps: 20
+steps: 40
 permission:
   edit: deny
   task: deny

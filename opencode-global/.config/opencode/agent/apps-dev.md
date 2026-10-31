@@ -3,7 +3,7 @@ description: "Отдел «Приложений» (Apps-dev) — primary пот�
 mode: primary
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   task: ask
   doom_loop: ask

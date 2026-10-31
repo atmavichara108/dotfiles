@@ -3,7 +3,7 @@ description: "Отдел «Реверс-инженерии движков» (Rev
 mode: primary
 model: amd-radeon/GLM-5.3-Flash
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:

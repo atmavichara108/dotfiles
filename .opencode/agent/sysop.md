@@ -3,7 +3,7 @@ description: "Оператор-оркестратор Manjaro. Единстве�
 mode: primary
 model: opencode/muse-spark-1.3-contributor-free
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:

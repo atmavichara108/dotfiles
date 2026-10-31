@@ -3,7 +3,7 @@ description: "Оперативный Штаб (Shtab) — primary штаба о�
 mode: primary
 model: nvidia/meta/muse-glimmer-30b
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:

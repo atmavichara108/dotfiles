@@ -3,7 +3,7 @@ description: "Senior-dev — субагент разработки Офиса С
 mode: subagent
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   task: deny
   doom_loop: allow

@@ -3,7 +3,7 @@ description: "Служитель Обсидиан — субагент разр�
 mode: subagent
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
-steps: 25
+steps: 50
 permission:
   doom_loop: allow
   external_directory:

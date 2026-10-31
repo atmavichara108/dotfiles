@@ -3,7 +3,7 @@ description: "Офис Серплюкс (Serp-office) — primary предста
 mode: primary
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:
