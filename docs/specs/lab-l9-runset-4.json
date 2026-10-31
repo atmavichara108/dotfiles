@@ -1,0 +1,113 @@
+{
+ "холодный_старт_модели_мс": 1242.1,
+ "загрузка_расширения_мс": 0.3,
+ "всего_запросов": 40,
+ "прогрев": 5,
+ "в_статистике": 35,
+ "median_мс": 18.0,
+ "mean_мс": 19.6,
+ "p95_мс": 29.7,
+ "max_мс": 41.2,
+ "вердикты": {
+  "A1": {
+   "уникальные": [
+    "ЧАСТИЧНО"
+   ],
+   "top3": [
+    "99-Inbox/vault-upgrade-research-2026-08-02.md#L444",
+    "99-Inbox/vault-upgrade-research-2026-08-02.md#L183",
+    "99-Inbox/vault-upgrade-research-2026-08-02.md#L215"
+   ]
+  },
+  "A2": {
+   "уникальные": [
+    "РЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-09-06.md#L45",
+    "04-Memory/session-log/2026-09-06.md#L37",
+    "04-Memory/facts.md#L589"
+   ]
+  },
+  "A3": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-09-30.md#L1",
+    "04-Memory/session-log/2026-09-28.md#L20",
+    "04-Memory/facts.md#L819"
+   ]
+  },
+  "A4": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-10-06.md#L230",
+    "04-Memory/session-log/2026-10-13.md#L65",
+    "04-Memory/session-log/2026-10-13.md#L22"
+   ]
+  },
+  "A5": {
+   "уникальные": [
+    "РЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-10-13.md#L45",
+    "04-Memory/facts.md#L854",
+    "99-Inbox/2026-10-14-temple-resolutions.md#L78"
+   ]
+  },
+  "A6": {
+   "уникальные": [
+    "ЧАСТИЧНО"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-10-13.md#L47",
+    "04-Memory/active-context.md#L274",
+    "04-Memory/session-log/2026-10-13.md#L61"
+   ]
+  },
+  "A7": {
+   "уникальные": [
+    "РЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-09-28.md#L20",
+    "04-Memory/session-log/2026-10-01.md#L10",
+    "04-Memory/session-log/2026-10-07.md#L63"
+   ]
+  },
+  "N1": {
+   "уникальные": [
+    "чисто"
+   ],
+   "top3": [
+    "99-Inbox.md#L522",
+    "04-Memory/session-log/2026-08-28.md#L74",
+    "04-Memory/session-log/2026-09-07.md#L1"
+   ]
+  },
+  "N2": {
+   "уникальные": [
+    "чисто"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-10-06.md#L190",
+    "04-Memory/facts.md#L872",
+    "04-Memory/session-log/2026-10-07.md#L86"
+   ]
+  },
+  "N3": {
+   "уникальные": [
+    "чисто"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-10-07.md#L53",
+    "04-Memory/session-log/2026-09-07.md#L1",
+    "99-Inbox/vault-upgrade-research-2026-08-02.md#L176"
+   ]
+  }
+ }
+}

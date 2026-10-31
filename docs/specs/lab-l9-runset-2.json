@@ -1,0 +1,113 @@
+{
+ "холодный_старт_модели_мс": 544.7,
+ "загрузка_расширения_мс": 2.3,
+ "всего_запросов": 40,
+ "прогрев": 5,
+ "в_статистике": 35,
+ "median_мс": 13.1,
+ "mean_мс": 14.3,
+ "p95_мс": 24.6,
+ "max_мс": 47.5,
+ "вердикты": {
+  "A1": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "99-Inbox.md#L596",
+    "04-Memory/session-log/2026-09-16.md#L24"
+   ]
+  },
+  "A2": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "04-Memory/session-log/2026-06-29.md#L22",
+    "04-Memory/session-log/2026-10-06.md#L249"
+   ]
+  },
+  "A3": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "04-Memory/session-log/2026-06-29.md#L22",
+    "04-Memory/session-log/2026-09-16.md#L24"
+   ]
+  },
+  "A4": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "99-Inbox.md#L596",
+    "04-Memory/session-log/2026-06-29.md#L22"
+   ]
+  },
+  "A5": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "99-Inbox.md#L596",
+    "04-Memory/session-log/2026-06-29.md#L22"
+   ]
+  },
+  "A6": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "04-Memory/session-log/2026-06-29.md#L22",
+    "04-Memory/session-log/2026-09-16.md#L24"
+   ]
+  },
+  "A7": {
+   "уникальные": [
+    "НЕРЕЛЕВАНТЕН"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "99-Inbox.md#L596",
+    "04-Memory/session-log/2026-06-29.md#L22"
+   ]
+  },
+  "N1": {
+   "уникальные": [
+    "polluted(top=0.6229)"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "99-Inbox.md#L596",
+    "04-Memory/session-log/2026-06-29.md#L22"
+   ]
+  },
+  "N2": {
+   "уникальные": [
+    "polluted(top=0.6029)"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "04-Memory/session-log/2026-06-29.md#L22",
+    "99-Inbox.md#L596"
+   ]
+  },
+  "N3": {
+   "уникальные": [
+    "polluted(top=0.6266)"
+   ],
+   "top3": [
+    "04-Memory/session-log/2026-07-12.md#L1",
+    "99-Inbox.md#L596",
+    "04-Memory/session-log/2026-06-29.md#L22"
+   ]
+  }
+ }
+}
