@@ -323,7 +323,7 @@ def main(argv):
                     return
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
-                incoming = (row.get("from") or "") != OUR_USER
+                incoming = (row.get("from") or "") != (me.username or OUR_USER)  # свой = аккаунт моста (переобувка 10-29)
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
                 if incoming:
