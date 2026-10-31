@@ -16,7 +16,35 @@ import argparse, json, os, sys
 from datetime import datetime, timezone
 
 GOAL_FILE = os.path.expanduser("~/.local/state/opencode/goal.json")
-os.makedirs(os.path.dirname(GOAL_FILE), exist_ok=True)
+GOALS_DIR = os.path.expanduser("~/.local/state/opencode/goals")  # сайдкары Р-042
+os.makedirs(GOALS_DIR, exist_ok=True)
+
+
+def sidecar_path(session_id):
+    return os.path.join(GOALS_DIR, f"{session_id}.json")
+
+
+def save_sidecar(g, session_id):
+    """Свой вклад сессии — отдельным файлом: одна сессия не затирает другую (Р-042)."""
+    if not session_id:
+        return None
+    p = sidecar_path(session_id)
+    data = dict(g)
+    data["wip_session"] = session_id
+    data["previous"] = []
+    if os.path.exists(p):
+        try:
+            old = json.load(open(p, encoding="utf-8"))
+            data["previous"] = (old.get("previous") or []) + [{
+                "objective": old.get("objective"), "status": old.get("status"),
+                "close": old.get("close_reason"), "at": old.get("updated_at"),
+            }]
+        except Exception:
+            pass
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    return p
 
 
 def load():
@@ -26,11 +54,12 @@ def load():
         return json.load(f)
 
 
-def save(g):
+def save(g, session_id=None):
     g["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(GOAL_FILE, "w", encoding="utf-8") as f:
         json.dump(g, f, indent=2, ensure_ascii=False)
         f.write("\n")
+    save_sidecar(g, session_id)
 
 
 def cmd_set(a):
@@ -44,12 +73,13 @@ def cmd_set(a):
         "objective": a.objective,
         "criteria": a.criteria or [],
         "kill": a.kill or "",
+        "kill_author": a.kill_author or "",
         "wip": "один активный",
         "status": "active",
         "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "evidence": [],
     }
-    save(g)
+    save(g, a.session)
     print(f"Цель поставлена: {g['objective']}")
     if g["criteria"]:
         print(f"Критерии: {g['criteria']}")
@@ -83,10 +113,14 @@ def cmd_done(a):
     if not g or g.get("status") not in ("active", "paused"):
         print("Нет активной цели.")
         sys.exit(1)
+    if g.get("kill") and not g.get("kill_author"):
+        print("ПРЕДУПРЕЖДЕНИЕ: у цели есть условие останова без автора — "
+              "по требованию №5 SCRUM-master это дефект записи; укажи автора "
+              "(--kill-author) при следующей постановке.")
     if a.evidence:
         g.setdefault("evidence", []).append(a.evidence)
     g["status"] = "done"
-    save(g)
+    save(g, a.session)
     print(f"Цель достигнута: {g['objective']}")
     if g.get("evidence"):
         print("Evidence:")
@@ -101,7 +135,7 @@ def cmd_drop(a):
         sys.exit(1)
     g.setdefault("evidence", []).append(f"Отменено: {a.reason or 'без причины'}")
     g["status"] = "dropped"
-    save(g)
+    save(g, a.session)
     print(f"Цель отменена: {g['objective']}")
 
 
@@ -111,7 +145,7 @@ def cmd_pause(a):
         print("Нет активной цели.")
         sys.exit(1)
     g["status"] = "paused"
-    save(g)
+    save(g, a.session)
     print("Цель приостановлена.")
 
 
@@ -121,7 +155,7 @@ def cmd_resume(a):
         print("Нет приостановленной цели.")
         sys.exit(1)
     g["status"] = "active"
-    save(g)
+    save(g, a.session)
     print("Цель возобновлена.")
 
 
@@ -141,7 +175,10 @@ def main():
     s.add_argument("objective", help="Текст цели (дословно)")
     s.add_argument("--criteria", nargs="*", default=[], help="Проверяемые критерии")
     s.add_argument("--kill", default="", help="Условие останова")
+    s.add_argument("--kill-author", default=os.environ.get("OPENCODE_SESSION_ID", ""),
+                   help="Кто установил условие останова (требование №5 SCRUM-master)")
     s.add_argument("--force", action="store_true", help="Заменить существующую цель")
+    s.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии (для сайдкара)")
     s.set_defaults(func=cmd_set)
 
     sh = sub.add_parser("show", help="Показать текущую цель")
@@ -149,16 +186,20 @@ def main():
 
     d = sub.add_parser("done", help="Закрыть как достигнутую")
     d.add_argument("--evidence", default="", help="Факт достижения")
+    d.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии (для сайдкара)")
     d.set_defaults(func=cmd_done)
 
     dr = sub.add_parser("drop", help="Отменить цель")
     dr.add_argument("--reason", default="", help="Причина отмены")
+    dr.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии (для сайдкара)")
     dr.set_defaults(func=cmd_drop)
 
     p = sub.add_parser("pause", help="Приостановить")
+    p.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии (для сайдкара)")
     p.set_defaults(func=cmd_pause)
 
     r = sub.add_parser("resume", help="Возобновить")
+    r.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии (для сайдкара)")
     r.set_defaults(func=cmd_resume)
 
     c = sub.add_parser("clear", help="Удалить цель")
