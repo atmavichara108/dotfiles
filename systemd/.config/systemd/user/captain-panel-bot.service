@@ -1,0 +1,16 @@
+[Unit]
+Description=captain-panel-bot — бот-пульт капитана (Капитанский портал; голос Корабля — Maya, бот — пульт)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/captain-panel-bot.py
+Environment=CAPTAIN_PANEL_PROFILE=captain-panel
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
