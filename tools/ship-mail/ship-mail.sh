@@ -81,8 +81,16 @@ registry_check() {
   if [[ ! -r "$REGISTRY" ]]; then
     refresh_registry_snapshot || fail "registry not readable: $REGISTRY (и git-снапшот недоступен)" 5
   fi
-  grep -q "$sid" "$REGISTRY" || \
-    fail "$role '$sid' not in peer-registry — register the session first (INC-18)" 4
+  # Двойной источник: рабочее дерево волта живёт под чужими ветками, и адрес может
+  # отсутствовать в текущей, но быть в последней зафиксированной версии реестра.
+  if ! grep -q "$sid" "$REGISTRY" 2>/dev/null; then
+    refresh_registry_snapshot >/dev/null 2>&1 || true
+    if [[ -r "$REGISTRY_SNAPSHOT" ]] && grep -q "$sid" "$REGISTRY_SNAPSHOT" 2>/dev/null; then
+      REGISTRY="$REGISTRY_SNAPSHOT"
+    else
+      fail "$role '$sid' not in peer-registry — register the session first (INC-18)" 4
+    fi
+  fi
 }
 
 # Quote a string as a YAML double-quoted scalar.
