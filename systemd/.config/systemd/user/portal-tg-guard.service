@@ -10,6 +10,7 @@ Type=simple
 ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/portal-tg-guard.py --topic 0
 Environment=TG_WAKE_SESSION_ID=ses_eceb23a71ffeJO9QnFou8VngZC
 Environment=TG_WAKE_SESSION_TITLE=
+Environment=TG_OWN=AllIsMaya
 Environment=TG_OWNER=Atma_Vichara108
 Restart=always
 RestartSec=5
