@@ -1,0 +1,14 @@
+[
+  { "name": "abs-path", "pattern": "/[\\w./-]{2,}", "replace": "PATH" },
+  { "name": "uuid", "pattern": "\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b", "replace": "ID" },
+  { "name": "session-id", "pattern": "\\bses[\\w-]+", "replace": "ID" },
+  { "name": "task-id", "pattern": "\\bT-\\d+", "replace": "ID" },
+  { "name": "hex-hash", "pattern": "\\b[0-9a-f]{7,40}\\b", "replace": "ID" },
+  { "name": "num-flag", "pattern": "(\\s-[a-zA-Z]?)(\\d+)", "replace": "\\1N" },
+  { "name": "head-tail-N", "pattern": "\\b(head|tail)\\s+-n?\\s*\\d+", "replace": "\\1 -N" },
+  { "name": "limit-N", "pattern": "--(limit|top|max|count)[ =]\\d+", "replace": "--\\1 N" },
+  { "name": "iso-date", "pattern": "\\b\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?Z?)?\\b", "replace": "DATE" },
+  { "name": "quoted-literal", "pattern": "\"[^\"]{24,}\"", "replace": "\"STR\"" },
+  { "name": "squoted-literal", "pattern": "'[^']{24,}'", "replace": "'STR'" },
+  { "name": "bare-number", "pattern": "\\s\\d{2,}\\b", "replace": " N" }
+]
