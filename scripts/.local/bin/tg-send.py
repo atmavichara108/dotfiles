@@ -208,19 +208,17 @@ def main(argv):
             me = await client.get_me()
             ent = await client.get_entity(int(group))
             chat_scope = bool(_PROFILE.get("chat_scope"))
-            if chat_scope:
-                topics = None
-            else:
+            if topic is not None:
                 topics = await _topic_ids(client, ent)
                 if topic not in topics:
                     sys.exit(f"tg-send: топика {topic} нет в группе "
                              f"(есть: {sorted(topics)}) — отказ")
-            scope_txt = "chat" if chat_scope else f"topic={topic}"
+            scope_txt = f"topic={topic}" if topic is not None else "chat"
             sys.stderr.write(f"tg-send: как {me.username or me.id} -> {group} "
                              f"{scope_txt} format={fmt}\n")
             msg = await client.send_message(
                 ent, wire,
-                **({} if chat_scope else {"reply_to": topic}),
+                **({"reply_to": topic} if topic is not None else {}),
                 parse_mode=None, formatting_entities=entities)
             print(f"tg-send: ok id={msg.id} {scope_txt}")
             tg_profile.journal_append({"action": "sent", "topic": topic,
