@@ -317,12 +317,19 @@ def main(argv):
                     return
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
+                # own — по флагу m.out (надёжно): у собственных отправок
+                # resolve отправителя может отдать пусто, и skip по имени
+                # промахивался (дефект control-top 2026-10-31, id 221..227).
+                own = bool(getattr(m, "out", False))
+                row_from = (row.get("from") or "").strip()
+                if own and not row_from:
+                    row["from"] = (me.username or str(me.id))
                 chat_scope = bool(watch._PROFILE.get("chat_scope"))
-                incoming = (row.get("from") or "").lower() not in OWNERS
+                incoming = (not own) and (row_from.lower() not in OWNERS)
                 if chat_scope:
                     # Жёсткая граница портала: чужие пишутся только в
                     # журнал; зов координатора — ТОЛЬКО от владельца.
-                    incoming = (row.get("from") or "").lower() in OWNERS
+                    incoming = own or (row_from.lower() in OWNERS)
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
                 if incoming:
