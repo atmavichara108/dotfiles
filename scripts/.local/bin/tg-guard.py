@@ -70,8 +70,8 @@ JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
 OWNERS = {x.lower() for x in os.environ.get("TG_OWNERS", "Atma_Vichara108,allismaya").split(",")}  # allow-list отправителей топика 33 (слово владельца 2026-10-30: Майя говорит за канал)
 COORD_SID = os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова (если задан)
-COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
-               or _os.environ.get("DV_WAKE_SESSION_TITLE")
+COORD_TITLE = (os.environ.get("TG_WAKE_SESSION_TITLE")
+               or os.environ.get("DV_WAKE_SESSION_TITLE")
                or "Control top")  # иначе — резолв по названию
 SERVICE_JSON = os.path.expanduser("~/.config/opencode/service.json")
 OPENCODE_ENDPOINT = os.environ.get("OPENCODE_ENDPOINT",
@@ -300,9 +300,10 @@ def main(argv):
                 sys.exit(f"tg-guard: топика {topic} нет в группе "
                          f"(есть: {sorted(topics)}) — отказ")
 
-            async def on_new_message(event):
+            async def handle(m):
+                """Обработка одного сообщения: журнал ВСЕГДА первым,
+                wake по allow-list (используется и live-обработчиком, и догоном)."""
                 nonlocal seen, woken
-                m = event.message
                 # Фильтр топика в обработчике (как в ядре): наружу — только 33.
                 if not watch._PROFILE.get("chat_scope"):
                     if watch._thread_of(m) != topic:
@@ -346,8 +347,40 @@ def main(argv):
                                      % (type(e).__name__, e))
                 seen += 1
 
+            # Догон окна простоя: после рестарта NewMessage ловит только
+            # новые события, история между «последней записью журнала» и
+            # «сейчас» терялась (дефект guard-journal-silent-after-restart,
+            # control-top 2026-10-31). Догоняем от последнего id в журнале.
+            last_journaled = 0
+            try:
+                if os.path.exists(JOURNAL):
+                    with open(JOURNAL, encoding="utf-8") as jf:
+                        for line in jf:
+                            try:
+                                je = json.loads(line)
+                                if int(je.get("topic") or -1) == topic:
+                                    last_journaled = max(
+                                        last_journaled,
+                                        int(je.get("id") or 0))
+                            except Exception:  # noqa: BLE001
+                                continue
+            except Exception:  # noqa: BLE001
+                last_journaled = 0
+            if last_journaled:
+                caught = 0
+                sys.stderr.write(f"tg-guard: догон топика {topic} "
+                                 f"с id>{last_journaled}\n")
+                async for hm in client.iter_messages(
+                        ent, min_id=last_journaled, reverse=True):
+                    before = seen
+                    await handle(hm)
+                    if seen > before:
+                        caught += 1
+                sys.stderr.write(f"tg-guard: догон завершён, "
+                                 f"дописано {caught}\n")
+
             client.add_event_handler(
-                on_new_message,
+                handle,
                 events.NewMessage(chats=ent, incoming=True, outgoing=True))
 
             # Heartbeat + outage-visibility (инцидент tg-guard-journal-
