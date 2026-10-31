@@ -1,7 +1,7 @@
 ---
 description: Strict acceptance verifier. Checks work against DoD. Returns PASS/FAIL, never edits.
 mode: subagent
-model: nvidia/meta/muse-glimmer-30b
+model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
 steps: 40
 permission:

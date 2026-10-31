@@ -1,7 +1,7 @@
 ---
 description: "Верификатор dotfiles. Проверяет применимость изменений перед apply: синтаксис, dry-run stow, конфликты симлинков. Не редактирует, только вердикт PASS/FAIL."
 mode: subagent
-model: nvidia/meta/muse-glimmer-30b
+model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
 steps: 40
 permission:
