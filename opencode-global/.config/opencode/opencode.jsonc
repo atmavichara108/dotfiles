@@ -150,22 +150,7 @@
         "kmc/k3": { "name": "Kimi K3", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
     },
-    "apinex": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Apinex",
-      "options": {
-        "baseURL": "https://apinex.bond/v1"
-      },
-      "models": {
-        "free/claude-opus-4.6": {
-          "name": "Claude Opus 4.6 (Free)",
-          "attachment": true,
-          "reasoning": true,
-          "tool_call": true,
-          "temperature": true
-        }
-      }
-    },
+    
     "justwoker": {
       "npm": "@ai-sdk/anthropic",
       "name": "JustDoWork",
@@ -264,19 +249,7 @@
         "kmc/k3": { "name": "Kimi K3", "attachment": true, "reasoning": true, "tool_call": true, "temperature": true }
       }
     },
-    "apinex": {
-      "package": "aisdk:@ai-sdk/openai-compatible",
-      "settings": { "baseURL": "https://apinex.bond/v1" },
-      "models": {
-        "free/claude-opus-4.6": {
-          "name": "Claude Opus 4.6 (Free)",
-          "attachment": true,
-          "reasoning": true,
-          "tool_call": true,
-          "temperature": true
-        }
-      }
-    },
+    
     "justwoker": {
       "package": "aisdk:@ai-sdk/anthropic",
       "settings": { "baseURL": "http://127.0.0.1:8787/v1" },
