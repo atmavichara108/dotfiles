@@ -1,6 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "opencode-go/glm-5.3-flash",
+  // Слой 3 (слово владельца 2026-10-31, принято однозначно): буфер компакции —
+  // держать 20% окна модели свободными, чтобы уплотнение не съедало контекст
+  // посреди задачи (критично для лёгких моделей с малыми окнами).
+  "compaction": { "buffer": "20%" },
   "agent": {},
   "agents": {},
   "experimental": { "todo": true, "image_generate": true },
