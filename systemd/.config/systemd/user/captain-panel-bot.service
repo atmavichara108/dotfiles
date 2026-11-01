@@ -7,6 +7,9 @@ Wants=network-online.target
 Type=simple
 ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/captain-panel-bot.py
 Environment=CAPTAIN_PANEL_PROFILE=captain-panel
+Environment=HTTP_PROXY=http://127.0.0.1:10809
+Environment=HTTPS_PROXY=http://127.0.0.1:10809
+Environment=ALL_PROXY=
 Restart=always
 RestartSec=5
 StandardOutput=journal

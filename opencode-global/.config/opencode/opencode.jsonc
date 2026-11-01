@@ -7,7 +7,7 @@
   "compaction": { "buffer": "20%" },
   "agent": {},
   "agents": {},
-  "experimental": { "todo": true, "image_generate": true },
+  "experimental": { "todo": true, "image_generate": true, "artifacts": true },
   "mcp": {
     "owner-gate": {
       "type": "local",

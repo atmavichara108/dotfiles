@@ -16,6 +16,7 @@ python3 ~/dotfiles/tools/goal/goal.py show
 python3 ~/dotfiles/tools/goal/goal.py done [--evidence "факт"]
 python3 ~/dotfiles/tools/goal/goal.py drop [--reason "причина"]
 python3 ~/dotfiles/tools/goal/goal.py pause | resume | clear
+python3 ~/dotfiles/tools/goal/goal.py index        # индекс активных целей всех сессий (Р-039)
 python3 ~/dotfiles/tools/goal/goal.py share <slug> [--objective ...] [--criteria ...] [--kill ...] [--session <sid>]
 python3 ~/dotfiles/tools/goal/goal.py join <slug> --session <sid> [--role ...]
 python3 ~/dotfiles/tools/goal/goal.py contrib <slug> --session <sid> --evidence "..."
@@ -29,7 +30,7 @@ python3 ~/dotfiles/tools/goal/goal.py shared [<slug>] [--session <sid>]
 
 ## Хранилище
 
-Цель хранится в `~/.local/state/opencode/goal.json` (переживает ходы и компакт).
+Цель хранится в `~/.local/state/opencode/goals/<sid>.json` — своя на сессию (Р-039/Р-042: цели разных сессий не затирают друг друга; переживает ходы и компакт). Без sid (headless) — общий слот `~/.local/state/opencode/goal.json`. Параметр `--session <sid>` или env `OPENCODE_SESSION_ID`.
 Формат:
 ```json
 {
