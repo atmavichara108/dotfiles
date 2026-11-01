@@ -232,6 +232,23 @@ class Wire:
              "show_alert": show_alert}
         return self.call("answerCallbackQuery", p)
 
+    def download_file(self, file_id, dest):
+        """Скачивание файла Bot API в dest. Токен в URL не журналируется."""
+        r = self.call("getFile", {"file_id": file_id})
+        file_path = r.get("result", {}).get("file_path")
+        if not file_path:
+            raise RuntimeError("getFile did not return file_path")
+        url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=120) as resp, \
+                open(dest, "wb") as f:
+            while True:
+                chunk = resp.read(1 << 20)
+                if not chunk:
+                    break
+                f.write(chunk)
+        return dest
+
 # ---------- обработка ----------
 
 
@@ -392,27 +409,56 @@ def handle(wire, update, dry=False):
         mime = obj.get("mime_type", "—")
         journal(update, "media_received", ref=f"media:{kind}")
         set_stage(STATE_IDLE)
-        tid = tasks_add(f"Распознать {kind} через бот-пульт (длит. {dur}, "
-                        f"размер {size}, mime {mime})")
-        send_to(chat_id,
-                f"Пульт принял {kind}: длительность {dur}, размер {size}, "
-                f"mime {mime}. Зафиксировал задачу T-{tid} на подключение "
-                "распознавания. Голос Корабля — Maya; пульт не голос Корабля.")
-        if not dry:
-            import subprocess
-            body = os.path.join(STATE, ".media-notice.txt")
-            with open(body, "w", encoding="utf-8") as f:
-                f.write(f"Медиа через бот-пульт: {kind}; длит. {dur}; "
-                        f"размер {size}; mime {mime}; задача T-{tid}\n")
-            subprocess.run(
-                ["bash", os.path.join(HOME, "dotfiles/tools/ship-mail/ship-mail.sh"),
-                 "send", "--to", "ses_ecb58b307ffeqrigRxoUEWoXZs",
-                 "--from", "ses_e714b5c4bffeh1ri37WHF8Q7Bx",
-                 "--title", "Голос/видео через бот-пульт — нужна сборка распознавания",
-                 "--ref", f"captain-media-t-{tid}", "--file", body],
-                capture_output=True, timeout=30)
+
+        if dry:
+            send_to(chat_id,
+                    f"Пульт принял {kind}: длительность {dur}, размер {size}, "
+                    f"mime {mime}. Боевой режим: скачаю и запущу ASR.")
+            return
+
+        file_id = obj.get("file_id")
+        if not file_id:
+            send_to(chat_id, "Пульт: медиа без file_id — скачать не могу.")
+            return
+
+        import subprocess
+        media_dir = os.path.join(STATE, "media")
+        os.makedirs(media_dir, exist_ok=True)
+        ext = ".ogg" if kind == "голосовое" else ".mp4"
+        path = os.path.join(media_dir, f"m{msg_id}{ext}")
+        asr = os.path.join(HOME, "dotfiles/scripts/.local/bin/captain-panel-asr.py")
+        outcome = "media_asr_failed"
+        notice = "Пульт: медиа принято, но распознавание не удалось."
+        try:
+            wire.download_file(file_id, path)
+            run = subprocess.run(
+                [sys.executable, asr, path, "ru"],
+                capture_output=True, text=True, timeout=1200,
+                env=os.environ.copy())
+            payload = {}
+            for row in run.stdout.splitlines():
+                if row.startswith("ASR_JSON "):
+                    payload = json.loads(row[len("ASR_JSON "):])
+                    break
+            if payload.get("ok") and payload.get("text"):
+                text_out = payload["text"]
+                if len(text_out) > 3500:
+                    text_out = text_out[:3500] + "…"
+                outcome = "media_transcribed"
+                notice = (f"Пульт принял {kind}: длительность {dur}, "
+                          f"размер {size}. Распознано: «{text_out}»")
+            elif payload.get("error"):
+                notice = (f"Пульт: медиа принято, ASR вернул отказ "
+                          f"({payload['error'][:120]}).")
+            journal(update, outcome, ref=f"asr:{kind}")
+            send_to(chat_id, notice)
+        except Exception as e:
+            journal(update, outcome, ref=f"asr:{kind}")
+            send_to(chat_id, "Пульт: медиа принято, но шаг распознавания упал. "
+                             f"Ошибка: {type(e).__name__}.")
+        finally:
             try:
-                os.unlink(body)
+                os.unlink(path)
             except OSError:
                 pass
         return
