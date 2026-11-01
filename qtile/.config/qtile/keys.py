@@ -124,8 +124,8 @@ keys = [
     Key([mod, "shift"], "period", lazy.window.toscreen(1), desc="Move window to next monitor"),
     Key([mod, "shift"], "comma", lazy.window.toscreen(0), desc="Move window to prev monitor"),
     Key([mod], "F6", lazy.spawn(os.path.expanduser("~/.local/bin/monitor-setup")), desc="Detect monitors"),
-    Key([mod], "F8", lazy.spawn("bash ~/Projects/ability-lab/.cache/voice-pilot/voice-toggle.sh"), desc="Toggle voice recording pilot lab (voice-toggle.sh, Р-039)"),
-    Key([mod], "XF86TouchpadToggle", lazy.spawn("bash ~/Projects/ability-lab/.cache/voice-pilot/voice-toggle.sh"), desc="Fallback: ноутбучная F8 в мультимедиа-режиме (voice-toggle.sh)"),
+    Key([mod], "F8", lazy.spawn("/home/rudra/Projects/ability-lab/.cache/voice-pilot/voice-toggle.sh"), desc="Toggle voice recording pilot lab (voice-toggle.sh, Р-039)"),
+    Key([mod], "XF86TouchpadToggle", lazy.spawn("/home/rudra/Projects/ability-lab/.cache/voice-pilot/voice-toggle.sh"), desc="Fallback: ноутбучная F8 в мультимедиа-режиме (voice-toggle.sh)"),
 
     KeyChord([mod], "p", [
         Key([], "h", lazy.spawn("dm-hub -r"), desc='List all dmscripts'),
