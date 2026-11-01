@@ -204,7 +204,7 @@ async def _row(client, m, topic):
     filename, mime, size = _media_meta(m) if kind == "file" else ("", "", 0)
     return {
         "id": m.id,
-        "topic": topic,
+        "topic": (_thread_of(m) if _PROFILE.get("chat_scope") else topic),
         "from": await _sender_name(m),
         "date": m.date.isoformat() if m.date else "",
         "type": kind,
