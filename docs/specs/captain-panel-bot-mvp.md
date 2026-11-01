@@ -117,3 +117,19 @@ portal:back
 Live только после PASS всех smoke-пунктов и явного подтверждения со стороны
 AllIs Maya/LD или ИС. Первая live-отправка — тестовая в портал с пометкой
 «бот-пульт, не голос Корабля».
+
+## 9. Локальное распознавание голоса и видео
+
+* Модель: `Systran/faster-whisper-small`, локальный HF-кэш
+  `~/.cache/huggingface/hub/...`, размер model.bin — 483546902 байт.
+* Исполнение: `~/.local/share/pipx/venvs/faster-whisper/bin/python`, stdlib
+  faster_whisper, CPU int8.
+* Извлечение аудио: `ffmpeg -vn -ac 1 -ar 16000`.
+* Скрипты: `scripts/.local/bin/captain-panel-asr-worker.py`,
+  `scripts/.local/bin/captain-panel-asr.py`.
+* Бот-пульт принимает voice, video, video_note и audio/video document:
+  скачивает через Bot API, прогоняет ASR, возвращает текст, журналирует
+  outcome `media_transcribed` или `media_asr_failed`.
+* Журнал не содержит file_id, путей, тела сообщений и секретов.
+* Сеть: только локальный HTTP proxy `http://127.0.0.1:10809`,
+  `ALL_PROXY` снимается — иначе huggingface сломается на socksio.
