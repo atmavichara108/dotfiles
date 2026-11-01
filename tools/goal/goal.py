@@ -204,23 +204,34 @@ def save_sidecar(g, session_id):
     return p
 
 
-def load():
-    if not os.path.exists(GOAL_FILE):
+def goal_path(session_id):
+    """Файл цели: свой на сессию (Р-039/Р-042: общий goal.json затирали цели
+    друг друга — Лаба 2026-11-01); без sid — прежний общий слот (headless)."""
+    if session_id:
+        return os.path.join(GOALS_DIR, f"{session_id}.json")
+    return GOAL_FILE
+
+
+def load(session_id=None):
+    p = goal_path(session_id)
+    if not os.path.exists(p):
         return None
-    with open(GOAL_FILE, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        return json.load(open(p, encoding="utf-8"))
+    except Exception:
+        return None
 
 
 def save(g, session_id=None):
     g["updated_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    with open(GOAL_FILE, "w", encoding="utf-8") as f:
+    p = goal_path(session_id)
+    with open(p, "w", encoding="utf-8") as f:
         json.dump(g, f, indent=2, ensure_ascii=False)
         f.write("\n")
-    save_sidecar(g, session_id)
 
 
 def cmd_set(a):
-    g = load()
+    g = load(a.session)
     if g and g.get("status") == "active":
         print(f"Уже есть активная цель: {g['objective']}")
         print("Заменить? (используй --force для принудительной замены)")
@@ -237,6 +248,7 @@ def cmd_set(a):
         "evidence": [],
     }
     save(g, a.session)
+    save_sidecar(g, a.session)
     print(f"Цель поставлена: {g['objective']}")
     if g["criteria"]:
         print(f"Критерии: {g['criteria']}")
@@ -245,7 +257,7 @@ def cmd_set(a):
 
 
 def cmd_show(a):
-    g = load()
+    g = load(getattr(a, 'session', None))
     if not g:
         print("Активной цели нет.")
         return
@@ -266,7 +278,7 @@ def cmd_show(a):
 
 
 def cmd_done(a):
-    g = load()
+    g = load(getattr(a, 'session', None))
     if not g or g.get("status") not in ("active", "paused"):
         print("Нет активной цели.")
         sys.exit(1)
@@ -286,7 +298,7 @@ def cmd_done(a):
 
 
 def cmd_drop(a):
-    g = load()
+    g = load(getattr(a, 'session', None))
     if not g or g.get("status") not in ("active", "paused"):
         print("Нет активной цели.")
         sys.exit(1)
@@ -297,7 +309,7 @@ def cmd_drop(a):
 
 
 def cmd_pause(a):
-    g = load()
+    g = load(getattr(a, 'session', None))
     if not g or g.get("status") != "active":
         print("Нет активной цели.")
         sys.exit(1)
@@ -307,7 +319,7 @@ def cmd_pause(a):
 
 
 def cmd_resume(a):
-    g = load()
+    g = load(getattr(a, 'session', None))
     if not g or g.get("status") != "paused":
         print("Нет приостановленной цели.")
         sys.exit(1)
@@ -317,11 +329,39 @@ def cmd_resume(a):
 
 
 def cmd_clear(a):
-    if os.path.exists(GOAL_FILE):
-        os.remove(GOAL_FILE)
+    sid = getattr(a, "session", None)
+    p = goal_path(sid)
+    if os.path.exists(p):
+        os.remove(p)
         print("Цель удалена.")
     else:
         print("Активной цели нет.")
+
+
+def cmd_index(a):
+    """Индекс активных целей всего корабля (Р-039: приёмочные слоты)."""
+    rows = []
+    for f in sorted(os.listdir(GOALS_DIR)):
+        if not f.endswith(".json") or f.startswith("goal-"):
+            continue  # goal-<slug>.json — общие цели Р-044 (сводка: goal shared)
+        try:
+            g = json.load(open(os.path.join(GOALS_DIR, f), encoding="utf-8"))
+        except Exception:
+            continue
+        rows.append((f[:-5], g))
+    # legacy-общий слот (headless без sid) — тоже виден в индексе
+    if os.path.exists(GOAL_FILE):
+        try:
+            rows.append(("(общий)", json.load(open(GOAL_FILE, encoding="utf-8"))))
+        except Exception:
+            pass
+    active = [r for r in rows if (r[1].get("status") or "") in ("active", "paused")]
+    print(f"Активных целей: {len(active)}")
+    for sid, g in active:
+        crit = len(g.get("criteria") or [])
+        ev = len(g.get("evidence") or [])
+        print(f"  {sid}: {g.get('objective', '?')[:60]} "
+              f"[{g.get('status')}, критериев {crit}, evidence {ev}]")
 
 
 def main():
@@ -339,7 +379,11 @@ def main():
     s.set_defaults(func=cmd_set)
 
     sh = sub.add_parser("show", help="Показать текущую цель")
+    sh.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии (для сайдкара)")
     sh.set_defaults(func=cmd_show)
+
+    ix = sub.add_parser("index", help="Индекс активных целей (все сессии, Р-039)")
+    ix.set_defaults(func=cmd_index)
 
     d = sub.add_parser("done", help="Закрыть как достигнутую")
     d.add_argument("--evidence", default="", help="Факт достижения")
@@ -388,6 +432,7 @@ def main():
     shr.set_defaults(func=cmd_shared)
 
     c = sub.add_parser("clear", help="Удалить цель")
+    c.add_argument("--session", default=os.environ.get("OPENCODE_SESSION_ID", ""), help="id сессии")
     c.set_defaults(func=cmd_clear)
 
     a = ap.parse_args()
