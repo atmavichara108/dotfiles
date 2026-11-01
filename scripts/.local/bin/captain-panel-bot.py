@@ -375,6 +375,48 @@ def handle(wire, update, dry=False):
     msg_id = m.get("message_id")
     stage = get_stage()
 
+    # ---- медиа (голос/видео) — пульт принимает и фиксирует мету ----
+    media = None
+    if m.get("voice"):
+        media = ("голосовое", m["voice"])
+    elif m.get("video"):
+        media = ("видео", m["video"])
+    elif m.get("video_note"):
+        media = ("видеосообщение", m["video_note"])
+    elif m.get("document") and (m.get("document", {}).get("mime_type", "").startswith(("video/", "audio/"))):
+        media = ("медиа-файл", m["document"])
+    if media:
+        kind, obj = media
+        dur = obj.get("duration", "—")
+        size = obj.get("file_size", "—")
+        mime = obj.get("mime_type", "—")
+        journal(update, "media_received", ref=f"media:{kind}")
+        set_stage(STATE_IDLE)
+        tid = tasks_add(f"Распознать {kind} через бот-пульт (длит. {dur}, "
+                        f"размер {size}, mime {mime})")
+        send_to(chat_id,
+                f"Пульт принял {kind}: длительность {dur}, размер {size}, "
+                f"mime {mime}. Зафиксировал задачу T-{tid} на подключение "
+                "распознавания. Голос Корабля — Maya; пульт не голос Корабля.")
+        if not dry:
+            import subprocess
+            body = os.path.join(STATE, ".media-notice.txt")
+            with open(body, "w", encoding="utf-8") as f:
+                f.write(f"Медиа через бот-пульт: {kind}; длит. {dur}; "
+                        f"размер {size}; mime {mime}; задача T-{tid}\n")
+            subprocess.run(
+                ["bash", os.path.join(HOME, "dotfiles/tools/ship-mail/ship-mail.sh"),
+                 "send", "--to", "ses_ecb58b307ffeqrigRxoUEWoXZs",
+                 "--from", "ses_e714b5c4bffeh1ri37WHF8Q7Bx",
+                 "--title", "Голос/видео через бот-пульт — нужна сборка распознавания",
+                 "--ref", f"captain-media-t-{tid}", "--file", body],
+                capture_output=True, timeout=30)
+            try:
+                os.unlink(body)
+            except OSError:
+                pass
+        return
+
     if stage == STATE_TASK_ADD and not text.startswith("/"):
         tid = tasks_add(text)
         journal(update, "task_added", ref=f"T-{tid}")
@@ -536,7 +578,7 @@ def main():
           f"бот-пульт, не голос Корабля")
     while True:
         try:
-            r = wire.call("getUpdates", {"timeout": 50, "offset": offset,
+            r = wire.call("getUpdates", {"timeout": 15, "offset": offset,
                                          "allowed_updates":
                                          ["message", "callback_query"]})
             for u in r.get("result", []):
@@ -546,8 +588,13 @@ def main():
                 except Exception as e:
                     # fail-open: событие уже в журнале, реакция не роняет цикл
                     print(f"handle: {type(e).__name__}", file=sys.stderr)
-        except urllib.error.URLError as e:
-            print(f"getUpdates: {type(e).__name__}", file=sys.stderr)
+        except urllib.error.HTTPError as e:
+            reason = getattr(e, "reason", "") or getattr(e, "msg", "")
+            print(f"getUpdates: HTTP {getattr(e, 'code', '?')} {reason}",
+                  file=sys.stderr)
+        except Exception as e:
+            reason = getattr(e, "reason", e)
+            print(f"getUpdates: {type(e).__name__}: {reason}", file=sys.stderr)
         except KeyboardInterrupt:
             return 0
 
