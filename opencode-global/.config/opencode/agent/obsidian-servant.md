@@ -2,7 +2,7 @@
 description: "SerO Служитель Обсидиан — primary-агент экосистемы Obsidian: наполняет Deck (карточки решений, canvas-ризома) из реестров владельца, Obsidian — его родная среда. Канон: Р-021 (ведомство UI|UX ecosys). Глобальный слой; проект-клиент №1 — TradingMind (изолированный волт)."
 mode: primary
 temperature: 0.2
-steps: 60
+steps: 120
 model: nvidia/meta/muse-glimmer-30b
 permission:
   doom_loop: ask

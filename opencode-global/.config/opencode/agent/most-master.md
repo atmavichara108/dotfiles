@@ -3,7 +3,7 @@ description: "Командная работа ДВ-Хаб (Most-master) — prim
 mode: primary
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:

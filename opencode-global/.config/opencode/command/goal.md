@@ -16,8 +16,16 @@ python3 ~/dotfiles/tools/goal/goal.py show
 python3 ~/dotfiles/tools/goal/goal.py done [--evidence "факт"]
 python3 ~/dotfiles/tools/goal/goal.py drop [--reason "причина"]
 python3 ~/dotfiles/tools/goal/goal.py pause | resume | clear
+python3 ~/dotfiles/tools/goal/goal.py share <slug> [--objective ...] [--criteria ...] [--kill ...] [--session <sid>]
+python3 ~/dotfiles/tools/goal/goal.py join <slug> --session <sid> [--role ...]
+python3 ~/dotfiles/tools/goal/goal.py contrib <slug> --session <sid> --evidence "..."
+python3 ~/dotfiles/tools/goal/goal.py shared [<slug>] [--session <sid>]
 ```
-Хранилище общее: ~/.local/state/opencode/goal.json.
+Хранилища:
+- агрегат: `~/.local/state/opencode/goal.json` (одна общая цель ведомства);
+- сайдкар сессии: `~/.local/state/opencode/goals/<sid>.json` (Р-042, своя цель
+  каждой сессии — без перезаписи чужой);
+- общая цель-объект: `~/.local/state/opencode/goals/goal-<slug>.json` (Р-044).
 
 ## Хранилище
 

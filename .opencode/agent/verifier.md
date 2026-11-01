@@ -3,7 +3,7 @@ description: "Верификатор dotfiles. Проверяет примени
 mode: subagent
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
-steps: 40
+steps: 80
 permission:
   task: deny
   doom_loop: allow

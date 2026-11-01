@@ -1,9 +1,9 @@
 ---
 description: "Кафедра контрагентов при УАСе (Rector) — primary подотдела выращивания контрагентов цифровых образов (ступени rudrakshas А4→А1→А2→А3): стандарты, право отказа, протокол маркировки."
 mode: primary
-model: amd-radeon/GLM-5.3-Flash
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.2
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:

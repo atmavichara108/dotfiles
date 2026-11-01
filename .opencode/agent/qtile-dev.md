@@ -3,7 +3,7 @@ description: Qtile-специалист. Пишет/правит конфиги 
 mode: subagent
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
-steps: 20
+steps: 40
 permission:
   doom_loop: allow
   external_directory:

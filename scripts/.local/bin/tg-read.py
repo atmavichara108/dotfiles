@@ -79,8 +79,8 @@ async def main():
         sys.exit(f"tg-read: профиль {_PROFILE['name']}: чтение только топиков "
                  f"{sorted(read_scope)} — отказ ДО сети (см. --help)")
     chat_scope = _PROFILE.get("chat_scope")
-    last_file = os.path.join(STATE_DIR, f"last_id_{topic}") if not chat_scope \
-        else os.path.join(STATE_DIR, "last_id_chat")
+    last_file = (os.path.join(STATE_DIR, "last_id_chat") if topic is None
+                 else os.path.join(STATE_DIR, f"last_id_{topic}"))
     if since is None and os.path.exists(last_file):
         with open(last_file) as f:
             since = int((f.read().strip() or "0"))
@@ -110,16 +110,14 @@ async def main():
     async with TelegramClient(SESSION, int(api_id), api_hash,
                               proxy=proxy) as client:
         ent = await client.get_entity(int(group))
-        if chat_scope:
-            topics = None
-        else:
+        if topic is not None:
             topics = await _topic_ids(client, ent)
             if topic not in topics:
                 sys.exit(f"tg-read: топика {topic} нет в группе "
                          f"(есть: {sorted(topics)}) — отказ")
         msgs = await client.get_messages(
             ent, limit=limit, min_id=since or 0,
-            **({} if chat_scope else {"reply_to": topic}))
+            **({"reply_to": topic} if topic is not None else {}))
         out = []
         for m in sorted(msgs, key=lambda x: x.id):
             sender = ""

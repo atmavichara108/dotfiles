@@ -3,7 +3,7 @@ description: "Мастерская Багфикс (Mechanic) — primary пот�
 mode: primary
 model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
-steps: 30
+steps: 60
 permission:
   doom_loop: ask
   external_directory:

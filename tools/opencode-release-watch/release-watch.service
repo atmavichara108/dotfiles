@@ -1,0 +1,7 @@
+[Unit]
+Description=release-watch: детектор новых релизов OpenCode (фичи на апрув, 3 слоя)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/opencode-release-watch/release-watch.py
+NoNewPrivileges=yes

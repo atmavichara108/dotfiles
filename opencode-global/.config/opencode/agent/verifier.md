@@ -3,7 +3,7 @@ description: Strict acceptance verifier. Checks work against DoD. Returns PASS/F
 mode: subagent
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
-steps: 40
+steps: 80
 permission:
   edit: deny
   task: deny

@@ -3,7 +3,7 @@ description: "Read-only quality, style and domain reviewer for dotfiles"
 mode: subagent
 model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
-steps: 15
+steps: 30
 permission:
   edit: deny
   task: deny

@@ -1,6 +1,6 @@
 [Unit]
-Description=portal-tg-guard — постоянный push-сторож Капитанского портала (TG-чат: журнал меты-only + wake ЦУ только от владельца)
-# Граница: зов координатора (ЦУ) — ТОЛЬКО на сообщения владельца (TG_OWNER);
+Description=portal-tg-guard — постоянный push-сторож Капитанского портала (TG-чат: журнал меты-only + wake AllIs Maya только от владельца)
+# Граница: зов сессии AllIs Maya — ТОЛЬКО на сообщения владельца (TG_OWNER);
 # чужие пишутся в журнал без зова. fail-open: событие остаётся в журнале.
 After=network-online.target opencode-serve.service
 Wants=network-online.target
@@ -8,8 +8,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/portal-tg-guard.py --topic 0
-Environment=TG_WAKE_SESSION_ID=ses_eceb23a71ffeJO9QnFou8VngZC
-Environment=TG_WAKE_SESSION_TITLE=
+Environment=TG_WAKE_SESSION_ID=ses_e714b5c4bffeh1ri37WHF8Q7Bx
+Environment="TG_WAKE_SESSION_TITLE=Пространство AllIs Maya"
 Environment=TG_OWN=AllIsMaya
 Environment=TG_OWNER=Atma_Vichara108
 Restart=always

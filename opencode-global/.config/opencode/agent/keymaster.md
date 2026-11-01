@@ -3,7 +3,7 @@ description: "Ротатор моделей (Keymaster) — subagent спец-о
 mode: subagent
 model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
-steps: 25
+steps: 50
 permission:
   task: deny
   doom_loop: allow

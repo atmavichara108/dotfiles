@@ -3,7 +3,7 @@ description: "system-ops: approval-gated high-risk host apply planner"
 mode: subagent
 model: nvidia/stepfun-ai/step-5-preview
 temperature: 0.1
-steps: 25
+steps: 50
 permission:
   edit:
     "*": deny
