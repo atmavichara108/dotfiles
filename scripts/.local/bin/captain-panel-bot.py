@@ -62,10 +62,16 @@ def load_token():
         return None
     try:
         with open(ENV_FILE, encoding="utf-8") as f:
+            bare = None
             for line in f:
                 line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
                 if line.startswith("TG_BOT_TOKEN="):
                     return line.split("=", 1)[1].strip().strip('"')
+                if "=" not in line and bare is None:
+                    bare = line.strip('"')  # файл-секрет может быть голым токеном
+            return bare
     except OSError:
         return None
     return None
