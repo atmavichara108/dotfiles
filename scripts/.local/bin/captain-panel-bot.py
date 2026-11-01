@@ -430,7 +430,21 @@ def handle(wire, update, dry=False):
         outcome = "media_asr_failed"
         notice = "Пульт: медиа принято, но распознавание не удалось."
         try:
-            wire.download_file(file_id, path)
+            try:
+                wire.download_file(file_id, path)
+            except Exception:
+                # Bot API не скачивает крупные файлы (>~20 МБ) — резервный
+                # маршрут через локальную MTProto-сессию Maya (профиль portal)
+                journal(update, "media_download_fallback",
+                        ref=f"download:{kind}")
+                fetch = os.path.join(
+                    HOME, "dotfiles/scripts/.local/bin/captain-panel-media-fetch.py")
+                subprocess.run(
+                    [sys.executable, fetch, "--chat", chat_id,
+                     "--message-id", str(msg_id), "--out", path,
+                     "--expect-from", OWNER],
+                    capture_output=True, text=True, timeout=1200,
+                    env=os.environ.copy(), check=True)
             run = subprocess.run(
                 [sys.executable, asr, path, "ru"],
                 capture_output=True, text=True, timeout=1200,
