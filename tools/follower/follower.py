@@ -39,6 +39,17 @@ QUESTS = os.path.join(VAULT, "11-Quests/quests.md")
 TASKS = os.path.join(VAULT, "TASKS.md")
 REGISTRY = os.path.join(VAULT, "docs/org/decision-registry.md")
 SESSION_LOG = os.path.join(VAULT, "04-Memory/session-log")
+# v0.2 (замечание ЦУ 2026-11-01): worktree таскают СВОИ копии волта и
+# session-reports — читаем все, иначе живые линии вне волта дают ложные
+# «нет упоминаний». Только чтение, порядок: волт первым, worktree — поверх.
+SESSION_GLOBS = [
+    SESSION_LOG,
+    os.path.join(VAULT, "04-Memory/session-reports"),
+    os.path.join(HOME, "Projects/OpenCode-Vault-tasks/*/04-Memory/session-log"),
+    os.path.join(HOME, "Projects/OpenCode-Vault-tasks/*/04-Memory/session-reports"),
+    os.path.join(HOME, "Projects/dotfiles-tasks/*/.opencode/memory/session-reports"),
+    os.path.join(HOME, "Projects/dotfiles-tasks/*/.opencode/memory/session-log"),
+]
 WAITS = os.path.join(HOME, ".local/share/ship-mail/waits.jsonl")
 GOALS = os.path.join(HOME, ".local/state/opencode/goal.json")
 GOAL_DIR = os.path.join(HOME, ".local/state/opencode/goals")
@@ -88,6 +99,8 @@ QUEST_STATUS = {"active": ST_WORK, "ready": ST_FIXED, "parked": ST_FIXED,
                 "cancelled": ST_DONE}
 # locked: квест ждёт преусловия (слово владельца, другой квест) — это «ждёт слова»
 # по построению: locked без условия ожидания в реестре не встречается.
+# Составной статус (напр. «→ Q-009 (перекрыто) active»): берём первое
+# вхождение известного слова — домыслы отсекаем, статусов в ячейке >1.
 
 
 def parse_quests(problems, unstated):
@@ -106,6 +119,13 @@ def parse_quests(problems, unstated):
         qid, title, status = cells[0].strip("*"), cells[1], cells[2].lower()
         owner = cells[3] if len(cells) > 3 else ""
         state = QUEST_STATUS.get(status)
+        if state is None:
+            # составной статус: первое известное слово из ячейки
+            for w in sorted(QUEST_STATUS, key=status.find):
+                if w in status and status.find(w) == min(
+                        status.find(x) for x in QUEST_STATUS if x in status):
+                    state, status = QUEST_STATUS[w], w
+                    break
         if state is None:
             unstated.append(f"quests:{qid}: неизвестный статус {cells[2]!r}")
             continue
@@ -240,22 +260,34 @@ def parse_goals(problems, unstated):
 # ---------- сигналы стагнации ----------
 
 def load_last_seen(problems):
-    """ID -> дата последнего упоминания в session-log (из имени файла)."""
+    """ID -> дата последнего упоминания в session-log (из имени файла).
+
+    v0.2: обходит все SESSION_GLOBS — волт и worktree-копии; последнее
+    упоминание побеждает (файлы обходятся по возрастанию даты)."""
     last = {}
-    files = sorted(glob.glob(os.path.join(SESSION_LOG, "*.md")))
-    if not files:
-        problems.append(f"session-log: {SESSION_LOG} пуст/нет")
-        return last
-    for path in files:
-        m = re.search(r"(\d{4}-\d{2}-\d{2})", os.path.basename(path))
-        date = m.group(1) if m else "0000-00-00"
-        try:
-            with open(path, encoding="utf-8") as f:
-                text = f.read()
-        except OSError:
-            continue
-        for pid in set(re.findall(r"\b(?:T-\d+|Q-[\d.]+|Р-Д-\d+)\b", text)):
-            last[pid] = date  # файлы отсортированы: последнее упоминание побеждает
+    seen_any = False
+    for pattern in SESSION_GLOBS:
+        for d in sorted(glob.glob(pattern)):
+            paths = sorted(glob.glob(os.path.join(d, "*.md")))
+            if not paths and not os.path.isdir(d):
+                continue
+            seen_any = True
+            for path in paths:
+                m = re.search(r"(\d{4}-\d{2}-\d{2})", os.path.basename(path))
+                date = m.group(1) if m else "0000-00-00"
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        text = f.read()
+                except OSError:
+                    continue
+                for pid in set(re.findall(
+                        r"\b(?:T-\d+|Q-[\d.]+|Р-Д-\d+)\b", text)):
+                    if last.get(pid, "0000-00-00") < date:
+                        last[pid] = date
+    if not last:
+        problems.append(
+            "session-log: ни один источник из " + str(len(SESSION_GLOBS))
+            + " гнёзд не дал упоминаний")
     return last
 
 
