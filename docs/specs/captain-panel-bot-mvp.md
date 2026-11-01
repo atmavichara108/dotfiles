@@ -126,7 +126,11 @@ AllIs Maya/LD или ИС. Первая live-отправка — тестова
   faster_whisper, CPU int8.
 * Извлечение аудио: `ffmpeg -vn -ac 1 -ar 16000`.
 * Скрипты: `scripts/.local/bin/captain-panel-asr-worker.py`,
-  `scripts/.local/bin/captain-panel-asr.py`.
+  `scripts/.local/bin/captain-panel-asr.py`,
+  `scripts/.local/bin/captain-panel-media-fetch.py`.
+* Крупные файлы: если Bot API не отдаёт медиа больше `~20 МБ`, пульт
+  автоматически использует MTProto-фолбэк через профиль `portal`
+  (сессия Maya): скачивает сообщение по `chat_id + message_id`, затем ASR.
 * Бот-пульт принимает voice, video, video_note и audio/video document:
   скачивает через Bot API, прогоняет ASR, возвращает текст, журналирует
   outcome `media_transcribed` или `media_asr_failed`.
