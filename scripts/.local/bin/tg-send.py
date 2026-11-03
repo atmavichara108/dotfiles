@@ -39,8 +39,9 @@ ENV_FILE, SESSION, _STATE_DIR = tg_profile.paths()
 # --dry-run не ограничен и не ходит в сеть.
 ALLOWED_TOPICS = set(_PROFILE.get("allowed_topics") or [])
 
-USAGE = """tg-send --topic ID [--format md|plain] [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
+USAGE = """tg-send --topic ID [--reply-to ID] [--format md|plain] [--dry-run] [--file TEXTFILE] [ТЕКСТ ...]
   --topic ID   ID форумного топика (обязателен; без него отправки нет)
+  --reply-to ID  ID сообщения для прямого ответа внутри этого топика
   --format F   разметка: md (умолчание) | plain (как есть, без разбора)
   --dry-run    показать исходный текст + план entities (до сети), не отправлять
   --file PATH  взять текст из файла (иначе — аргументы или stdin)
@@ -94,9 +95,9 @@ def _u16_slice(text, offset, length):
         return ""
 
 
-def _print_dry_run(group, topic, fmt, text, wire, entities):
-    print(f"dry-run -> chat {group} topic={topic} format={fmt} "
-          f"(до сети; без отправки)")
+def _print_dry_run(group, topic, reply_to, fmt, text, wire, entities):
+    print(f"dry-run -> chat {group} topic={topic} reply_to={reply_to} "
+          f"format={fmt} (до сети; без отправки)")
     print("--- SOURCE TEXT ---")
     print(text)
     print("--- WIRE TEXT (что уйдёт в TG) ---")
@@ -132,12 +133,17 @@ def main(argv):
         argv = argv[:i] + argv[i + 2:]
     text = ""
     topic = None
+    reply_to = None
     known_vals = set()
     if "--topic" in argv:
         i = argv.index("--topic")
         topic = int(argv[i + 1])
         known_vals.add(argv[i + 1])
-    rest = [a for a in argv if a != "--topic"]
+    if "--reply-to" in argv:
+        i = argv.index("--reply-to")
+        reply_to = int(argv[i + 1])
+        known_vals.add(argv[i + 1])
+    rest = [a for a in argv if a not in ("--topic", "--reply-to")]
     if "--file" in rest:
         i = rest.index("--file")
         with open(rest[i + 1], encoding="utf-8") as f:
@@ -195,8 +201,8 @@ def main(argv):
     if warning:
         sys.stderr.write(warning + "\n")
     if dry:
-        _print_dry_run(group, topic if topic else "chat", fmt, text, wire,
-                       entities)
+        _print_dry_run(group, topic if topic else "chat", reply_to, fmt, text,
+                       wire, entities)
         tg_profile.journal_append({"action": "dry-run", "topic": topic, "fmt": fmt,
                                    "entities": len(entities) if entities else 0,
                                    "text_preview": tg_profile.preview(text)})
@@ -214,14 +220,17 @@ def main(argv):
                     sys.exit(f"tg-send: топика {topic} нет в группе "
                              f"(есть: {sorted(topics)}) — отказ")
             scope_txt = f"topic={topic}" if topic is not None else "chat"
+            if reply_to is not None:
+                scope_txt += f" reply_to={reply_to}"
             sys.stderr.write(f"tg-send: как {me.username or me.id} -> {group} "
                              f"{scope_txt} format={fmt}\n")
             msg = await client.send_message(
                 ent, wire,
-                **({"reply_to": topic} if topic is not None else {}),
+                **({"reply_to": reply_to} if reply_to is not None else {}),
                 parse_mode=None, formatting_entities=entities)
             print(f"tg-send: ok id={msg.id} {scope_txt}")
             tg_profile.journal_append({"action": "sent", "topic": topic,
+                                       "reply_to": reply_to,
                                        "msg_id": msg.id, "fmt": fmt,
                                        "text_preview": tg_profile.preview(text)})
 
