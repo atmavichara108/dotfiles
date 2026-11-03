@@ -134,13 +134,43 @@ def prepare_session(suffix):
     return session
 
 
-def _thread_of(m):
-    """ID топика сообщения (как в canon tg-edit): reply_to_top_id или msg_id."""
+def _topic_of(m):
+    """Настоящий ID форум-топика сообщения.
+
+    В форуме авторский тег выглядит так:
+      forum_topic=True, reply_to_top_id=<topic>, reply_to_msg_id=<parent>
+    Для сообщения в корне топика:
+      forum_topic=True, reply_to_top_id=None, reply_to_msg_id=<topic>
+    Для ответа вне топика topic отсутствует.
+    """
     rt = getattr(m, "reply_to", None)
     if rt is None:
         return None
-    return (getattr(rt, "reply_to_top_id", None)
-            or getattr(rt, "reply_to_msg_id", None))
+    if not getattr(rt, "forum_topic", False):
+        return None
+    top = getattr(rt, "reply_to_top_id", None)
+    if top is not None:
+        return top
+    return getattr(rt, "reply_to_msg_id", None)
+
+
+def _reply_parent_of(m):
+    """ID сообщения, на которое ответили, либо None."""
+    rt = getattr(m, "reply_to", None)
+    if rt is None:
+        return None
+    if getattr(rt, "forum_topic", False):
+        top = getattr(rt, "reply_to_top_id", None)
+        parent = getattr(rt, "reply_to_msg_id", None)
+        if top is not None and parent is not None and parent != top:
+            return parent
+        return None
+    return getattr(rt, "reply_to_msg_id", None)
+
+
+def _thread_of(m):
+    """Обратная совместимость: ID топика сообщения."""
+    return _topic_of(m)
 
 
 def _kind_of(m):
@@ -204,7 +234,10 @@ async def _row(client, m, topic):
     filename, mime, size = _media_meta(m) if kind == "file" else ("", "", 0)
     return {
         "id": m.id,
-        "topic": (_thread_of(m) if _PROFILE.get("chat_scope") else topic),
+        "topic": (_topic_of(m) if _PROFILE.get("chat_scope") else topic),
+        "reply_to_msg_id": _reply_parent_of(m),
+        "reply_to_top_id": (getattr(getattr(m, "reply_to", None),
+                                    "reply_to_top_id", None)),
         "from": await _sender_name(m),
         "date": m.date.isoformat() if m.date else "",
         "type": kind,
