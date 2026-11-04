@@ -1,0 +1,18 @@
+[Unit]
+Description=trademind-tg-guard — постоянный push-сторож чата TradeMind «🧶Препарыночная🪢» (меты-only + wake сессии)
+# Wake-канал — opencode-serve (fail-open: событие остаётся в журнале).
+After=network-online.target opencode-serve.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/trademind-tg-guard.py --chat
+Environment=TRADEMIND_SESSION_ID=ses_e779da1d9ffeYgFTk7C0sQ6qDI
+Environment=TRADEMIND_OUR_USER=AllIsMaya
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
