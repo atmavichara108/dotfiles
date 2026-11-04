@@ -307,7 +307,8 @@ def main(argv):
     env = load_env(ENV_FILE)
     api_id = env.get("TG_API_ID", "")
     api_hash = env.get("TG_API_HASH", "")
-    group = env.get(_PROFILE["group_key"], "")
+    group = (env.get(_PROFILE["group_key"], "")
+             or _PROFILE.get("group_default", ""))
     proxy = tg_profile.parse_proxy(env.get("TG_PROXY", ""))
     if not api_id or not api_hash or not group:
         sys.exit(f"tg-watch: заполни TG_API_ID/TG_API_HASH/{_PROFILE['group_key']} в " + ENV_FILE)

@@ -71,6 +71,22 @@ PROFILES = {
         "group_default": "-1003786610623",
         "journal": "journal.jsonl",
     },
+    "trademind": {
+        "name": "trademind",
+        # Тот же Maya-аккаунт и те же ключи, что у portal: права бота —
+        # рука владельца (Р-082), до них доступ через Maya-сессию.
+        "env_file": "~/.config/portal-tg/tg.env",
+        "session": "~/.local/state/portal-tg/portal.session",
+        "state_dir": "~/.local/state/trademind-tg",
+        "group_key": "TRADEMIND_GROUP_ID",
+        # TradeMind: изолированный проект, чат «🧶Препарыночная🪢», без
+        # форум-топиков (Р-082). scope = весь чат, не топик.
+        "chat_scope": True,
+        "allowed_topics": None,
+        "read_topics": None,
+        "group_default": "-1003606744594",
+        "journal": "journal.jsonl",
+    },
 }
 
 PREVIEW_MAX = 200
