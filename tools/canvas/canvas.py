@@ -16,6 +16,7 @@
   canvas.py build   # собрать canvas.jsonl + canvas.md
   canvas.py show    # человеческая сводка из готового canvas.jsonl
 """
+import glob
 import json
 import os
 import re
@@ -39,6 +40,16 @@ ROADMAPS = [
     ("dotfiles", os.path.join(DOT, "docs/specs")),
 ]
 
+# session-логи, включая worktree-копии — как в Следопыте (v0.2)
+SESSION_GLOBS = [
+    os.path.join(VAULT, "04-Memory/session-log"),
+    os.path.join(VAULT, "04-Memory/session-reports"),
+    os.path.join(HOME, "Projects/OpenCode-Vault-tasks/*/04-Memory/session-log"),
+    os.path.join(HOME, "Projects/OpenCode-Vault-tasks/*/04-Memory/session-reports"),
+    os.path.join(HOME, "Projects/dotfiles-tasks/*/.opencode/memory/session-reports"),
+    os.path.join(HOME, "Projects/dotfiles-tasks/*/.opencode/memory/session-log"),
+]
+
 
 def _now():
     return time.time()
@@ -57,6 +68,15 @@ def _mtime(path):
 
 def _age_days(ts):
     return None if not ts else round((_now() - ts) / 86400, 1)
+
+
+def _ttl_minutes(d):
+    """TTL ожидания в минутах; старые ttl_hours читаются как часы*60."""
+    if d.get("ttl_minutes") is not None:
+        return max(0, int(d["ttl_minutes"]))
+    if d.get("ttl_hours") is not None:
+        return max(0, int(d["ttl_hours"]) * 60)
+    return None
 
 
 def _row(**kw):
@@ -85,18 +105,18 @@ def from_waits():
         if d.get("done"):
             continue
         since_ts = d.get("since_ts")
-        ttl = d.get("ttl_hours")
-        deadline = (since_ts + ttl * 3600) if (since_ts and ttl) else None
+        ttl_min = _ttl_minutes(d)
+        deadline = (since_ts + ttl_min * 60) if (since_ts and ttl_min) else None
         drift = []
         if deadline and _now() > deadline:
             drift.append("просрочен")
-        if not ttl:
+        if ttl_min is None:
             drift.append("ожидание без TTL")
         rows.append(_row(
             id=f"wait:{d.get('id')}", type="wait", title=d.get("what"),
             owner=d.get("who_owes"), ssot="~/.local/share/ship-mail/waits.jsonl",
             status="в ожидании", status_date=_fmt(since_ts),
-            deadline_or_ttl=f"{ttl}ч" if ttl else None,
+            deadline_or_ttl=f"{ttl_min}м" if ttl_min is not None else None,
             wip_session=d.get("who_waits"), drift=drift,
         ))
     return rows
@@ -235,8 +255,31 @@ def from_sources():
     return rows
 
 
+def from_session_logs():
+    """Точка подключения session-log/worktree-копий: свежесть источника."""
+    files = []
+    for pattern in SESSION_GLOBS:
+        if os.path.isdir(pattern):
+            files.extend(glob.glob(os.path.join(pattern, "**", "*.md"), recursive=True))
+        else:
+            files.extend(glob.glob(pattern))
+    files = [p for p in files if os.path.isfile(p)]
+    if not files:
+        return []
+    latest = max(files, key=os.path.getmtime)
+    ts = _mtime(latest)
+    return [_row(
+        id="source:session-logs", type="source",
+        title="Session-логи и worktree-копии",
+        owner="ИЦ/ЦУ", ssot="04-Memory/session-log + session-reports",
+        status="ведётся", status_date=_fmt(ts),
+        drift=[f"последняя запись старше {STALE_DAYS} дней"]
+        if (_age_days(ts) or 0) > STALE_DAYS else [],
+    )]
+
+
 def collect():
-    rows = from_sources() + from_roadmaps() + from_tasks() + from_quests() + from_goals() + from_waits()
+    rows = from_sources() + from_session_logs() + from_roadmaps() + from_tasks() + from_quests() + from_goals() + from_waits()
     # сквозной drift: две цели в одном goal-слое
     active = [r for r in rows if r["type"] == "goal" and r["status"] == "active"]
     if len(active) > 1:
