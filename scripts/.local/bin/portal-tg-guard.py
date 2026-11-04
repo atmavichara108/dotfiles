@@ -79,6 +79,18 @@ _SPEC.loader.exec_module(watch)  # безопасно: main под __main__-га
 JOURNAL_DIR = os.path.expanduser("~/.local/state/portal-tg")
 JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
+
+# --- вторая линия: бета-группа M Code (отдел движков) --------------------
+# Слово владельца 2026-11-04: «вступить и на автомате подхватывать обновления,
+# отправлять багрепорты». Будить только на релизы/объявления от админов,
+# ответы на наши сообщения и упоминания; остальное — тихий журнал (метаданные).
+BETA_CHAT_ID = int(_os.environ.get("MCODE_BETA_CHAT_ID", "-1004383334504"))
+BETA_JOURNAL_DIR = os.path.expanduser("~/.local/state/mcode-beta")
+BETA_JOURNAL = os.path.join(BETA_JOURNAL_DIR, "journal.jsonl")
+BETA_STATE = os.path.join(BETA_JOURNAL_DIR, "state.json")
+BETA_OUR_USER = "AllIsMaya"
+BETA_PREVIEW = 300
+BETA_ADMINS: set[int] = set()
 OUR_USER = _os.environ.get("DV_OUR_USER", "Atma_Vichara108")
 COORD_SID = _os.environ.get("TG_WAKE_SESSION_ID", "")  # прямой sid зова (если задан)
 COORD_TITLE = (_os.environ.get("TG_WAKE_SESSION_TITLE")
@@ -111,11 +123,13 @@ Read-only: send/edit/delete в коде нет. Секреты — только 
 """ % (OUR_USER, OPENCODE_ENDPOINT, COORD_TITLE)
 
 
-def journal_append(entry: dict) -> None:
+def journal_append(entry: dict, path: str | None = None) -> None:
     """Одна JSON-строка в append-only журнал (dir 0700, file 0600, fsync)."""
-    os.makedirs(JOURNAL_DIR, mode=0o700, exist_ok=True)
+    path = path or JOURNAL
+    dirpath = os.path.dirname(path)
+    os.makedirs(dirpath, mode=0o700, exist_ok=True)
     line = json.dumps(entry, ensure_ascii=False)
-    fd = os.open(JOURNAL, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     with os.fdopen(fd, "a", encoding="utf-8") as f:
         f.write(line + "\n")
         f.flush()
@@ -241,6 +255,212 @@ def wake_coord(row: dict):
         except Exception as e:  # noqa: BLE001 — fail-open по дизайну
             last_err = "%s: %s" % (type(e).__name__, e)
     return "failed", last_err
+
+
+# --- бета-группа M Code: обработчик второй линии --------------------------
+
+_RELEASE_RE = None  # ленивая инициализация (re импортируется ниже)
+
+
+def _release_re():
+    global _RELEASE_RE
+    if _RELEASE_RE is None:
+        import re as _re
+        _RELEASE_RE = _re.compile(
+            r"(1\.\d+\.\d+|верси|релиз|обновлен|changelog|AppImage|\.dmg|\.exe"
+            r"|сборк|нов(ая|ое) верси)", _re.IGNORECASE)
+    return _RELEASE_RE
+
+
+def _post_prompt(text: str, ref: str) -> tuple[str, str]:
+    """POST /api/session/<id>/prompt (fail-open, исключения не бросает)."""
+    last_err = ""
+    for attempt in (1, 2):
+        if attempt == 2:
+            global _coord_session_id
+            _coord_session_id = None
+        try:
+            tok = _service_token()
+            if not tok:
+                return "failed", "no service token (%s)" % SERVICE_JSON
+            sid = COORD_SID or _coord_session_id or _resolve_coord_session(tok)
+            if not sid:
+                return "failed", (
+                    "coordinator session not found (title %r)" % COORD_TITLE)
+            req = urllib.request.Request(
+                "%s/api/session/%s/prompt" % (OPENCODE_ENDPOINT, sid),
+                data=json.dumps({"text": text}).encode(),
+                headers={"Authorization": _basic_auth(tok),
+                         "Content-Type": "application/json"},
+                method="POST")
+            with urllib.request.urlopen(req, timeout=WAKE_TIMEOUT) as r:
+                r.read()
+            try:
+                import subprocess as _sp
+                _sp.run(["python3",
+                    "/home/rudra/dotfiles/tools/lineage/lineage.py", "append",
+                    "--kind", "fact", "--session-id", sid,
+                    "--edge", "wake-parent", "--via", "mcode-beta-guard",
+                    "--ref", ref, "--note", "beta-group"],
+                    capture_output=True, timeout=5)
+            except Exception:  # fail-open — lineage не блокирует wake
+                pass
+            return "ok", ""
+        except Exception as e:  # noqa: BLE001 — fail-open по дизайну
+            last_err = "%s: %s" % (type(e).__name__, e)
+    return "failed", last_err
+
+
+def _beta_state_load() -> dict:
+    try:
+        with open(BETA_STATE, encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("my_ids"), list):
+            return {"my_ids": [int(x) for x in data["my_ids"]][-500:]}
+    except Exception:  # noqa: BLE001 — нет состояния = пусто
+        pass
+    return {"my_ids": []}
+
+
+def _beta_state_save(state: dict) -> None:
+    try:
+        os.makedirs(BETA_JOURNAL_DIR, mode=0o700, exist_ok=True)
+        fd = os.open(BETA_STATE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"my_ids": state.get("my_ids", [])[-500:]}, f)
+    except Exception as e:  # noqa: BLE001 — состояние не критично
+        sys.stderr.write("portal-tg-guard: beta state не сохранён: %r\n" % (e,))
+
+
+def _looks_like_announcement(m) -> bool:
+    """Объявление/релиз от админа: закреп, вложение-сборка, маркеры версии."""
+    if getattr(m, "pinned", False):
+        return True
+    if getattr(m, "document", None) is not None:
+        return True
+    text = m.text or ""
+    if len(text) >= 180:
+        return True
+    return bool(text) and _release_re().search(text) is not None
+
+
+def _mentions_us(m) -> bool:
+    text = m.text or ""
+    if "@allismaya" in text.lower():
+        return True
+    for e in (getattr(m, "entities", None) or []):
+        if type(e).__name__ == "MessageEntityMention":
+            try:
+                if text[e.offset:e.offset + e.length].lower() == "@allismaya":
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+    return False
+
+
+def make_beta_handler(client, ent, journal_path: str):
+    """Обработчик второй линии: тихий журнал + точечный wake."""
+    state = _beta_state_load()
+    my_ids = set(state["my_ids"])
+
+    async def on_beta_message(event):
+        m = event.message
+        try:
+            rt = getattr(m, "reply_to", None)
+            reply_to = getattr(rt, "reply_to_msg_id", None)
+            row = {
+                "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "id": m.id,
+                "chat": "mcode-beta",
+                "date": m.date.isoformat() if m.date else "",
+                "sender_id": getattr(m, "sender_id", None),
+                "out": bool(getattr(m, "out", False)),
+                "type": ("text" if m.text and not getattr(m, "media", None)
+                         else ("file" if getattr(m, "media", None) else "text")),
+                "size": len(m.text or ""),
+                "reply_to_msg_id": reply_to,
+            }
+            try:
+                s = await m.get_sender()
+                row["from"] = (getattr(s, "username", None)
+                               or getattr(s, "first_name", None) or "")
+            except Exception:  # noqa: BLE001
+                row["from"] = ""
+
+            if row["out"]:
+                my_ids.add(m.id)
+                state["my_ids"] = list(my_ids)
+                _beta_state_save(state)
+                row["wake"] = "skipped"
+                journal_append(row, journal_path)
+                return
+
+            reasons = []
+            if getattr(m, "pinned", False):
+                reasons.append("pinned")
+            if row["sender_id"] in BETA_ADMINS:
+                if _looks_like_announcement(m):
+                    reasons.append("release")
+            if reply_to is not None and int(reply_to) in my_ids:
+                reasons.append("reply_to_us")
+            if _mentions_us(m):
+                reasons.append("mention")
+
+            if not reasons:
+                row["wake"] = "quiet"
+                journal_append(row, journal_path)
+                return
+
+            row["reason"] = ",".join(reasons)
+            row["text_preview"] = (m.text or "")[:BETA_PREVIEW]
+            text = (
+                "M Code beta (группа Beta Test | M Code): id=%s from=%s date=%s "
+                "reason=%s reply_to=%s. Прочитай сообщение и реши: багрепорт, "
+                "ответ или тишина. Журнал: %s. Текст: %s"
+                % (m.id, row.get("from") or row["sender_id"], row["date"],
+                   row["reason"], reply_to or "-", journal_path,
+                   (m.text or "(без текста)")[:BETA_PREVIEW])
+            )
+            loop = asyncio.get_running_loop()
+            status, err = await loop.run_in_executor(
+                None, _post_prompt, text, "mcode-beta-%s" % m.id)
+            row["wake"] = status
+            if err:
+                row["wake_err"] = err
+            journal_append(row, journal_path)
+        except Exception as e:  # noqa: BLE001 — одно сбойное сообщение не валит цикл
+            sys.stderr.write(
+                "portal-tg-guard: beta-строка не собрана (id=%s, %r)\n"
+                % (getattr(m, "id", "?"), e))
+
+    async def seed_my_ids():
+        try:
+            async for m in client.iter_messages(ent, limit=100):
+                if getattr(m, "out", False):
+                    my_ids.add(m.id)
+            state["my_ids"] = list(my_ids)
+            _beta_state_save(state)
+        except Exception as e:  # noqa: BLE001
+            sys.stderr.write("portal-tg-guard: beta seed не удался: %r\n" % (e,))
+
+    async def refresh_admins():
+        from telethon.tl.functions.channels import GetParticipantsRequest
+        from telethon.tl.types import ChannelParticipantsAdmins
+        while True:
+            try:
+                res = await client(GetParticipantsRequest(
+                    channel=ent, filter=ChannelParticipantsAdmins(),
+                    offset=0, limit=100, hash=0))
+                BETA_ADMINS.clear()
+                BETA_ADMINS.update(u.id for u in (res.users or []))
+                sys.stderr.write(
+                    "portal-tg-guard: beta admins=%d\n" % len(BETA_ADMINS))
+            except Exception as e:  # noqa: BLE001
+                sys.stderr.write(
+                    "portal-tg-guard: beta admins не получены: %r\n" % (e,))
+            await asyncio.sleep(1800)
+
+    return on_beta_message, seed_my_ids, refresh_admins
 
 
 def main(argv):
@@ -401,6 +621,25 @@ def main(argv):
                             f"connected={client.is_connected()}\n")
 
             asyncio.create_task(heartbeat_dv())
+
+            # --- вторая линия: бета-группа M Code (best-effort, портал не страдает)
+            try:
+                beta_ent = await client.get_entity(BETA_CHAT_ID)
+                handler, seed, admins = make_beta_handler(
+                    client, beta_ent, BETA_JOURNAL)
+                client.add_event_handler(
+                    handler,
+                    events.NewMessage(chats=beta_ent, incoming=True,
+                                      outgoing=True))
+                asyncio.create_task(seed())
+                asyncio.create_task(admins())
+                sys.stderr.write(
+                    "portal-tg-guard: beta -> %s (%s), журнал %s\n"
+                    % (getattr(beta_ent, "title", "?"), beta_ent.id,
+                       BETA_JOURNAL))
+            except Exception as e:  # noqa: BLE001 — линия портала важнее
+                sys.stderr.write(
+                    "portal-tg-guard: beta не подключена: %r\n" % (e,))
 
             client.add_event_handler(
                 on_new_message,
