@@ -28,6 +28,7 @@ DOT = os.path.join(HOME, "dotfiles")
 VAULT = os.path.join(HOME, "Projects/OpenCode-Vault")
 STATE = os.path.join(HOME, ".local/state/opencode")
 WAITS = os.path.join(HOME, ".local/share/ship-mail/waits.jsonl")
+ID_COLLISIONS = os.path.join(DOT, "logs/linkage/id-collisions.json")
 OUT_JSONL = os.path.join(DOT, "logs/canvas/canvas.jsonl")
 OUT_MD = os.path.join(DOT, "logs/canvas/canvas.md")
 
@@ -278,8 +279,30 @@ def from_session_logs():
     )]
 
 
+def from_linkage():
+    """Постоянная строка связки-0: последний прогон проверки ID-коллизий."""
+    if not os.path.exists(ID_COLLISIONS):
+        return []
+    try:
+        d = json.load(open(ID_COLLISIONS, encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    within = sum(len(v) for v in d.get("within_surface_duplicates", {}).values())
+    cross = len(d.get("cross_surface_intersections", {}))
+    rc = d.get("rc", 0)
+    return [_row(
+        id="source:id-collisions", type="source",
+        title="ID-коллизии (связка-0)",
+        owner="ИЦ/ЦУ", ssot="logs/linkage/id-collisions.json",
+        status=f"within={within} cross={cross}", status_date=(d.get("ts") or "")[:10] or None,
+        drift=[f"сигнал коллизий: within={within}, cross={cross}"] if rc else [],
+    )]
+
+
 def collect():
-    rows = from_sources() + from_session_logs() + from_roadmaps() + from_tasks() + from_quests() + from_goals() + from_waits()
+    rows = (from_sources() + from_session_logs() + from_linkage()
+            + from_roadmaps() + from_tasks() + from_quests()
+            + from_goals() + from_waits())
     # сквозной drift: две цели в одном goal-слое
     active = [r for r in rows if r["type"] == "goal" and r["status"] == "active"]
     if len(active) > 1:
@@ -305,6 +328,10 @@ def build():
         f.write("## Состав\n\n")
         for t, c in sorted(by_type.items()):
             f.write(f"- {t}: {c}\n")
+        f.write("\n## Источники\n\n")
+        for r in rows:
+            if r["type"] == "source":
+                f.write(f"- {str(r['title'])[:70]}: {r['status']}\n")
         f.write(f"\n## Сигналы дрейфа ({len(drifted)})\n\n")
         for r in drifted:
             f.write(f"- [{r['type']}] {str(r['title'])[:70]} — {'; '.join(r['drift'])}\n")
