@@ -137,11 +137,11 @@ def main(argv):
                     journal({"ts": int(time.time()), "sid": sid,
                              "result": "refused", "reason": reason,
                              "unread": n})
-                    print(f"wake-sweep: {sid[:20]}… {n} писем, но ОТКАЗ: {reason}")
+                    print(f"wake-sweep: {sid} {n} писем, но ОТКАЗ: {reason}")
                     continue
                 limited, left = rate_limited(sid)
                 if limited:
-                    print(f"wake-sweep: {sid[:20]}… {n} писем, лимит ({left}с)")
+                    print(f"wake-sweep: {sid} {n} писем, лимит ({left}с)")
                     continue
                 text = (f"ship-mail: у тебя {n} непрочитанных писем в ящике. "
                         f"Прочти первым шагом хода (ship-mail.sh inbox), "

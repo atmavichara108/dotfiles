@@ -7,7 +7,7 @@
 # Zero model turns, zero daemons, zero journal: the files are the truth.
 #
 # Usage:
-#   ship-mail.sh send --to <sid> --from <sid> [--title <t>] [--ref <r>] (--file <path> | --text <msg>)
+#   ship-mail.sh send --to <sid> --from <sid> [--title <t>] [--ref <r>] (--file <path> | --stdin | --text <msg>)
 #   ship-mail.sh inbox <sid>                     # list unread (count + one line per letter)
 #   ship-mail.sh show <sid> [<filename>]         # print letter(s); without name — all unread
 #   ship-mail.sh ack <sid> <filename>|all        # move letter(s) to read/
@@ -18,10 +18,11 @@
 #   4 address not in peer-registry (INC-18: ids from chat are not canonical)
 #   5 registry file missing/unreadable
 #
-# ВАЖНО (урок канала ЦСПиМ 2026-10-31): текст письма передавай через --file.
+# ВАЖНО (урок канала ЦСПиМ 2026-10-31): текст письма передавай через --file
+# или --stdin.
 #   --text принимает строку из shell: обратные кавычки, $( ), ${ }, ! и \ внутри неё
 #   исполняются оболочкой и ВЫРЕЗАЮТ содержимое — письмо уходит тронутым.
-#   Правило: тело письма с разметкой/переменными — только --file.
+#   Правило: тело письма с разметкой/переменными — только --file или --stdin.
 #
 # Env:
 #   SHIP_MAIL_HOME     mailbox root (default ~/.local/share/ship-mail)
@@ -107,7 +108,7 @@ inbox_dir() {
 
 # cmd_send --to SID --from SID [--title T] [--ref R] (--file F | --text MSG)
 cmd_send() {
-  local to="" from="" title="letter" ref="" text="" src=""
+  local to="" from="" title="letter" ref="" text="" src="" use_stdin=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --to) to="$2"; shift 2 ;;
@@ -115,28 +116,37 @@ cmd_send() {
       --title) title="$2"; shift 2 ;;
       --ref) ref="$2"; shift 2 ;;
       --file) src="$2"; shift 2 ;;
+      --stdin) use_stdin=1; shift ;;
       --text) text="$2"; shift 2 ;;
       *) fail "send: unknown option '$1'" 1 ;;
     esac
   done
   [[ -n "$to" && -n "$from" ]] || fail "send: --to and --from are required" 1
-  if [[ -n "$text" && -n "$src" ]]; then fail "send: --text XOR --file, not both" 1; fi
+  local sources=0
+  [[ -n "$text" ]] && sources=$((sources + 1))
+  [[ -n "$src" ]] && sources=$((sources + 1))
+  [[ "$use_stdin" -eq 1 ]] && sources=$((sources + 1))
+  [[ "$sources" -le 1 ]] || fail "send: --text / --file / --stdin — only one source" 1
   if [[ -n "$text" ]]; then
     case "$text" in
       *'`'*|*'$('*|*'${'*)
         echo "ship-mail: ВНИМАНИЕ — в --text есть подстановки shell (\` , \$( , \${):" >&2
         echo "  оболочка могла вырезать часть текста до вызова скрипта." >&2
-        echo "  Текст письма с разметкой/переменными передавай через --file." >&2
+        echo "  Текст письма с разметкой/переменными передавай через --file или --stdin." >&2
         ;;
     esac
   fi
-  if [[ -z "$text" && -z "$src" ]]; then fail "send: --text or --file required" 1; fi
+  if [[ -z "$text" && -z "$src" && "$use_stdin" -eq 0 ]]; then
+    fail "send: --text, --file or --stdin required" 1
+  fi
 
   registry_check "$to" "recipient"
   registry_check "$from" "sender"
 
   local body
-  if [[ -n "$src" ]]; then
+  if [[ "$use_stdin" -eq 1 ]]; then
+    body="$(cat)"
+  elif [[ -n "$src" ]]; then
     [[ -r "$src" ]] || fail "source file not readable: $src" 2
     body="$(cat "$src")"
   else

@@ -197,7 +197,7 @@ def cmd_list(a):
             mark += " (пинок)"
         ttl = _ttl_minutes(r)
         print(f"{r['id']}  {mark} {_age_label(age)}/{ttl}м  "
-              f"{r['who_owes'][:20]}…  {r['what'][:60]}")
+              f"{r['who_owes']}  {r['what'][:60]}")
     return 0
 
 
@@ -210,7 +210,7 @@ def cmd_overdue(a):
             ttl = _ttl_minutes(r)
             kind = " (пинок, не дефект; дедлайн в what)" if _has_deadline(r) else ""
             print(f"ПРОСРОЧЕНО {r['id']}: {_age_label(age)} > TTL {ttl}м{kind} "
-                  f"| ждём от {r['who_owes'][:20]}… | {r['what'][:70]}")
+                  f"| ждём от {r['who_owes']} | {r['what'][:70]}")
     print(f"WAITS-OVERDUE {n}")
     return 0
 
