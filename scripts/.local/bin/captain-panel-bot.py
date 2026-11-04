@@ -268,6 +268,11 @@ def handle(wire, update, dry=False):
         return
     frm = m.get("from") or {}
     chat_id = str((m.get("chat") or {}).get("id", ""))
+    if "callback_query" in update:
+        # У нажатия кнопки адрес лежит в callback_query.message.chat, а не в
+        # самом callback_query: иначе ответ уходит «в никуда» (кнопки мертвы).
+        _cb_msg = update["callback_query"].get("message") or {}
+        chat_id = str((_cb_msg.get("chat") or {}).get("id", "") or chat_id)
     owner = is_owner(frm)
 
     def out(payload, where=None):
