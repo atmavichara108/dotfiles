@@ -210,10 +210,11 @@ def wake_coord(row: dict):
                     "coordinator session not found (title %r)" % COORD_TITLE)
             text = (
                 "TG portal (Капитанский портал): новое входящее id=%s from=%s date=%s "
-                "topic=%s reply_to=%s. Реакция обязательна: прочитай журнал %s (tail) "
-                "и ответь. Текст: %s"
+                "topic=%s reply_to=%s quote=%s. Реакция обязательна: прочитай журнал %s "
+                "(tail) и ответь. Текст: %s"
                 % (row.get("id"), row.get("from"), row.get("date"),
                    row.get("topic"), row.get("reply_to_msg_id") or "-",
+                   row.get("quote_text") or "-",
                    JOURNAL, (row.get("text_preview") or "(без текста)")[:PREVIEW])
             )
             req = urllib.request.Request(
