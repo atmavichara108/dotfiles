@@ -552,6 +552,15 @@ def handle(wire, update, dry=False):
         return
 
     journal(update, "unhandled")
+    # Молчание — дефект (слово владельца 2026-11-04 «бот не работает»):
+    # на любой нераспознанный текст отвечаем короткой подсказкой.
+    if text.strip():
+        send_to(chat_id,
+                "Не понял. Что умею:\n"
+                "/status — состояние · /tasks — задачи\n"
+                "/incident <текст> — зафиксировать сбой\n"
+                "/settings on|off — уведомления · /help — всё меню",
+                kb=kb_status())
 
 # ---------- dry-run smoke (спека §7, без сети) ----------
 

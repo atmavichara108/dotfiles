@@ -76,6 +76,8 @@ if _SPEC is None or _SPEC.loader is None:
 watch = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(watch)  # безопасно: main под __main__-гардом
 
+_MSK = watch._MSK  # время корабля — МСК (слово владельца)
+
 JOURNAL_DIR = os.path.expanduser("~/.local/state/portal-tg")
 JOURNAL = os.path.join(JOURNAL_DIR, "guard-journal.jsonl")
 GUARD_SESSION_SUFFIX = "-guard"
@@ -134,6 +136,24 @@ def journal_append(entry: dict, path: str | None = None) -> None:
         f.write(line + "\n")
         f.flush()
         os.fsync(f.fileno())
+
+
+def _load_seen_ids(path: str) -> set[int]:
+    """id уже отражённых сообщений из хвоста журнала (для досмотра)."""
+    seen: set[int] = set()
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.readlines()[-2000:]
+        for line in lines:
+            try:
+                mid = json.loads(line).get("id")
+                if isinstance(mid, int):
+                    seen.add(mid)
+            except Exception:  # noqa: BLE001 — битая строка не повод падать
+                continue
+    except Exception:  # noqa: BLE001 — нет журнала = пусто
+        pass
+    return seen
 
 
 def _service_token():
@@ -226,7 +246,8 @@ def wake_coord(row: dict):
                 "TG portal (Капитанский портал): новое входящее id=%s from=%s date=%s "
                 "topic=%s reply_to=%s quote=%s. Реакция обязательна: прочитай журнал %s "
                 "(tail) и ответь. Текст: %s"
-                % (row.get("id"), row.get("from"), row.get("date"),
+                % (row.get("id"), row.get("from"),
+                   row.get("date_msk") or row.get("date"),
                    row.get("topic"), row.get("reply_to_msg_id") or "-",
                    row.get("quote_text") or "-",
                    JOURNAL, (row.get("text_preview") or "(без текста)")[:PREVIEW])
@@ -362,9 +383,13 @@ def make_beta_handler(client, ent, journal_path: str):
     """Обработчик второй линии: тихий журнал + точечный wake."""
     state = _beta_state_load()
     my_ids = set(state["my_ids"])
+    beta_seen = _load_seen_ids(journal_path)
+    beta_ready = asyncio.Event()
 
-    async def on_beta_message(event):
-        m = event.message
+    async def handle_beta(m):
+        if m.id in beta_seen:
+            return
+        beta_seen.add(m.id)
         try:
             rt = getattr(m, "reply_to", None)
             reply_to = getattr(rt, "reply_to_msg_id", None)
@@ -373,6 +398,8 @@ def make_beta_handler(client, ent, journal_path: str):
                 "id": m.id,
                 "chat": "mcode-beta",
                 "date": m.date.isoformat() if m.date else "",
+                "date_msk": (m.date.astimezone(_MSK).strftime("%Y-%m-%d %H:%M МСК")
+                             if m.date else ""),
                 "sender_id": getattr(m, "sender_id", None),
                 "out": bool(getattr(m, "out", False)),
                 "type": ("text" if m.text and not getattr(m, "media", None)
@@ -433,15 +460,34 @@ def make_beta_handler(client, ent, journal_path: str):
                 "portal-tg-guard: beta-строка не собрана (id=%s, %r)\n"
                 % (getattr(m, "id", "?"), e))
 
+    async def on_beta_message(event):
+        await handle_beta(event.message)
+
+    async def sync_beta():
+        """Досмотр второй линии: сверка чата с журналом, без пачек зовов."""
+        await beta_ready.wait()  # история засеяна — старьё не будим
+        while True:
+            await asyncio.sleep(30)
+            try:
+                msgs = await client.get_messages(ent, limit=50)
+                for m in sorted((x for x in msgs if x.id not in beta_seen),
+                                key=lambda x: x.id):
+                    await handle_beta(m)
+            except Exception as e:  # noqa: BLE001 — досмотр не валит демон
+                sys.stderr.write("portal-tg-guard: beta досмотр сбой: %r\n" % (e,))
+
     async def seed_my_ids():
         try:
             async for m in client.iter_messages(ent, limit=100):
+                beta_seen.add(m.id)  # история = уже учтено, не будим
                 if getattr(m, "out", False):
                     my_ids.add(m.id)
             state["my_ids"] = list(my_ids)
             _beta_state_save(state)
         except Exception as e:  # noqa: BLE001
             sys.stderr.write("portal-tg-guard: beta seed не удался: %r\n" % (e,))
+        finally:
+            beta_ready.set()
 
     async def refresh_admins():
         from telethon.tl.functions.channels import GetParticipantsRequest
@@ -460,7 +506,7 @@ def make_beta_handler(client, ent, journal_path: str):
                     "portal-tg-guard: beta admins не получены: %r\n" % (e,))
             await asyncio.sleep(1800)
 
-    return on_beta_message, seed_my_ids, refresh_admins
+    return on_beta_message, seed_my_ids, refresh_admins, sync_beta
 
 
 def main(argv):
@@ -533,20 +579,25 @@ def main(argv):
                     sys.exit(f"portal-tg-guard: топика {topic} нет в группе "
                              f"(есть: {sorted(topics)}) — отказ")
 
-            async def on_new_message(event):
+            portal_seen = _load_seen_ids(JOURNAL)
+
+            async def handle_portal(m, allow_wake=True):
+                """Одна обработка сообщения портала (push и досмотр — одна логика)."""
                 nonlocal seen, woken
-                m = event.message
+                if m.id in portal_seen:
+                    return None
+                portal_seen.add(m.id)
                 # Фильтр топика в обработчике (как в ядре): chat-scope — весь чат,
                 # форум-профили — только свой топик.
                 if not chat_scope and watch._thread_of(m) != topic:
-                    return
+                    return None
                 try:
                     row = await watch._row(client, m, topic)
                 except Exception as e:  # noqa: BLE001 — одно сбойное
                     # сообщение не убивает цикл
                     sys.stderr.write(f"portal-tg-guard: строка события не собрана "
                                      f"(id={getattr(m, 'id', '?')}, {e!r})\n")
-                    return
+                    return None
                 # Журнал ВСЕГДА (входящие + исходящие — аудит), прежде чем
                 # что-либо сетевое: источник правды пишется первым.
                 incoming = (row.get("from") or "") != OUR_USER
@@ -556,7 +607,7 @@ def main(argv):
                     incoming = (row.get("from") or "") == OUR_USER
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
-                if incoming:
+                if incoming and allow_wake:
                     # wake best-effort, вне event-loop (urllib синхронный)
                     status, err = await loop.run_in_executor(
                         None, wake_coord, row)
@@ -565,6 +616,8 @@ def main(argv):
                         entry["wake_err"] = err
                     if status == "ok":
                         woken += 1
+                elif incoming:
+                    entry["wake"] = "catchup"  # зов уйдёт сводкой
                 else:
                     entry["wake"] = "skipped"  # своё сообщение — только аудит
                 try:
@@ -574,6 +627,48 @@ def main(argv):
                                      "(демон продолжает)\n"
                                      % (type(e).__name__, e))
                 seen += 1
+                return entry if incoming else None
+
+            async def on_new_message(event):
+                await handle_portal(event.message)
+
+            async def sync_portal():
+                """Досмотр: push-события теряются (INC-23) — сверяем чат с журналом."""
+                while True:
+                    await asyncio.sleep(20)
+                    try:
+                        msgs = await client.get_messages(ent, limit=50)
+                        new = sorted((m for m in msgs
+                                      if m.id not in portal_seen), key=lambda x: x.id)
+                        if not new:
+                            continue
+                        rows = []
+                        for m in new:  # хронологически, без зова
+                            r = await handle_portal(m, allow_wake=False)
+                            if r:
+                                rows.append(r)
+                        sys.stderr.write(
+                            "portal-tg-guard: досмотр дотянул %d сообщ.\n" % len(new))
+                        if rows:  # один сводный зов вместо пачки
+                            ids = ", ".join(str(r.get("id")) for r in rows)
+                            head = "; ".join(
+                                "#%s %s: %s" % (r.get("id"),
+                                                r.get("from") or "?",
+                                                (r.get("text_preview") or "")[:120])
+                                for r in rows[:8])
+                            status, err = await loop.run_in_executor(
+                                None, _post_prompt,
+                                "TG portal (Капитанский портал): досмотр дотянул "
+                                "пропущенное — id=%s. Реакция обязательна: прочитай "
+                                "журнал %s (tail) и ответь. Содержимое: %s"
+                                % (ids, JOURNAL, head),
+                                "portal-catchup-%s" % rows[-1].get("id"))
+                            sys.stderr.write(
+                                "portal-tg-guard: досмотр wake=%s %s\n"
+                                % (status, err or ""))
+                    except Exception as e:  # noqa: BLE001 — досмотр не валит демон
+                        sys.stderr.write(
+                            "portal-tg-guard: досмотр сбой: %r\n" % (e,))
 
             # Heartbeat + outage (инцидент tg-guard-journal-silent-20261028)
             outage_file = os.path.join(
@@ -621,11 +716,12 @@ def main(argv):
                             f"connected={client.is_connected()}\n")
 
             asyncio.create_task(heartbeat_dv())
+            asyncio.create_task(sync_portal())
 
             # --- вторая линия: бета-группа M Code (best-effort, портал не страдает)
             try:
                 beta_ent = await client.get_entity(BETA_CHAT_ID)
-                handler, seed, admins = make_beta_handler(
+                handler, seed, admins, beta_sync = make_beta_handler(
                     client, beta_ent, BETA_JOURNAL)
                 client.add_event_handler(
                     handler,
@@ -633,6 +729,7 @@ def main(argv):
                                       outgoing=True))
                 asyncio.create_task(seed())
                 asyncio.create_task(admins())
+                asyncio.create_task(beta_sync())
                 sys.stderr.write(
                     "portal-tg-guard: beta -> %s (%s), журнал %s\n"
                     % (getattr(beta_ent, "title", "?"), beta_ent.id,

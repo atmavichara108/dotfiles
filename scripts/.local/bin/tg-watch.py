@@ -43,6 +43,7 @@
     (exec-бит ставит владелец: chmod +x — вне зоны агента).
 """
 import asyncio
+import datetime as dt
 import hashlib
 import json
 import os
@@ -53,6 +54,8 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tg_profile  # noqa: E402
+
+_MSK = dt.timezone(dt.timedelta(hours=3))  # корабль живёт по МСК (слово владельца)
 
 _PROFILE = tg_profile.profile()
 ENV_FILE, SESSION, STATE_DIR = tg_profile.paths()
@@ -244,6 +247,8 @@ async def _row(client, m, topic):
                                  "quote_offset", None)),
         "from": await _sender_name(m),
         "date": m.date.isoformat() if m.date else "",
+        "date_msk": (m.date.astimezone(_MSK).strftime("%Y-%m-%d %H:%M МСК")
+                     if m.date else ""),
         "type": kind,
         "filename": filename,
         "mime": mime,
