@@ -31,6 +31,7 @@
 set -euo pipefail
 
 MAIL_HOME="${SHIP_MAIL_HOME:-$HOME/.local/share/ship-mail}"
+SENT_LOG="${SHIP_MAIL_SENT_LOG:-$MAIL_HOME/sent.jsonl}"
 REGISTRY="${SHIP_MAIL_REGISTRY:-$HOME/Projects/OpenCode-Vault/04-Memory/peer-registry.md}"
 # Снапшот реестра адресов: рабочее дерево волта живёт под чужими ветками, и сессия,
 # ушедшая на ветку без 04-Memory/peer-registry.md, ломала отправку всем (INC: «registry
@@ -185,6 +186,20 @@ cmd_send() {
     printf '%s\n' "$body"
   } > "$tmpf"
   mv "$tmpf" "$dir/$fname"
+  # Журнал отправки: append-only, меты-only (без тела/темы). Нужен для
+  # базового среза «кто кому что отправил», когда копии есть только у адресата.
+  mkdir -p "$(dirname "$SENT_LOG")"
+  if ! python3 - "$ts" "$from" "$to" "$ref" "$id" >> "$SENT_LOG" <<'PY'
+import json, sys
+ts, sender, recipient, ref, mid = sys.argv[1:6]
+print(json.dumps({
+    "ts": ts, "from": sender, "to": recipient,
+    "ref": ref, "id": mid,
+}, ensure_ascii=False))
+PY
+  then
+    echo "ship-mail: WARN — письмо доставлено, но журнал отправки не записан: $SENT_LOG" >&2
+  fi
   echo "DELIVERED $dir/$fname"
 }
 
