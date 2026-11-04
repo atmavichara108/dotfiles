@@ -2,8 +2,8 @@
 type: Registry
 title: Реестр отправителей представителя AllIs Maya
 timestamp: 2026-10-31
-owner: AllIs Maya
-basis: запрос ЦУ ref maya-portal-confirm; канон представителя ship-representative-role-standard
+owner: AllIs Maya (первичная редакция); канон-местонахождение — волт docs/org/ (ЦУ, 2026-11-05)
+basis: запрос ЦУ ref maya-portal-confirm; канон представителя ship-representative-role-standard; дополнение Р-083 (TradeMind)
 status: active
 ---
 
@@ -20,6 +20,7 @@ status: active
 | `ssa` | SSA-контур | текущие аутрич-потоки SSA | сессия-источник + ref + ts |
 | `dv` | ДВ-Хаб | коммуникации ДВ-Хаб | сессия-источник + ref + ts |
 | `serp` | SERPLUX | коммуникации проекта SERPLUX | сессия-источник + ref + ts |
+| `trademind:obsidian-servant` | Группа «🧶Препарыночная🪢» `-1003606744594` | ответы и вопросы проекта TradeMind (реплай на конкретное сообщение + цитаты; лимит ≤3 точных вопроса/сутки) | сессия TradeMind + ref + ts; актор `trademind:obsidian-servant` |
 
 ## Формат следа «кто внутри»
 
@@ -36,3 +37,11 @@ status: active
   квоты, правка агентских профилей.
 * Никогда: секреты, токены, полный текст чужих личных сообщений.
 * Бот-пульт и любые интерфейсы не голос Корабля; голос Корабля — Maya.
+
+---
+
+Примечание ЦУ (2026-11-05): первичная редакция жила только в worktree
+(`dotfiles-tasks/mcode-launcher-20261101`) и не была в main — поэтому доступ
+TradeMind «зависал» на несуществовавшей строке. Канон-местоположение реестра —
+этот файл в волте; строку `trademind:obsidian-servant` внес ЦУ по слову
+владельца (Р-082/Р-083), подтверждение Maya запрошено письмом.
