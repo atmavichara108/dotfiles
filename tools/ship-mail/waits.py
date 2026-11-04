@@ -12,10 +12,18 @@ append-only реестре; TTL просрочки превращает пуст
 Команды:
   waits.py add --owe <sid> --what "..." [--by <sid>] [--ttl-minutes N]
                [--deadline-minutes N] [--ref R]
+               [--type mandate|question|acceptance|pilot|external|proposal]
+               [--state S] [--return-condition TEXT]
   waits.py done <id>            # ожидание снято (ответ получен/отказ)
   waits.py ping <id>            # пинок: каденс TTL удваивается (backoff до срока)
   waits.py list [--all]
   waits.py overdue              # только просроченные (для inbox-блока)
+
+Схема (решение ЦУ 2026-11-04, развитие механизма, не канон):
+  type — mandate (default), question, acceptance, pilot, external, proposal;
+  state — open (default), closed, rejected; proposal по умолчанию rejected;
+  return_condition — что должно произойти, чтобы ожидание закрылось.
+  Старые записи без type/state читаются как mandate/open.
 
 TTL (Р-075, слово владельца 2026-11-03): единицы — МИНУТЫ.
 Дефолт: 5 минут для всех; 10 минут для ses_eceb23a71ffeJO9QnFou8VngZC
@@ -43,6 +51,12 @@ DONE = os.path.join(HOME, "waits-done.jsonl")
 DEFAULT_TTL_MINUTES = 5
 CU_TTL_MINUTES = 10
 CU_SID = "ses_eceb23a71ffeJO9QnFou8VngZC"  # приёмки ЦУ — удлинённый TTL
+
+# Схема ожиданий (решение ЦУ 2026-11-04, по ответу ИПТ через ЦСПМ):
+# тип + состояние + условие возврата. Старые записи читаются как mandate/open.
+WAIT_TYPES = ("mandate", "question", "acceptance", "pilot", "external", "proposal")
+DEFAULT_TYPE = "mandate"
+DEFAULT_STATE = "open"
 
 
 def _rows(path):
@@ -91,6 +105,16 @@ def _ttl_minutes(row):
     return DEFAULT_TTL_MINUTES
 
 
+def _type(row):
+    return row.get("type") or DEFAULT_TYPE
+
+
+def _state(row):
+    if row.get("state"):
+        return row["state"]
+    return "rejected" if _type(row) == "proposal" else DEFAULT_STATE
+
+
 _DEADLINE_RE = re.compile(
     r"(до\s+\d{1,2}[./]\d{1,2}|\bдедлайн\b|\bсрок\b|\bутра\b|\bвечера\b|\b\d{1,2}:\d{2}\b)",
     re.IGNORECASE,
@@ -120,16 +144,20 @@ def cmd_add(a):
         ttl = int(a.ttl_hours) * 60
     else:
         ttl = CU_TTL_MINUTES if a.owe == CU_SID else DEFAULT_TTL_MINUTES
+    wtype = getattr(a, "type", None) or DEFAULT_TYPE
+    state = getattr(a, "state", "") or ("rejected" if wtype == "proposal" else DEFAULT_STATE)
     row = {"id": _new_id(),
            "who_waits": a.by or "ses_ece7b76c8ffeOkYZqZe38QbTVx",
            "who_owes": a.owe, "what": a.what, "ref": a.ref or "",
+           "type": wtype, "state": state,
+           "return_condition": getattr(a, "return_condition", "") or "",
            "since": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
            "since_ts": int(time.time()), "ttl_minutes": ttl}
     if getattr(a, "deadline_minutes", 0):
         row["deadline_minutes"] = int(a.deadline_minutes)
     _append(WAITS, row)
     extra = f", дедлайн {row['deadline_minutes']}м" if "deadline_minutes" in row else ""
-    print(f"WAIT {row['id']}: ждём от {a.owe}: {a.what} (TTL {ttl}м{extra})")
+    print(f"WAIT {row['id']} [{wtype}/{state}]: ждём от {a.owe}: {a.what} (TTL {ttl}м{extra})")
 
 
 def cmd_done(wid):
@@ -149,6 +177,7 @@ def cmd_done(wid):
     with open(WAITS, "w", encoding="utf-8") as f:
         for r in rest:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    hit[0]["state"] = "closed"
     hit[0]["closed"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     _append(DONE, hit[0])
     print(f"DONE {wid}: ожидание снято")
@@ -180,6 +209,8 @@ def cmd_ping(wid):
 
 def _overdue(row):
     age_min = (time.time() - row.get("since_ts", 0)) / 60.0
+    if _type(row) == "proposal" or _state(row) != "open":
+        return False, age_min
     return age_min > _ttl_minutes(row), age_min
 
 
@@ -192,11 +223,17 @@ def _age_label(minutes):
 def cmd_list(a):
     for r in _rows(WAITS):
         od, age = _overdue(r)
-        mark = "ПРОСРОЧЕНО" if od else "в ожидании"
-        if od and _has_deadline(r):
-            mark += " (пинок)"
+        wtype, state = _type(r), _state(r)
+        if wtype == "proposal":
+            mark = "предложение"
+        elif state != "open":
+            mark = state
+        else:
+            mark = "ПРОСРОЧЕНО" if od else "в ожидании"
+            if od and _has_deadline(r):
+                mark += " (пинок)"
         ttl = _ttl_minutes(r)
-        print(f"{r['id']}  {mark} {_age_label(age)}/{ttl}м  "
+        print(f"{r['id']} [{wtype}/{state}] {mark} {_age_label(age)}/{ttl}м  "
               f"{r['who_owes']}  {r['what'][:60]}")
     return 0
 
@@ -209,7 +246,7 @@ def cmd_overdue(a):
             n += 1
             ttl = _ttl_minutes(r)
             kind = " (пинок, не дефект; дедлайн в what)" if _has_deadline(r) else ""
-            print(f"ПРОСРОЧЕНО {r['id']}: {_age_label(age)} > TTL {ttl}м{kind} "
+            print(f"ПРОСРОЧЕНО {r['id']} [{_type(r)}]: {_age_label(age)} > TTL {ttl}м{kind} "
                   f"| ждём от {r['who_owes']} | {r['what'][:70]}")
     print(f"WAITS-OVERDUE {n}")
     return 0
@@ -222,6 +259,12 @@ def main():
     a.add_argument("--owe", required=True)
     a.add_argument("--what", required=True)
     a.add_argument("--by", default="")
+    a.add_argument("--type", choices=WAIT_TYPES, default=DEFAULT_TYPE,
+                   help="тип ожидания (default: mandate)")
+    a.add_argument("--state", default="",
+                   help="состояние (default: open; proposal -> rejected)")
+    a.add_argument("--return-condition", default="",
+                   help="условие возврата: что должно произойти, чтобы ожидание закрылось")
     a.add_argument("--ttl-minutes", type=int, default=0)
     a.add_argument("--ttl-hours", type=int, default=0,
                    help="устаревший флаг, переводится в минуты")
