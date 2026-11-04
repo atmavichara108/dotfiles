@@ -138,6 +138,37 @@ def journal_append(entry: dict, path: str | None = None) -> None:
         os.fsync(f.fileno())
 
 
+OWNER_WORDS = os.path.join(JOURNAL_DIR, "owner-words.jsonl")
+
+
+def save_owner_words(m) -> None:
+    """Слова владельца — дословно и целиком (правило 172: «полностью на диск»).
+
+    Журнал остаётся меты-only с превью; здесь лежит полный текст его сообщений,
+    чтобы цитату нельзя было потерять из-за обрезки.
+    """
+    try:
+        os.makedirs(JOURNAL_DIR, mode=0o700, exist_ok=True)
+        rt = getattr(m, "reply_to", None)
+        rec = {
+            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "id": m.id,
+            "date_msk": (m.date.astimezone(_MSK).strftime("%Y-%m-%d %H:%M МСК")
+                         if m.date else ""),
+            "reply_to_msg_id": getattr(rt, "reply_to_msg_id", None),
+            "quote_text": getattr(rt, "quote_text", None),
+            "text": m.text or "",
+        }
+        line = json.dumps(rec, ensure_ascii=False)
+        fd = os.open(OWNER_WORDS, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+    except Exception as e:  # noqa: BLE001 — не роняем приём из-за побочной записи
+        sys.stderr.write("portal-tg-guard: owner-words не записаны: %r\n" % (e,))
+
+
 def _load_seen_ids(path: str) -> set[int]:
     """id уже отражённых сообщений из хвоста журнала (для досмотра)."""
     seen: set[int] = set()
@@ -607,6 +638,8 @@ def main(argv):
                     incoming = (row.get("from") or "") == OUR_USER
                 entry = {"ts": time.strftime("%Y-%m-%dT%H:%M:%SZ",
                                              time.gmtime()), **row}
+                if incoming:
+                    save_owner_words(m)  # дословно, до превью и зова
                 if incoming and allow_wake:
                     # wake best-effort, вне event-loop (urllib синхронный)
                     status, err = await loop.run_in_executor(
