@@ -29,6 +29,7 @@ VAULT = os.path.join(HOME, "Projects/OpenCode-Vault")
 STATE = os.path.join(HOME, ".local/state/opencode")
 WAITS = os.path.join(HOME, ".local/share/ship-mail/waits.jsonl")
 ID_COLLISIONS = os.path.join(DOT, "logs/linkage/id-collisions.json")
+ANATOMY = os.path.join(DOT, "logs/anatomy/anatomy.jsonl")
 OUT_JSONL = os.path.join(DOT, "logs/canvas/canvas.jsonl")
 OUT_MD = os.path.join(DOT, "logs/canvas/canvas.md")
 
@@ -299,8 +300,35 @@ def from_linkage():
     )]
 
 
+def from_anatomy():
+    """Постоянная строка анатомии: производная проекция ИЦ."""
+    if not os.path.exists(ANATOMY):
+        return []
+    rows = []
+    try:
+        for line in open(ANATOMY, encoding="utf-8"):
+            line = line.strip()
+            if line:
+                rows.append(json.loads(line))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not rows:
+        return []
+    defects = sum(len(r.get("defects") or []) for r in rows)
+    drifted = sum(1 for r in rows if r.get("drift"))
+    return [_row(
+        id="source:anatomy", type="source",
+        title="Анатомия Корабля (проекция)",
+        owner="ИЦ", ssot="logs/anatomy/anatomy.jsonl",
+        status=f"objects={len(rows)} defects={defects} drift={drifted}",
+        status_date=None,
+        drift=[f"анатомия: дефекты полей={defects}, дрейф={drifted}"]
+        if (defects or drifted) else [],
+    )]
+
+
 def collect():
-    rows = (from_sources() + from_session_logs() + from_linkage()
+    rows = (from_sources() + from_session_logs() + from_linkage() + from_anatomy()
             + from_roadmaps() + from_tasks() + from_quests()
             + from_goals() + from_waits())
     # сквозной drift: две цели в одном goal-слое
