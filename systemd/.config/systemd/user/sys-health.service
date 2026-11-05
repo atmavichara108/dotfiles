@@ -1,0 +1,8 @@
+[Unit]
+Description=sys-health — сторож ключевых служб и прокси (лог + автоподъём)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/tools/sys-health/sys-health.py
+StandardOutput=journal
+StandardError=journal

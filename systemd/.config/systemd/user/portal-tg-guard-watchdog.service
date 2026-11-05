@@ -1,0 +1,13 @@
+[Unit]
+Description=portal-tg-guard-watchdog — страховка: поднять сторож портала, если он лёг
+Documentation=file:///home/rudra/dotfiles/scripts/.local/bin/guard-watchdog.sh
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash %h/dotfiles/scripts/.local/bin/guard-watchdog.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

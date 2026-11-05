@@ -1,0 +1,11 @@
+[Unit]
+Description=Раз в 2 минуты проверить, жив ли сторож Капитанского портала
+
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=portal-tg-guard-watchdog.service
+
+[Install]
+WantedBy=timers.target

@@ -14,6 +14,7 @@ Environment=TG_OWN=AllIsMaya
 Environment=TG_OWNER=Atma_Vichara108
 Restart=always
 RestartSec=5
+StartLimitIntervalSec=0
 StandardOutput=journal
 StandardError=journal
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Каждые 5 минут проверить, не пора ли пингнуть владельца по висящему слову
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=owner-decision-ping.service
+
+[Install]
+WantedBy=timers.target

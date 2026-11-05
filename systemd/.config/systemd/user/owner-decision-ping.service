@@ -1,0 +1,13 @@
+[Unit]
+Description=owner-decision-ping — пинг владельцу по висящему слову (раз в 5 часов, топик «Статусы»)
+Documentation=file:///home/rudra/dotfiles/scripts/.local/bin/owner-decision-ping.py
+
+[Service]
+Type=oneshot
+Environment=TG_PROFILE=portal
+ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/owner-decision-ping.py --check
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

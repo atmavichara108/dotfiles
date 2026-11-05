@@ -1,0 +1,10 @@
+[Unit]
+Description=sys-health timer — проверка каждые 2 минуты
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=120s
+Persistent=yes
+
+[Install]
+WantedBy=timers.target
