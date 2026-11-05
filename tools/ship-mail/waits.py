@@ -270,12 +270,17 @@ def cmd_stitch(a):
         "evidence": a.evidence or "",
         "state": "answered",
         "closed": stitched_at,
+        "op_deadline_minutes": 24 * 60,
+        "sweep_lag_defect": lag_min > 60,
     })
     rest = [r for r in rows if r.get("id") != a.wid]
     _rewrite_rows(rest)
     _append(DONE, row)
     print(f"STITCH {a.wid}: ответ пришит, lag {lag_min}м "
           f"(from {row.get('who_owes')}, reply_to {row.get('reply_to')})")
+    if lag_min > 60:
+        print(f"SWEEP LAG-DEFECT {a.wid}: lag {lag_min}м > 60м "
+              f"(дефект детектора, Р-093)")
     return 0
 
 

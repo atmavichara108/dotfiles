@@ -58,6 +58,7 @@ SESSION_GLOBS = [
     os.path.join(HOME, "Projects/dotfiles-tasks/*/.opencode/memory/session-log"),
 ]
 WAITS = os.path.join(HOME, ".local/share/ship-mail/waits.jsonl")
+WAITS_DONE = os.path.join(HOME, ".local/share/ship-mail/waits-done.jsonl")
 GOALS = os.path.join(HOME, ".local/state/opencode/goal.json")
 GOAL_DIR = os.path.join(HOME, ".local/state/opencode/goals")
 CONF = os.path.join(HOME, ".local/state/opencode/follower.json")
@@ -182,12 +183,42 @@ def _detect_action(row):
     return "неявно"
 
 
+def _parse_ts(value):
+    if not value:
+        return None
+    try:
+        raw = str(value).strip().replace("Z", "+00:00")
+        parsed = dt.datetime.fromisoformat(raw)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.timestamp()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _time_now():
+    return dt.datetime.now(dt.timezone.utc).timestamp()
+
+
+def _ann_key(value):
+    """Нормализация ID: `quests:Q-005.1` и `Q-005.1` — один ключ."""
+    s = str(value or "").strip()
+    for prefix in ("waits:", "wait:", "quests:", "tasks:", "TASKS:"):
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+    return s
+
+
 def _annotation_core(row):
     addressee, basis = _detect_addressee(row)
     sort = _detect_sort(row, addressee)
     ticket, ticket_detected = _detect_ticket(row)
     action = _detect_action(row)
     since = str(row.get("since") or "").strip() or "unknown"
+    reply = bool(row.get("reply") or row.get("stitch"))
+    if reply:
+        # Ответ/пришивка — приоритетная причина в аннотации.
+        action = "ответ/пришивка"
     ambiguity = addressee == "неоднозначен"
     no_addressee = not addressee
     since_unknown = since == "unknown"
@@ -206,8 +237,11 @@ def _annotation_core(row):
         reason = "билет не размечен"
     elif action_unknown:
         reason = "действие неявно"
+    elif reply:
+        reason = "ответ/пришивка"
+    meta_state = "no-meta" if sort == "БЕЗ МЕТКИ" else "marked"
     return {
-        "id": row.get("id"),
+        "id": _ann_key(row.get("id")),
         "source": row.get("source"),
         "addressee": addressee or "БЕЗ МЕТКИ",
         "sort": sort,
@@ -217,6 +251,8 @@ def _annotation_core(row):
         "ready": ready,
         "reason": reason,
         "addressee_basis": basis,
+        "meta_state": meta_state,
+        "meta_seen_ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "meta_by": "follower-rule",
         "evidence": f"{row.get('source')}:{row.get('id')}",
     }
@@ -233,14 +269,15 @@ def _load_annotations():
             except Exception:  # noqa: BLE001
                 continue
             if isinstance(d, dict) and d.get("id"):
-                out[d["id"]] = d
+                out[_ann_key(d.get("id"))] = d
     except OSError:
         pass
     return out
 
 
 def _same_annotation(old, new):
-    keys = ("addressee", "sort", "ticket", "action", "since", "ready")
+    keys = ("addressee", "sort", "ticket", "action", "since", "ready",
+            "reason", "meta_state")
     return all(old.get(k) == new.get(k) for k in keys)
 
 
@@ -250,24 +287,40 @@ def _append_annotation(entry):
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def produce_annotations(rows):
+def produce_annotations(rows, extra_rows=None):
     """Производные пометки append-only; расхождение — отдельная stale-meta строка."""
     old_by_id = _load_annotations()
     annotations = []
     stale = []
-    for r in rows:
-        if r.get("state") != ST_WAIT:
+    no_meta = []
+    for r in list(rows) + list(extra_rows or []):
+        if r.get("state") != ST_WAIT and not r.get("annotation_only"):
             continue
         core = _annotation_core(r)
-        old = old_by_id.get(core["id"])
-        if old and not _same_annotation(old, core):
+        key = _ann_key(core["id"])
+        old = old_by_id.get(key)
+        # Дедлайн метки: нет метки 24ч от первого появления -> stale-meta.
+        if core["meta_state"] == "no-meta":
+            no_meta.append(core)
+            first_seen = None
+            if old and old.get("meta_seen_ts"):
+                first_seen = _parse_ts(old.get("meta_seen_ts"))
+            if old and first_seen and (_time_now() - first_seen) > 24 * 3600:
+                stale.append({"op": "stale-meta", "id": core["id"],
+                              "reason": "deadline-metki: 24ч без метки",
+                              "first_seen": old.get("meta_seen_ts"),
+                              "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                              "meta_by": "follower-rule"})
+            elif not old:
+                _append_annotation(core)
+        elif old and not _same_annotation(old, core):
             stale.append({"op": "stale-meta", "id": core["id"],
                           "old": {k: old.get(k) for k in
                                   ("addressee", "sort", "ticket", "action",
-                                   "since", "ready")},
+                                   "since", "ready", "reason", "meta_state")},
                           "new": {k: core.get(k) for k in
                                   ("addressee", "sort", "ticket", "action",
-                                   "since", "ready")},
+                                   "since", "ready", "reason", "meta_state")},
                           "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                           "meta_by": "follower-rule"})
             _append_annotation(core)
@@ -320,7 +373,13 @@ def parse_quests(problems, unstated):
             continue
         qid, title, status = cells[0].strip("*"), cells[1], cells[2].lower()
         owner = cells[3] if len(cells) > 3 else ""
-        state = QUEST_STATUS.get(status)
+        # «ждёт слова» важнее машинного статуса в той же ячейке: составная
+        # строка вроде «отчёт готов, ждёт слова владельца ... active»
+        # принадлежит очереди ждущих, а не активной работе.
+        if "ждёт слова" in status:
+            state = ST_WAIT
+        else:
+            state = QUEST_STATUS.get(status)
         if state is None:
             # составной статус: первое известное слово из ячейки
             for w in sorted(QUEST_STATUS, key=status.find):
@@ -400,6 +459,68 @@ def parse_waits(problems, now):
         problems.append(f"waits: {WAITS} нет")
     except json.JSONDecodeError as e:
         problems.append(f"waits: битая строка JSONL — {e}")
+    return rows
+
+
+def parse_reply_annotations(problems, now=None):
+    """Строки ответов/пришивок waits: только для produced-annotations.
+
+    В активную очередь они не идут (they answered), но метку по исходному wait
+    нужно переразметить: answer/reply — приоритетная причина.
+    """
+    rows = []
+    for path in (WAITS, WAITS_DONE):
+        if not os.path.exists(path):
+            continue
+        try:
+            for line in open(path, encoding="utf-8"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    w = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if w.get("op") != "stitch" and w.get("state") != "answered":
+                    continue
+                rid = _ann_key(w.get("reply_to") or w.get("id"))
+                if not rid:
+                    continue
+                answered_by = str(w.get("answered_by") or "").strip()
+                # owner-фразировка из ответа: адресат-корень, не сессия.
+                owner = "owner" if OWNER_RE.search(answered_by) else answered_by
+                note = f"reply/lag {w.get('lag_minutes')}м"
+                rows.append(row(rid, "waits", "ответ/пришивка", ST_WAIT,
+                                owner=owner, note=note,
+                                evidence=str(w.get("evidence") or "")[:70]))
+                r = rows[-1]
+                r["annotation_only"] = True
+                r["reply"] = True
+                r["stitch"] = True
+                r["since"] = w.get("answered_at") or w.get("stitched_at") or ""
+                r["ticket_ref"] = w.get("topic-key") or w.get("ref") or ""
+                r["lag_minutes"] = w.get("lag_minutes")
+        except OSError as e:
+            problems.append(f"waits: {path}: {e}")
+    return rows
+
+
+def merge_reply_annotations(rows, reply_rows):
+    """Ответ на активный wait обновляет его метку, не создавая вторую очередь."""
+    by_key = {}
+    for r in reply_rows:
+        by_key[_ann_key(r.get("id"))] = r
+    for r in rows:
+        key = _ann_key(r.get("id"))
+        rep = by_key.get(key)
+        if rep and not r.get("reply"):
+            r["reply"] = True
+            r["stitch"] = True
+            r["reply_by"] = rep.get("owner") or ""
+            r["reply_lag_minutes"] = rep.get("lag_minutes")
+            if not r.get("ticket_ref"):
+                r["ticket_ref"] = rep.get("ticket_ref") or ""
+            r["note"] = f"{r.get('note') or ''} + reply/lag {rep.get('lag_minutes')}м".strip()
     return rows
 
 
@@ -559,12 +680,14 @@ def main():
     rows += parse_waits(problems, now)
     rows += parse_decisions(problems, unstated)
     rows += parse_goals(problems, unstated)
+    reply_rows = parse_reply_annotations(problems, now)
+    rows = merge_reply_annotations(rows, reply_rows)
     if problems and not rows:
         print("FATAL: источники недоступны: " + "; ".join(problems),
               file=sys.stderr)
         return 1
 
-    annotations, a_counts, stale_meta = produce_annotations(rows)
+    annotations, a_counts, stale_meta = produce_annotations(rows, reply_rows)
 
     last_seen = load_last_seen(problems)
     sigs = signals(rows, last_seen, conf, now)
@@ -590,6 +713,14 @@ def main():
     for reason, n in sorted(a_counts["reasons"].items(), key=lambda kv: (-kv[1], kv[0])):
         print(f"  причина: {reason} — {n}")
     print(f"  реестр: {ANNOTATIONS}")
+
+    no_meta_rows = [a for a in annotations if a.get("meta_state") == "no-meta"]
+    print(f"\n■ МЕТКИ НЕТ — ждёт разметки ({len(no_meta_rows)})")
+    for a in no_meta_rows[:15]:
+        print(f"  ? {a['id']}: нет адресата/сорта — разметить "
+              f"(deadline 24ч, иначе stale-meta)")
+    if len(no_meta_rows) > 15:
+        print(f"  … и ещё {len(no_meta_rows) - 15}")
 
     # ---- страница для человека ----
     print("СЛЕДОПЫТ — где всё и на какой стадии")
