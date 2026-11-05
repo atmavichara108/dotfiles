@@ -1098,3 +1098,9 @@ Nemotron не пригоден для primary-роли. Владелец пра�
   - Надзор: `tools/sys-health/sys-health.py` + `sys-health.timer` каждые 2 мин поднимает ключевые службы и проверяет HAPP-порты; журнал `logs/sys-health/sys-health.jsonl`.
   - Rule: HAPP — приоритет владельца; Tor не подменяет Chromium. Молчаливое падение службы/прокси = инцидент, не «прошло мимо».
 - **Уточнение инцидента 2026-11-05 (Chromium Happ):** корень «не работал Chromium» — wrapper использовал `socks5h://127.0.0.1:10808`; Chromium не поддерживает `socks5h` и падал с `ERR_NO_SUPPORTED_PROXIES`. Фикс: `chromium-happ` использует `socks5://127.0.0.1:10808`; живой прогон через `api.ipify.org` вернул Happ-IP.
+- **Metka2 A6 + приёмка (2026-11-06, ЦУ ref ic-metka2-addendum):**
+  - Инструмент `tools/follower/metka2.py` (apply/check) ведёт append-only `logs/follower/metka2.jsonl`, источники не правит.
+  - Жизненный цикл: одна активная metka2 на строку; новая метка делает старую stale-parent (`op: deactivate`, parent=metka2_id); двойные produced-annotations деактивируются по маркеру `produced-annotations.jsonl#N`.
+  - Узел (`node`) резолвится из живого источника waits; ответ/пришивка -> `answered`; форм-/портальный/открытый вопрос -> `asked`; закрытие без ответа -> `closed-no-answer`; отсутствие адресата/узла -> честный `no-meta`.
+  - A6: экран пересчитывает derived из `waits.jsonl` + `waits-done.jsonl` + produced-annotations; расхождение с активной metka2 = FAIL и append-only обновление.
+  - Приёмка: `metka2.py check` PASS; активные waits все имеют node; двойных меток нет; `a8dfec96`, `acd862cc`, `adb72663`, `a8dffaff` приведены к node/state.
