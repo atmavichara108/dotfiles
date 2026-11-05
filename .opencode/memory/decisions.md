@@ -1090,3 +1090,10 @@ Nemotron не пригоден для primary-роли. Владелец пра�
   - Расхождение метки с источником -> отдельная строка `stale-meta`, история не переписывается.
   - Счёт: готово `N` / не готово `M` / не к владельцу `K` / `БЕЗ МЕТКИ: X`.
   - waits.jsonl: stitch/закрытые строки не попадают в очередь Следопыта.
+- **ИНЦИДЕНТ 2026-11-05: упали TG-сторожа и proxy в Chromium (восстановлено).**
+  - Симптом: Maya не реагирует на портал, SERP/рекрутинг-сторож молчал, Chromium взял Tor вместо HAPP.
+  - Repro/evidence: journalctl показал portal/serp падение на «Could not connect to proxy 127.0.0.1:10808»; юниты были `linked`, не `enabled`; `~/.config/proxyctl/mode` был `tor`; `proxy-healthcheck` при mode auto звал `proxyctl happ/tor` и закреплял режим, поэтому auto больше не переключался; `release-watch` падал с FileNotFoundError `opencode` (systemd PATH без `~/.opencode/bin`); `serp-tg-guard.service` имел невалидный environment с пробелом.
+  - Root: не прокси один. Корни — (1) службы не были enabled после перезапуска user-systemd; (2) режим прокси залипал; (3) Chromium-обёртка читала mode и имела Tor-fallback; (4) systemd PATH/PATH-инцидент для opencode.
+  - Fix: portal/serp/opencode-serve enabled; `serp` env исправлен; `release-watch` использует абсолютный opencode; `proxyctl mode happ` и логин ставит happ; `proxy-healthcheck` новый режим не залипает; `chromium-happ`/`google-chrome-proxy` работают только через HAPP и падают отказом, если порт недоступен; Tor остался отдельным.
+  - Надзор: `tools/sys-health/sys-health.py` + `sys-health.timer` каждые 2 мин поднимает ключевые службы и проверяет HAPP-порты; журнал `logs/sys-health/sys-health.jsonl`.
+  - Rule: HAPP — приоритет владельца; Tor не подменяет Chromium. Молчаливое падение службы/прокси = инцидент, не «прошло мимо».
