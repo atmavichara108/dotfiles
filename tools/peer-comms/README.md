@@ -1,18 +1,20 @@
 ---
 type: tool-doc
-title: peer-comms — канал писем (резерв) + session-model-set (смена модели с проверкой)
-timestamp: 2026-10-26
-status: deprecated-reserve (письма) / active (session-model-set)
-canon_ref: "Р-028 (почта Корабля — ship-mail; letter.sh в резерве); inc-silent-success-20261025 (ИПТ → ИЦ)"
+title: peer-comms — старый канал отключён + session-model-set (смена модели с проверкой)
+timestamp: 2026-11-06
+status: letters-disabled (простыни запрещены) / active (session-model-set)
+canon_ref: "Р-028 (почта Корабля — ship-mail); решение ЦУ ic-wake-fix-decision 2026-11-06; inc-silent-success-20261025"
 ---
 
 # peer-comms
 
-## Письма — РЕЗЕРВ (deprecated)
-Почта Корабля — `../ship-mail/ship-mail.sh` (канон Р-028): письмо = атомарный
-файл в ящике получателя, чтение первым шагом хода, ack после отработки.
-`letter.sh` остаётся для аврала/релея владельца и требует осознанного
-`PEER_COMMS_RESERVE=1`. Прямая отправка без флага — отказ (exit 6).
+## Письма — ОТКЛЮЧЕНО (2026-11-06)
+Почта Корабля — только `../ship-mail/ship-mail.sh` (канон Р-028): письмо =
+файл `type: Letter` в ящике получателя, чтение первым шагом хода, ack после
+отработки. Старый канал `letter.sh` («простыни») вызвал ложные «молчания»
+отделов и зависания очереди — отключён совсем, exit 5. Старые хвосты
+архивируются с пометкой, не удаляются. Новые письма этим каналом не
+принимаются.
 
 ## session-model-set.sh — смена модели сессии ТОЛЬКО с доказательством
 
