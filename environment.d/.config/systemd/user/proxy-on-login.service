@@ -1,10 +1,10 @@
 [Unit]
-Description=Set proxy mode to auto on login
+Description=Set proxy mode to happ on login
 After=default.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/proxyctl mode auto
+ExecStart=%h/.local/bin/proxyctl mode happ
 
 [Install]
 WantedBy=default.target
