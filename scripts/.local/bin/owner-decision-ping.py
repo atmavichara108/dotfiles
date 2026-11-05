@@ -52,15 +52,19 @@ def _save(data: dict) -> None:
 
 
 def _parse_msk(value: str | None) -> float:
-    """«2026-11-05 17:25 МСК» -> epoch (UTC+3), мусор/нет -> 0."""
+    """«2026-11-05 17:25 МСК» -> epoch. МСК = UTC+3, без локальных ловушек."""
     if not value:
         return 0.0
     try:
-        date_part, _, time_part = value.partition(" ")
+        import datetime as _dt
+        clean = value.replace(" МСК", "").replace("МСК", "").strip()
+        date_part, _, time_part = clean.partition(" ")
         y, mo, d = (int(x) for x in date_part.split("-"))
         hh, mm = (int(x) for x in time_part.split(":"))
-        return time.mktime((y, mo, d, hh, mm, 0, 0, 0, -1)) - 3 * 3600
-    except Exception:  # noqa: BLE001
+        local = _dt.datetime(y, mo, d, hh, mm, 0,
+                             tzinfo=_dt.timezone(_dt.timedelta(hours=3)))
+        return local.timestamp()
+    except Exception:  # noqa: BLE001 — мусор = «давно», не «сейчас»
         return 0.0
 
 
@@ -97,8 +101,10 @@ def _send(text: str) -> int:
                                          suffix=".md", delete=False) as tf:
             tf.write(text)
             tmp_path = tf.name
+        # БЕЗ --reply-to 0: нулевой ответ гасит forum_topic у сообщения, и оно
+        # уезжает в General вместо топика «Статусы» (инцидент 2026-11-05).
         proc = subprocess.run(["python3", SEND, "--topic", str(TOPIC),
-                               "--reply-to", "0", "--format", "md",
+                               "--format", "md",
                                "--file", tmp_path],
                               capture_output=True, text=True, env=env,
                               timeout=120)
