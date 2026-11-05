@@ -92,6 +92,15 @@
     "ask_confirm"
    ],
    "canon_ref": "Р-074 п.5 (Ворота не обходятся) + Р-064/Р-067 (реестр отправителей, красная линия)"
+  },
+  {
+   "id": "apps-wave-a-package-approve",
+   "title": "да на пакет решений волны A (стек В1, слои/транспорт, 6 модулей, наследие)",
+   "trigger": "owner_route TTL 60м истёк, wait a95bb79b, return_condition пуст",
+   "tools": [
+    "ask_confirm"
+   ],
+   "canon_ref": "А2, протокол 05.11 п.5, owner-TTL"
   }
  ]
 }
