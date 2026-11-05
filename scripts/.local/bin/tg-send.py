@@ -143,6 +143,13 @@ def main(argv):
         i = argv.index("--reply-to")
         reply_to = int(argv[i + 1])
         known_vals.add(argv[i + 1])
+    # reply_to=0 в живой отправке гасит forum_topic: сообщение уезжает в
+    # общий поток вместо топика (инцидент маршрутизации 2026-11-05).
+    # 0 = «без ответа», а не «ответ на сообщение №0».
+    if reply_to is not None and reply_to <= 0:
+        sys.stderr.write("tg-send: reply_to<=0 трактуется как «без ответа» "
+                         "(иначе сообщение уходит в общий поток)\n")
+        reply_to = None
     rest = [a for a in argv if a not in ("--topic", "--reply-to")]
     if "--file" in rest:
         i = rest.index("--file")
@@ -226,7 +233,7 @@ def main(argv):
                              f"{scope_txt} format={fmt}\n")
             msg = await client.send_message(
                 ent, wire,
-                **({"reply_to": reply_to} if reply_to is not None else {}),
+                **({"reply_to": reply_to if reply_to is not None else topic} if (reply_to is not None or topic is not None) else {}),
                 parse_mode=None, formatting_entities=entities)
             print(f"tg-send: ok id={msg.id} {scope_txt}")
             tg_profile.journal_append({"action": "sent", "topic": topic,
