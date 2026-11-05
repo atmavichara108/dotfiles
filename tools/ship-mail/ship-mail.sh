@@ -144,15 +144,29 @@ cmd_send() {
   registry_check "$to" "recipient"
   registry_check "$from" "sender"
 
-  local body
+  # Линт и запись номера мандата читают тело с диска: --text/stdin сначала
+  # уходит во временный файл, --file остаётся на месте.
+  local body_file="" body_tmp=0 body mandate_no
   if [[ "$use_stdin" -eq 1 ]]; then
-    body="$(cat)"
+    body_file="$(mktemp)"
+    body_tmp=1
+    cat > "$body_file"
   elif [[ -n "$src" ]]; then
     [[ -r "$src" ]] || fail "source file not readable: $src" 2
-    body="$(cat "$src")"
+    body_file="$src"
   else
-    body="$text"
+    body_file="$(mktemp)"
+    body_tmp=1
+    printf '%s\n' "$text" > "$body_file"
   fi
+  mandate_no="$(python3 "$(dirname "$0")/mandate_number.py" extract --file "$body_file")"
+  if ! python3 "$(dirname "$0")/lint_letter.py" --file "$body_file" \
+      --type "Letter" --title "$title" --ref "$ref" \
+      --from "$from" --to "$to"; then
+    [[ "$body_tmp" -eq 1 ]] && rm -f "$body_file"
+    fail "lint не пройден — письмо не отправлено" 2
+  fi
+  body="$(cat "$body_file")"
 
   # Idempotency: same body + sender + day = same id (as peer-comms letter.sh).
   local id ts dir fname tmpf
@@ -186,6 +200,7 @@ cmd_send() {
     printf '%s\n' "$body"
   } > "$tmpf"
   mv "$tmpf" "$dir/$fname"
+  [[ "$body_tmp" -eq 1 ]] && rm -f "$body_file"
   # Журнал отправки: append-only, меты-only (без тела/темы). Нужен для
   # базового среза «кто кому что отправил», когда копии есть только у адресата.
   mkdir -p "$(dirname "$SENT_LOG")"
@@ -199,6 +214,12 @@ print(json.dumps({
 PY
   then
     echo "ship-mail: WARN — письмо доставлено, но журнал отправки не записан: $SENT_LOG" >&2
+  fi
+  if [[ -n "$mandate_no" ]]; then
+    if ! python3 "$(dirname "$0")/mandate_number.py" record \
+        --number "$mandate_no" --id "$id" --from "$from"; then
+      echo "ship-mail: WARN — письмо доставлено, но номер мандата не записан: $mandate_no" >&2
+    fi
   fi
   echo "DELIVERED $dir/$fname"
 }
