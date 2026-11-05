@@ -18,6 +18,13 @@
   idle_days  (7)   — «в работе», но не упоминалось в session-log столько дней
   overdue          — TTL ожидания исчерпан (сразу, порог не нужен)
 
+Р-095 produced-annotations (регистр):
+  - append-only logs/follower/produced-annotations.jsonl; источники не правим;
+  - поля: addressee/sort/ticket/action/since/ready (ready — производная, не статус);
+  - приоритет адресата: waits who_owes > явный текст > парсинг; конфликт — «неоднозначен»;
+  - расхождение метки с источником — отдельная строка stale-meta, история не переписывается;
+  - счёт: готово N / не готово M / не к владельцу K / БЕЗ МЕТКИ: X.
+
 Строка без состояния = дефект агрегатора → секция UNSTATED, rc=2.
 
 Использование:
@@ -54,6 +61,8 @@ WAITS = os.path.join(HOME, ".local/share/ship-mail/waits.jsonl")
 GOALS = os.path.join(HOME, ".local/state/opencode/goal.json")
 GOAL_DIR = os.path.join(HOME, ".local/state/opencode/goals")
 CONF = os.path.join(HOME, ".local/state/opencode/follower.json")
+# Р-095: отдельный append-only регистр производных пометок. Источники не правим.
+ANNOTATIONS = os.path.join(HOME, "dotfiles/logs/follower/produced-annotations.jsonl")
 
 ST_FIXED = "зафиксировано"
 ST_WORK = "в работе"
@@ -97,6 +106,192 @@ def read_text(path, problems):
     except OSError as e:
         problems.append(f"{path}: {e}")
         return ""
+
+
+# ---------- Р-095: produced-annotations (производные метки, не статус) ----
+
+SID_RE = re.compile(r"\bses_[A-Za-z0-9]+\b")
+OWNER_RE = re.compile(r"(владелец|хозяин|владельца|owner|rudra)", re.IGNORECASE)
+STALE_RE = re.compile(r"(нет ответа|не отвеч|просроч|пинок|молч|непришит|мимо)",
+                      re.IGNORECASE)
+PROMISE_RE = re.compile(r"(обеща|слот|до \d|позже|потом|ожида)", re.IGNORECASE)
+ACTION_RE = re.compile(r"(апрув|подтвер|да/нет|да или нет|принять|пришить|ответить)",
+                       re.IGNORECASE)
+TICKET_RE = re.compile(r"^(?:Q-\d+(?:\.\d+)?|T-\d+|Р-Д-\d+|Р-\d+)$")
+
+
+def _annotation_text(row):
+    return " ".join([
+        str(row.get("title") or ""),
+        str(row.get("note") or ""),
+        str(row.get("return_condition") or ""),
+        str(row.get("ticket_ref") or ""),
+    ])
+
+
+def _detect_addressee(row):
+    """Приоритет: waits who_owes > явный текст > парсинг. Конфликт — не молчание."""
+    owner = str(row.get("owner") or "").strip()
+    text = _annotation_text(row)
+    explicit_owner = bool(OWNER_RE.search(text))
+    sids = SID_RE.findall(text)
+    if row.get("source") == "waits" and owner:
+        if explicit_owner and owner != "owner":
+            return "неоднозначен", "waits-who_owes-vs-text-owner"
+        return owner, "waits:who_owes"
+    if explicit_owner and sids:
+        return "неоднозначен", "text-owner-and-session"
+    if explicit_owner:
+        return "owner", "text:owner"
+    if owner:
+        return owner, "parsed:owner"
+    if len(set(sids)) == 1:
+        return sids[0], "text:session"
+    if len(set(sids)) > 1:
+        return "неоднозначен", "multiple-sessions-in-text"
+    return "", "no-addressee"
+
+
+def _detect_sort(row, addressee):
+    if not addressee or addressee == "неоднозначен":
+        return "БЕЗ МЕТКИ"
+    if addressee == "owner":
+        return "корень"
+    text = _annotation_text(row)
+    if STALE_RE.search(text):
+        return "сторож"
+    if PROMISE_RE.search(text):
+        return "promise"
+    return "сторож" if row.get("source") == "waits" else "promise"
+
+
+def _detect_ticket(row):
+    ticket_ref = str(row.get("ticket_ref") or "").strip()
+    if ticket_ref:
+        return ticket_ref, True
+    rid = str(row.get("id") or "").strip()
+    if TICKET_RE.match(rid):
+        return rid, True
+    return "", False
+
+
+def _detect_action(row):
+    text = _annotation_text(row)
+    if ACTION_RE.search(text):
+        return "одно действие"
+    return "неявно"
+
+
+def _annotation_core(row):
+    addressee, basis = _detect_addressee(row)
+    sort = _detect_sort(row, addressee)
+    ticket, ticket_detected = _detect_ticket(row)
+    action = _detect_action(row)
+    since = str(row.get("since") or "").strip() or "unknown"
+    ambiguity = addressee == "неоднозначен"
+    no_addressee = not addressee
+    since_unknown = since == "unknown"
+    ticket_unknown = not ticket_detected
+    action_unknown = action == "неявно"
+    ready = not any([ambiguity, no_addressee, since_unknown,
+                     ticket_unknown, action_unknown])
+    reason = ""
+    if no_addressee:
+        reason = "нет адресата"
+    elif ambiguity:
+        reason = "addressee неоднозначен"
+    elif since_unknown:
+        reason = "порог неизвестен"
+    elif ticket_unknown:
+        reason = "билет не размечен"
+    elif action_unknown:
+        reason = "действие неявно"
+    return {
+        "id": row.get("id"),
+        "source": row.get("source"),
+        "addressee": addressee or "БЕЗ МЕТКИ",
+        "sort": sort,
+        "ticket": ticket,
+        "action": action,
+        "since": since,
+        "ready": ready,
+        "reason": reason,
+        "addressee_basis": basis,
+        "meta_by": "follower-rule",
+        "evidence": f"{row.get('source')}:{row.get('id')}",
+    }
+
+
+def _load_annotations():
+    if not os.path.exists(ANNOTATIONS):
+        return {}
+    out = {}
+    try:
+        for line in open(ANNOTATIONS, encoding="utf-8"):
+            try:
+                d = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(d, dict) and d.get("id"):
+                out[d["id"]] = d
+    except OSError:
+        pass
+    return out
+
+
+def _same_annotation(old, new):
+    keys = ("addressee", "sort", "ticket", "action", "since", "ready")
+    return all(old.get(k) == new.get(k) for k in keys)
+
+
+def _append_annotation(entry):
+    os.makedirs(os.path.dirname(ANNOTATIONS), exist_ok=True)
+    with open(ANNOTATIONS, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def produce_annotations(rows):
+    """Производные пометки append-only; расхождение — отдельная stale-meta строка."""
+    old_by_id = _load_annotations()
+    annotations = []
+    stale = []
+    for r in rows:
+        if r.get("state") != ST_WAIT:
+            continue
+        core = _annotation_core(r)
+        old = old_by_id.get(core["id"])
+        if old and not _same_annotation(old, core):
+            stale.append({"op": "stale-meta", "id": core["id"],
+                          "old": {k: old.get(k) for k in
+                                  ("addressee", "sort", "ticket", "action",
+                                   "since", "ready")},
+                          "new": {k: core.get(k) for k in
+                                  ("addressee", "sort", "ticket", "action",
+                                   "since", "ready")},
+                          "ts": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
+                          "meta_by": "follower-rule"})
+            _append_annotation(core)
+        elif not old:
+            _append_annotation(core)
+        annotations.append(core)
+
+    counts = {"N": 0, "M": 0, "K": 0, "X": 0, "stale-meta": len(stale),
+              "reasons": {}}
+    for a in annotations:
+        if not a["addressee"] or a["addressee"] == "БЕЗ МЕТКИ":
+            counts["X"] += 1
+            rsn = a["reason"] or "нет метки"
+        elif a["addressee"] == "owner":
+            if a["ready"]:
+                counts["N"] += 1
+            else:
+                counts["M"] += 1
+                rsn = a["reason"] or "не готов"
+        else:
+            counts["K"] += 1
+            rsn = "не к владельцу"
+        counts["reasons"][rsn] = counts["reasons"].get(rsn, 0) + 1
+    return annotations, counts, stale
 
 
 # ---------- парсеры источников ----------
@@ -186,6 +381,9 @@ def parse_waits(problems, now):
                 if not line:
                     continue
                 w = json.loads(line)
+                # waits.jsonl — активные ожидания: stitch/закрытые строки не очередь.
+                if w.get("op") == "stitch" or w.get("state") not in (None, "open"):
+                    continue
                 age_h = (now - dt.datetime.fromisoformat(
                     w["since"].replace("Z", "+00:00")).timestamp()) / 3600 \
                     if "since" in w else None
@@ -195,6 +393,9 @@ def parse_waits(problems, now):
                                 evidence=""))
                 rows[-1]["age_h"] = age_h
                 rows[-1]["ttl_hours"] = w.get("ttl_hours")
+                rows[-1]["since"] = w.get("since")
+                rows[-1]["ticket_ref"] = w.get("return_condition") or w.get("ref") or ""
+                rows[-1]["return_condition"] = w.get("return_condition") or ""
     except FileNotFoundError:
         problems.append(f"waits: {WAITS} нет")
     except json.JSONDecodeError as e:
@@ -363,6 +564,8 @@ def main():
               file=sys.stderr)
         return 1
 
+    annotations, a_counts, stale_meta = produce_annotations(rows)
+
     last_seen = load_last_seen(problems)
     sigs = signals(rows, last_seen, conf, now)
     half = half_done(rows, last_seen)
@@ -380,6 +583,13 @@ def main():
               f"[{r['owner']}]")
     if len(ready_rows) > 15:
         print(f"  … и ещё {len(ready_rows) - 15}")
+
+    print(f"\n■ PRODUCED-АННОТАЦИИ: готово {a_counts['N']} / "
+          f"не готово {a_counts['M']} / не к владельцу {a_counts['K']} / "
+          f"БЕЗ МЕТКИ: {a_counts['X']} / stale-meta {a_counts['stale-meta']}")
+    for reason, n in sorted(a_counts["reasons"].items(), key=lambda kv: (-kv[1], kv[0])):
+        print(f"  причина: {reason} — {n}")
+    print(f"  реестр: {ANNOTATIONS}")
 
     # ---- страница для человека ----
     print("СЛЕДОПЫТ — где всё и на какой стадии")
@@ -425,6 +635,9 @@ def main():
                  "question_ready": bool(r.get("question_ready"))}
                 for r in rows if r["state"] == ST_WAIT
             ],
+            "produced_annotations": annotations,
+            "annotation_counts": a_counts,
+            "stale_meta": stale_meta,
             "sources": [{"path": p, "ok": True} for p in
                         (QUESTS, TASKS, WAITS, REGISTRY)] +
                        [{"path": SESSION_LOG, "ok": not problems}],
