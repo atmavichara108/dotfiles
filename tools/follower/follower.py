@@ -79,8 +79,15 @@ def load_conf():
 
 
 def row(id_, source, title, state, owner="", note="", evidence=""):
+    # sort/вопрос-готов (Р-092/ttl-sweep): строки «ждёт слова» классифицируются
+    # сортом ЖДУ; вопрос-готов = сорту ЖДУ есть кому задать (owner) и о чём
+    # (title+note). Нет выдуманных владельцев/текстов.
+    is_wait = state == ST_WAIT
+    question_ready = bool(is_wait and owner and title and note)
     return {"id": id_, "source": source, "title": title, "state": state,
-            "owner": owner, "note": note, "evidence": evidence}
+            "owner": owner, "note": note, "evidence": evidence,
+            "sort": "ЖДУ" if is_wait else None,
+            "question_ready": question_ready}
 
 
 def read_text(path, problems):
@@ -364,6 +371,16 @@ def main():
     for r in rows:
         by_state[r["state"]] += 1
 
+    waiting_rows = [r for r in rows if r["state"] == ST_WAIT]
+    ready_rows = [r for r in waiting_rows if r.get("question_ready")]
+
+    print(f"\n■ ЖДУ — вопросы (готовы {len(ready_rows)}/{len(waiting_rows)})")
+    for r in ready_rows[:15]:
+        print(f"  ? {r['source']} {r['id']}: {r['title'][:70]} "
+              f"[{r['owner']}]")
+    if len(ready_rows) > 15:
+        print(f"  … и ещё {len(ready_rows) - 15}")
+
     # ---- страница для человека ----
     print("СЛЕДОПЫТ — где всё и на какой стадии")
     print("=" * 72)
@@ -402,6 +419,12 @@ def main():
             "by_state": by_state,
             "alerts": sigs,
             "half_done": half,
+            "waiting_questions": [
+                {"id": r["id"], "source": r["source"], "title": r["title"],
+                 "owner": r["owner"], "sort": "ЖДУ",
+                 "question_ready": bool(r.get("question_ready"))}
+                for r in rows if r["state"] == ST_WAIT
+            ],
             "sources": [{"path": p, "ok": True} for p in
                         (QUESTS, TASKS, WAITS, REGISTRY)] +
                        [{"path": SESSION_LOG, "ok": not problems}],
