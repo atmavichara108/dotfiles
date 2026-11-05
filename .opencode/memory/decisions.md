@@ -1084,3 +1084,9 @@ Nemotron не пригоден для primary-роли. Владелец пра�
   - `waits.py stitch-report` — печатает строки «ОТВЕТ БЕЗ ПРИШИВКИ (lag N)»; `ship-mail.sh inbox/show` показывают их отдельной строкой вне блока просрочки.
   - `waits.py sweep` — TTL-sweep: найден ответ в ящике -> stitch; ответа нет -> SWEEP NO-ANSWER с ping/escalate-hint (или пинок TTL с `--ping`).
   - `lag_minutes` считается от `since_ts` wait до `answered_at`; непарсимое время — отказ, лаг не выдумывается.
+- **Produced-annotations Р-095 (2026-11-05, ЦУ ref ic-follower-annotations):**
+  - `follower.py` пишет append-only `logs/follower/produced-annotations.jsonl`, источники не правит.
+  - Поля: `addressee` (приоритет waits `who_owes` > явный текст > парсинг; конфликт — «неоднозначен»), `sort` (корень/сторож/promise), `ticket`, `action`, `since`, `ready` (производная функция, не статус).
+  - Расхождение метки с источником -> отдельная строка `stale-meta`, история не переписывается.
+  - Счёт: готово `N` / не готово `M` / не к владельцу `K` / `БЕЗ МЕТКИ: X`.
+  - waits.jsonl: stitch/закрытые строки не попадают в очередь Следопыта.
