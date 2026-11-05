@@ -34,6 +34,10 @@ set -euo pipefail
 MAIL_HOME="${SHIP_MAIL_HOME:-$HOME/.local/share/ship-mail}"
 SENT_LOG="${SHIP_MAIL_SENT_LOG:-$MAIL_HOME/sent.jsonl}"
 REGISTRY="${SHIP_MAIL_REGISTRY:-$HOME/Projects/OpenCode-Vault/04-Memory/peer-registry.md}"
+# Канонический путь САМОГО скрипта: даже если запущены через симлинк,
+# инструменты транспорта ищутся рядом каноном, а не рядом путём вызова.
+SELF_PATH="$(readlink -f "${BASH_SOURCE[0]:-$0}")"
+SELF_DIR="$(dirname "$SELF_PATH")"
 # Снапшот реестра адресов: рабочее дерево волта живёт под чужими ветками, и сессия,
 # ушедшая на ветку без 04-Memory/peer-registry.md, ломала отправку всем (INC: «registry
 # not readable»). Реестр берём из git-объекта той ветки, где он зафиксирован.
@@ -113,7 +117,7 @@ inbox_dir() {
 transport_guard() {
   local tool p
   for tool in lint_letter.py mandate_number.py; do
-    p="$(dirname "$0")/$tool"
+    p="$SELF_DIR/$tool"
     [[ -r "$p" ]] || fail "transport hook: missing $tool ($p) — письмо не отправлено" 2
     python3 "$p" --help >/dev/null 2>&1 \
       || fail "transport hook: broken $tool ($p) --help rc!=0 — письмо не отправлено" 2
@@ -174,8 +178,8 @@ cmd_send() {
     body_tmp=1
     printf '%s\n' "$text" > "$body_file"
   fi
-  mandate_no="$(python3 "$(dirname "$0")/mandate_number.py" extract --file "$body_file")"
-  if ! python3 "$(dirname "$0")/lint_letter.py" --file "$body_file" \
+  mandate_no="$(python3 "$SELF_DIR/mandate_number.py" extract --file "$body_file")"
+  if ! python3 "$SELF_DIR/lint_letter.py" --file "$body_file" \
       --type "Letter" --title "$title" --ref "$ref" \
       --from "$from" --to "$to"; then
     [[ "$body_tmp" -eq 1 ]] && rm -f "$body_file"
@@ -231,7 +235,7 @@ PY
     echo "ship-mail: WARN — письмо доставлено, но журнал отправки не записан: $SENT_LOG" >&2
   fi
   if [[ -n "$mandate_no" ]]; then
-    if ! python3 "$(dirname "$0")/mandate_number.py" record \
+    if ! python3 "$SELF_DIR/mandate_number.py" record \
         --number "$mandate_no" --id "$id" --from "$from"; then
       echo "ship-mail: WARN — письмо доставлено, но номер мандата не записан: $mandate_no" >&2
     fi
@@ -267,7 +271,7 @@ cmd_inbox() {
   # --- «Активное ожидание» (слово владельца 2026-10-27): пустое ожидание
   # дольше TTL = дефект. Блок просроченного показывается при каждом inbox.
   if [ -x "$(command -v python3)" ] && [ -f "$MAIL_HOME/waits.jsonl" ]; then
-    python3 "$(dirname "$0")/waits.py" overdue 2>/dev/null | rg 'ПРОСРОЧЕНО|WAITS-OVERDUE' || true
+    python3 "$SELF_DIR/waits.py" overdue 2>/dev/null | rg 'ПРОСРОЧЕНО|WAITS-OVERDUE' || true
   fi
 }
 
@@ -291,7 +295,7 @@ cmd_show() {
   # --- «Активное ожидание» (правило №6 waits): просроченные ожидания
   # показываются в каждом inbox — телеметрия без жизненного цикла = дефект.
   if [ -f "$MAIL_HOME/waits.jsonl" ]; then
-    python3 "$(dirname "$0")/waits.py" overdue 2>/dev/null \
+    python3 "$SELF_DIR/waits.py" overdue 2>/dev/null \
       | rg 'ПРОСРОЧЕНО|WAITS-OVERDUE' || true
   fi
 }
