@@ -1,0 +1,14 @@
+#!/bin/sh
+# google-chrome-proxy — запуск основного Chrome/Chromium через HAPP HTTP proxy.
+# Приоритет владельца 2026-11-05: HAPP — основной; Tor не подменяет.
+# Порт 10809 недоступен → отказ, а не тихий direct/Tor-fallback.
+set -eu
+
+HAPP_HTTP="http://127.0.0.1:10809"
+
+if ! (echo > /dev/tcp/127.0.0.1/10809) 2>/dev/null; then
+    echo "google-chrome-proxy: HAPP proxy недоступен на 127.0.0.1:10809 — отказ" >&2
+    exit 75
+fi
+
+exec google-chrome-stable --proxy-server="$HAPP_HTTP" "$@"

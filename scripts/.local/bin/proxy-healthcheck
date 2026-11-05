@@ -46,8 +46,10 @@ if [ "$mode" != "auto" ]; then
 fi
 
 # ── auto: детект и переключение ───────────────────────────
+# ВАЖНО: зовём `mode auto`, а не `happ`/`tor` — иначе режим закрепляется
+# и при следующем падении порта auto уже не срабатывает (инцидент 05.11).
 if port_open 10808; then
-    "$PROXYCTL" happ >/dev/null
+    "$PROXYCTL" mode auto >/dev/null
 else
-    "$PROXYCTL" tor >/dev/null
+    "$PROXYCTL" mode auto >/dev/null
 fi
