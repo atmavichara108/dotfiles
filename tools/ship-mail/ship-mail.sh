@@ -273,6 +273,10 @@ cmd_inbox() {
   if [ -x "$(command -v python3)" ] && [ -f "$MAIL_HOME/waits.jsonl" ]; then
     python3 "$SELF_DIR/waits.py" overdue 2>/dev/null | rg 'ПРОСРОЧЕНО|WAITS-OVERDUE' || true
   fi
+  # --- STITCH (Р-092): ответ без пришивки — отдельной строкой, не просрочка.
+  if [ -x "$(command -v python3)" ] && [ -f "$MAIL_HOME/waits-done.jsonl" ]; then
+    python3 "$SELF_DIR/waits.py" stitch-report 2>/dev/null | rg 'ОТВЕТ БЕЗ ПРИШИВКИ' || true
+  fi
 }
 
 cmd_show() {
@@ -297,6 +301,11 @@ cmd_show() {
   if [ -f "$MAIL_HOME/waits.jsonl" ]; then
     python3 "$SELF_DIR/waits.py" overdue 2>/dev/null \
       | rg 'ПРОСРОЧЕНО|WAITS-OVERDUE' || true
+  fi
+  # --- STITCH (Р-092): ответ без пришивки — отдельной строкой, не просрочка.
+  if [ -f "$MAIL_HOME/waits-done.jsonl" ]; then
+    python3 "$SELF_DIR/waits.py" stitch-report 2>/dev/null \
+      | rg 'ОТВЕТ БЕЗ ПРИШИВКИ' || true
   fi
 }
 

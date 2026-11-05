@@ -15,6 +15,10 @@ append-only реестре; TTL просрочки превращает пуст
                [--type mandate|question|acceptance|pilot|external|proposal]
                [--state S] [--return-condition TEXT]
   waits.py done <id>            # ожидание снято (ответ получен/отказ)
+  waits.py stitch <id> --reply-to <file|id> --answered-by <sid> \
+              --answered-at <ISO> [--evidence TEXT]  # пришить ответ (Р-092)
+  waits.py stitch-report        # ответы без пришивки (lag N), вне блока просрочки
+  waits.py sweep [--ping]       # ответ есть -> stitch; нет ответа -> ping/escalate
   waits.py ping <id>            # пинок: каденс TTL удваивается (backoff до срока)
   waits.py list [--all]
   waits.py overdue              # только просроченные (для inbox-блока)
@@ -207,11 +211,175 @@ def cmd_ping(wid):
     return 0
 
 
+def _parse_ts(value):
+    """ISO-строка -> epoch; сбой -> None (не выдумываем лаг)."""
+    if not value:
+        return None
+    try:
+        import datetime as _dt
+        raw = str(value).strip()
+        # допускаем Z и +03:00: datetime.fromisoformat Z не ест в 3.10-
+        raw = raw.replace("Z", "+00:00")
+        dt = _dt.datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_dt.timezone.utc)
+        return dt.timestamp()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _overdue(row):
     age_min = (time.time() - row.get("since_ts", 0)) / 60.0
     if _type(row) == "proposal" or _state(row) != "open":
         return False, age_min
     return age_min > _ttl_minutes(row), age_min
+
+
+def cmd_stitch(a):
+    """Пришить ответ: ответ есть, но wait ещё открыт.
+
+    Append-only строка в waits-done:
+      op=stitch, reply_to, answered_by, answered_at, stitched_at,
+      lag_minutes, evidence, state=answered.
+    """
+    rows = _rows(WAITS)
+    hit = [r for r in rows if r.get("id") == a.wid]
+    if not hit:
+        done = [r for r in _rows(DONE) if r.get("id") == a.wid]
+        if done:
+            print(f"waits: ожидание {a.wid} уже закрыто "
+                  f"({done[0].get('state', '?')}) — повтор не нужен")
+            return 0
+        print(f"waits: ожидание {a.wid} не найдено")
+        return 1
+    row = hit[0]
+    answered_ts = _parse_ts(a.answered_at)
+    if answered_ts is None:
+        print(f"waits: не разбираю answered_at={a.answered_at!r} — формат ISO")
+        return 2
+    since_ts = int(row.get("since_ts") or int(time.time()))
+    lag_min = round((answered_ts - since_ts) / 60.0, 1)
+    stitched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    row.update({
+        "op": "stitch",
+        "reply_to": a.reply_to or "",
+        "answered_by": a.answered_by or "",
+        "answered_at": a.answered_at,
+        "stitched_at": stitched_at,
+        "lag_minutes": lag_min,
+        "evidence": a.evidence or "",
+        "state": "answered",
+        "closed": stitched_at,
+    })
+    rest = [r for r in rows if r.get("id") != a.wid]
+    _rewrite_rows(rest)
+    _append(DONE, row)
+    print(f"STITCH {a.wid}: ответ пришит, lag {lag_min}м "
+          f"(from {row.get('who_owes')}, reply_to {row.get('reply_to')})")
+    return 0
+
+
+def cmd_stitch_report(_a=None):
+    """Строчки «ответ без пришивки»: stitch-closed вне блока просрочки."""
+    n = 0
+    for r in _rows(DONE):
+        if r.get("op") != "stitch" or _state(r) != "answered":
+            continue
+        n += 1
+        print(f"ОТВЕТ БЕЗ ПРИШИВКИ (lag {r.get('lag_minutes')}м) {r.get('id')} "
+              f"| ответил {r.get('answered_by')} | reply_to {r.get('reply_to')} "
+              f"| {str(r.get('what'))[:60]}")
+    print(f"STITCH-REPORT {n}")
+    return 0
+
+
+def _reply_files(sid):
+    base = os.path.join(HOME, "inbox", sid)
+    out = []
+    for d in (base, os.path.join(base, "read")):
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            if name.endswith(".md"):
+                out.append(os.path.join(d, name))
+    return out
+
+
+def _frontmatter(path):
+    data = {}
+    try:
+        text = open(path, encoding="utf-8").read()
+    except OSError:
+        return data
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not m:
+        return data
+    for line in m.group(1).splitlines():
+        if ":" not in line:
+            continue
+        k, v = line.split(":", 1)
+        data[k.strip()] = v.strip().strip('"')
+    return data
+
+
+def _detect_reply(row):
+    """Есть ли ответ: письмо от who_owes в ящик who_waits не ранее since."""
+    since = int(row.get("since_ts") or 0)
+    owe = row.get("who_owes") or ""
+    waiter = row.get("who_waits") or ""
+    for f in _reply_files(waiter):
+        meta = _frontmatter(f)
+        if meta.get("from") != owe:
+            continue
+        ts = _parse_ts(meta.get("ts"))
+        if ts is None or ts < since:
+            continue
+        return meta.get("ts"), os.path.basename(f)
+    return None, None
+
+
+def cmd_sweep(a):
+    """TTL-sweep: ответ есть -> stitch; ответа нет -> ping/escalate hint."""
+    rows = _rows(WAITS)
+    for r in rows:
+        if _type(r) == "proposal" or _state(r) != "open":
+            continue
+        answered_at, reply = _detect_reply(r)
+        if answered_at:
+            class _A:  # простейший аргумент-объект для cmd_stitch
+                pass
+            args = _A()
+            args.wid = r.get("id")
+            args.reply_to = reply
+            args.answered_by = r.get("who_owes") or ""
+            args.answered_at = answered_at
+            args.evidence = "auto-sweep: reply found in inbox"
+            cmd_stitch(args)
+            continue
+        od, age = _overdue(r)
+        if od:
+            if a.ping:
+                cmd_ping(r)
+            print(f"SWEEP NO-ANSWER {r.get('id')}: {_age_label(age)} без ответа "
+                  f"| ping/escalate к {r.get('who_owes')} | {str(r.get('what'))[:60]}")
+        else:
+            print(f"SWEEP WAITING {r.get('id')}: {_age_label(age)} без ответа, "
+                  f"TTL ещё не вышел")
+    return 0
+
+
+def cmd_overdue(a):
+    n = 0
+    for r in _rows(WAITS):
+        od, age = _overdue(r)
+        if od:
+            n += 1
+            ttl = _ttl_minutes(r)
+            kind = " (пинок, не дефект; дедлайн в what)" if _has_deadline(r) else ""
+            print(f"ПРОСРОЧЕНО {r['id']} [{_type(r)}]: {_age_label(age)} > TTL {ttl}м{kind} "
+                  f"| ждём от {r['who_owes']} | {r['what'][:70]}")
+    print(f"WAITS-OVERDUE {n}")
+    return 0
 
 
 def _age_label(minutes):
@@ -273,6 +441,17 @@ def main():
     a.add_argument("--ref", default="")
     d = sub.add_parser("done")
     d.add_argument("wid")
+    st = sub.add_parser("stitch")
+    st.add_argument("wid")
+    st.add_argument("--reply-to", default="")
+    st.add_argument("--answered-by", default="")
+    st.add_argument("--answered-at", required=True,
+                    help="ISO-время ответа (для lag)")
+    st.add_argument("--evidence", default="")
+    sub.add_parser("stitch-report")
+    sw = sub.add_parser("sweep")
+    sw.add_argument("--ping", action="store_true",
+                    help="на просроченном без ответа — применить пинок TTL")
     pi = sub.add_parser("ping")
     pi.add_argument("wid")
     sub.add_parser("list")
@@ -282,6 +461,12 @@ def main():
         cmd_add(args)
     elif args.cmd == "done":
         return cmd_done(args.wid)
+    elif args.cmd == "stitch":
+        return cmd_stitch(args)
+    elif args.cmd == "stitch-report":
+        return cmd_stitch_report(args)
+    elif args.cmd == "sweep":
+        return cmd_sweep(args)
     elif args.cmd == "ping":
         return cmd_ping(args.wid)
     elif args.cmd == "overdue":
