@@ -1079,3 +1079,8 @@ Nemotron не пригоден для primary-роли. Владелец пра�
   - Хост-расположение `~/.local/bin/ship-mail.sh` — симлинк на канон.
   - `~/Projects/dv-hub/scripts/ship-mail.sh` — копия, подлежит устранению хозяином dv-hub (ДВ-сторож); запрос отправлен.
   - Причина: копия без guard даёт старый транспорт и тихой обход fail-closed.
+- **STITCH-интеграция Р-092 (2026-11-05, мандат ЦУ ref ic-stitch+fix):**
+  - `waits.py stitch <id>` — append-only строка в `waits-done.jsonl` с полями `op=stitch`, `reply_to`, `answered_by`, `answered_at`, `stitched_at`, `lag_minutes`, `evidence`, `state=answered`.
+  - `waits.py stitch-report` — печатает строки «ОТВЕТ БЕЗ ПРИШИВКИ (lag N)»; `ship-mail.sh inbox/show` показывают их отдельной строкой вне блока просрочки.
+  - `waits.py sweep` — TTL-sweep: найден ответ в ящике -> stitch; ответа нет -> SWEEP NO-ANSWER с ping/escalate-hint (или пинок TTL с `--ping`).
+  - `lag_minutes` считается от `since_ts` wait до `answered_at`; непарсимое время — отказ, лаг не выдумывается.
