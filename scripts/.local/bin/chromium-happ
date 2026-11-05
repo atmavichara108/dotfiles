@@ -7,7 +7,9 @@
 # а не тихая подмена на Tor (иначе «прокси в Chromium слетел» повторяется).
 set -euo pipefail
 
-HAPP_PROXY="socks5h://127.0.0.1:10808"
+# Chromium НЕ поддерживает socks5h; socks5 через Happ уже даёт рабочий маршрут
+# (инцидент 2026-11-05: socks5h -> ERR_NO_SUPPORTED_PROXIES).
+HAPP_PROXY="socks5://127.0.0.1:10808"
 
 if ! (echo > /dev/tcp/127.0.0.1/10808) 2>/dev/null; then
     echo "chromium-happ: HAPP proxy недоступен на 127.0.0.1:10808 — отказ, Tor-fallback отключён" >&2
