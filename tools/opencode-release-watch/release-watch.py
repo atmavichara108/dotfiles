@@ -23,6 +23,7 @@ opencode с последним релизом апстрима (GitHub API). Н�
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import urllib.request
@@ -34,8 +35,17 @@ HTTP_PROXY = os.environ.get("RELEASE_WATCH_PROXY", "http://127.0.0.1:10809")
 SHIP_MAIL = os.path.expanduser("~/dotfiles/tools/ship-mail/ship-mail.sh")
 
 
+def _opencode_bin() -> str:
+    """Абсолютный путь к opencode: systemd-PATH может не содержать ~/.opencode/bin."""
+    found = shutil.which("opencode")
+    if found:
+        return found
+    fallback = os.path.expanduser("~/.opencode/bin/opencode")
+    return fallback if os.path.exists(fallback) else "opencode"
+
+
 def current_version():
-    out = subprocess.run(["opencode", "--version"], capture_output=True,
+    out = subprocess.run([_opencode_bin(), "--version"], capture_output=True,
                          text=True, timeout=30)
     m = re.search(r"(\d+\.\d+\.\d+)", out.stdout or "")
     return m.group(1) if m else None
