@@ -89,11 +89,25 @@ def _ping_text(data: dict) -> str:
 
 def _send(text: str) -> int:
     import subprocess
+    import tempfile
     env = dict(os.environ, TG_PROFILE="portal")
-    proc = subprocess.run(["python3", SEND, "--topic", str(TOPIC),
-                           "--reply-to", "0", "--format", "md",
-                           "--text", text],
-                          capture_output=True, text=True, env=env, timeout=120)
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8",
+                                         suffix=".md", delete=False) as tf:
+            tf.write(text)
+            tmp_path = tf.name
+        proc = subprocess.run(["python3", SEND, "--topic", str(TOPIC),
+                               "--reply-to", "0", "--format", "md",
+                               "--file", tmp_path],
+                              capture_output=True, text=True, env=env,
+                              timeout=120)
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
     tail = (proc.stdout or "") + (proc.stderr or "")
     if proc.returncode != 0:
         sys.stderr.write("owner-decision-ping: отправка не удалась: %s\n"
