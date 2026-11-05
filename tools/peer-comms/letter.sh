@@ -50,6 +50,13 @@
 #     --allow-no-agent (тогда event=warn-no-agent и письмо принимается).
 set -euo pipefail
 
+# РЕШЕНИЕ ЦУ (ref ic-wake-fix-decision, 2026-11-06): старый канал «простыней»
+# отключён совсем. Любая отправка/доставка идёт только ship-mail (type: Letter).
+# Здесь не принимаем письма и не дренируем очередь; старые хвосты архивируются,
+# не удаляются. Прямой вызов = отказ fail-closed.
+echo "letter.sh: канал peer-comms отключён (старый rejected-способ простыней). Используй tools/ship-mail/ship-mail.sh send --file <type: Letter>" >&2
+exit 5
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAIMS_FILE="${CLAIMS_FILE:-${SCRIPT_DIR}/claims.jsonl}"
 MAIL_DIR="${PEER_MAIL_DIR:-$HOME/.local/state/opencode/mail}"

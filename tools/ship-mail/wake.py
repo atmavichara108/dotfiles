@@ -21,6 +21,7 @@
 import base64
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -28,6 +29,9 @@ import urllib.request
 
 ENDPOINT = os.environ.get("OPENCODE_ENDPOINT", "http://127.0.0.1:49374")
 SERVICE_JSON = os.path.expanduser("~/.config/opencode/service.json")
+GLOBAL_AGENT_DIR = os.path.expanduser("~/.config/opencode/agent")
+PEER_REGISTRY = os.path.expanduser(
+    "~/Projects/OpenCode-Vault/04-Memory/peer-registry.md")
 WAKE_DIR = os.path.expanduser("~/.local/state/opencode/wake")
 JOURNAL = os.path.join(WAKE_DIR, "journal.jsonl")
 RATELIMIT = int(os.environ.get("WAKE_RATELIMIT_SEC", "900"))
@@ -62,6 +66,22 @@ def projects_index():
     return {p.get("id"): p.get("canonical") for p in d if isinstance(p, dict)}
 
 
+def _registry_agent(sid):
+    """Соглашение имени агента из peer-registry (мягкий fallback, не истина)."""
+    try:
+        for line in open(PEER_REGISTRY, encoding="utf-8"):
+            if sid not in line:
+                continue
+            cells = [c.strip() for c in line.split("|")]
+            if len(cells) < 3:
+                return None
+            agent = re.sub(r"\*\*|\[\[|\]\]", "", cells[2] or "")
+            return agent.strip() or None
+    except OSError:
+        return None
+    return None
+
+
 def preflight(sid):
     """-> (ok: bool, reason: str, session_data)"""
     req = urllib.request.Request(f"{ENDPOINT}/api/session/{sid}",
@@ -77,10 +97,32 @@ def preflight(sid):
     agent = d.get("agent")
     pid = d.get("projectID", "")
     canonical = projects_index().get(pid)
-    if agent and canonical:
-        path = os.path.join(canonical, ".opencode/agent", f"{agent}.md")
-        if not os.path.exists(path):
-            return False, f"agent {agent} not resolvable in {canonical}", d
+    agent_note = ""
+    if agent:
+        # Два слоя адресации: сначала агент проекта, потом общий слой.
+        # Не нашли — НЕ отказываем сессии: письмо остаётся в ящике, метка идёт
+        # в журнал (инцидент «молчащие отделы» 2026-11-05).
+        layers = []
+        if canonical:
+            layers.append(os.path.join(canonical, ".opencode/agent", f"{agent}.md"))
+        layers.append(os.path.join(GLOBAL_AGENT_DIR, f"{agent}.md"))
+        reg_agent = _registry_agent(sid)
+        if reg_agent and reg_agent != agent:
+            # Соглашения имён из реестра адресов — мягкий fallback, не тихий отказ.
+            if canonical:
+                layers.append(os.path.join(canonical, ".opencode/agent",
+                                           f"{reg_agent}.md"))
+            layers.append(os.path.join(GLOBAL_AGENT_DIR, f"{reg_agent}.md"))
+        if not any(os.path.exists(p) for p in layers):
+            agent_note = (f"agent {agent} not resolvable in project/common/registry "
+                          f"— письмо оставлено в ящике")
+            if reg_agent and reg_agent != agent:
+                agent_note += f"; registry suggests {reg_agent}"
+            d["agent_note"] = agent_note
+        else:
+            d["agent_layer"] = ("project" if canonical and os.path.exists(
+                os.path.join(canonical, ".opencode/agent", f"{agent}.md"))
+                else "common")
     t = d.get("time") or {}
     upd, idl = t.get("updated") or t.get("created") or 0, t.get("idle") or 0
     if upd and idl and upd > idl:
@@ -132,7 +174,7 @@ def main(argv):
                              os.path.join(box, f))])
                 if n == 0:
                     continue
-                ok, reason, _ = preflight(sid)
+                ok, reason, sess = preflight(sid)
                 if not ok:
                     journal({"ts": int(time.time()), "sid": sid,
                              "result": "refused", "reason": reason,
@@ -146,7 +188,7 @@ def main(argv):
                 text = (f"ship-mail: у тебя {n} непрочитанных писем в ящике. "
                         f"Прочти первым шагом хода (ship-mail.sh inbox), "
                         f"обработай и ack.")
-                rc = _send(sid, text)
+                rc = _send(sid, text, agent_note=(sess or {}).get("agent_note", ""))
                 if rc == 0:
                     woken += 1
         print(f"wake-sweep: разбужено {woken}")
@@ -181,10 +223,10 @@ def main(argv):
                  "result": "rate-limited", "wait": left, "text_len": len(text)})
         print(f"wake: лимит — один зов на SID за {RATELIMIT}с, осталось {left}с")
         return 1
-    return _send(sid, text)
+    return _send(sid, text, agent_note=d.get("agent_note", ""))
 
 
-def _send(sid, text):
+def _send(sid, text, agent_note=""):
     req = urllib.request.Request(
         f"{ENDPOINT}/api/session/{sid}/prompt",
         data=json.dumps({"text": text}).encode(),
@@ -194,12 +236,16 @@ def _send(sid, text):
             r.read()
     except Exception as e:  # noqa: BLE001
         journal({"ts": int(time.time()), "sid": sid, "result": "failed",
-                 "reason": f"{type(e).__name__}", "text_len": len(text)})
+                 "reason": f"{type(e).__name__}", "text_len": len(text),
+                 "agent_note": agent_note})
         print(f"wake: зов не ушёл ({type(e).__name__}) — осталось в журнале")
         return 1
     journal({"ts": int(time.time()), "sid": sid, "result": "ok",
-             "text_len": len(text)})
-    print(f"wake: OK — зов ушёл {sid} (длина {len(text)})")
+             "text_len": len(text), "agent_note": agent_note})
+    ok_line = f"wake: OK — зов ушёл {sid} (длина {len(text)})"
+    if agent_note:
+        ok_line += f" · {agent_note}"
+    print(ok_line)
     return 0
 
 
