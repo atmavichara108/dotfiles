@@ -8,6 +8,7 @@
 #
 # Usage:
 #   ship-mail.sh send --to <sid> --from <sid> [--title <t>] [--ref <r>] (--file <path> | --stdin | --text <msg>)
+#   ship-mail.sh self-check             # transport guard: lint+mandate hook готовы
 #   ship-mail.sh inbox <sid>                     # list unread (count + one line per letter)
 #   ship-mail.sh show <sid> [<filename>]         # print letter(s); without name — all unread
 #   ship-mail.sh ack <sid> <filename>|all        # move letter(s) to read/
@@ -107,8 +108,22 @@ inbox_dir() {
   printf '%s/inbox/%s' "$MAIL_HOME" "$1"
 }
 
+# transport guard: линт и журнал номеров обязательны. Нет файла или
+# сломан --help = fail-closed с внятной ошибкой; тихого bypass нет.
+transport_guard() {
+  local tool p
+  for tool in lint_letter.py mandate_number.py; do
+    p="$(dirname "$0")/$tool"
+    [[ -r "$p" ]] || fail "transport hook: missing $tool ($p) — письмо не отправлено" 2
+    python3 "$p" --help >/dev/null 2>&1 \
+      || fail "transport hook: broken $tool ($p) --help rc!=0 — письмо не отправлено" 2
+  done
+}
+
 # cmd_send --to SID --from SID [--title T] [--ref R] (--file F | --text MSG)
 cmd_send() {
+  # self-check транспорта до любой отправки: битый хук = отказ, не письмо.
+  transport_guard
   local to="" from="" title="letter" ref="" text="" src="" use_stdin=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -331,6 +346,7 @@ cmd_verify() {
 
 main() {
   case "${1:-}" in
+    self-check) shift; transport_guard; echo "TRANSPORT-OK send" ;;
     send) shift; cmd_send "$@" ;;
     verify) shift; [[ -n "${1:-}" && -n "${2:-}" ]] || fail "verify: recipient session id and id|substring required" 1; cmd_verify "$1" "$2" ;;
     inbox) shift; [[ -n "${1:-}" ]] || fail "inbox: session id required" 1; cmd_inbox "$1" ;;
