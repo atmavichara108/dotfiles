@@ -5,7 +5,8 @@
 Строка: {number, from, ts, id} — кто и когда зафиксировал номер мандата.
 
 Правила (Р-090):
-  - номер извлекается из письма по шаблону Р-<число>;
+  - номер извлекается из письма ТОЛЬКО из явного объявления нового номера;
+  - ссылка «Р-N» в теле не считается регистрацией;
   - коллизия номера (два разных письма с одним N) — FAIL с указанием
     существующего и нового id;
   - монотонность: новый номер должен быть больше максимального уже
@@ -28,7 +29,10 @@ import time
 
 HOME = os.path.expanduser("~/.local/share/ship-mail")
 JOURNAL = os.path.join(HOME, "mandate-numbers.jsonl")
-NUMBER_RE = re.compile(r"\bР-(\d+)\b")
+# Регистрация — только явное объявление. Ссылка в теле не регистрируется.
+DECLARE_RE = re.compile(
+    r"(?im)^\s*(?:[-*]\s*)?(?:новый\s+)?(?:mandate[_\s-]*number|номер\s+мандата"
+    r"|новый\s+мандат|mandate|мандат)\s*[:\-]\s*(?:№\s*)?Р?-?\s*(\d+)")
 
 
 def _rows(path=JOURNAL):
@@ -57,7 +61,7 @@ def cmd_extract(args):
     except OSError as e:
         print("")
         return 0
-    m = NUMBER_RE.search(text)
+    m = DECLARE_RE.search(text)
     print(m.group(1) if m else "")
     return 0
 

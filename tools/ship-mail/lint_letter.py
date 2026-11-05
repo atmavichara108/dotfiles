@@ -6,7 +6,7 @@
     - type/from/to/ref/title присутствуют;
     - from/to — полные sessionID;
     - ref не пустой и уникален в журнале отправок (sent.jsonl);
-    - номер мандата не занят и монотонен (если письмо несёт Р-N);
+    - номер мандата не занят и монотонен (только при явном объявлении);
     - заголовки СДЕЛАНО / ЗАБЛОКИРОВАНО / ЖДЁТ-ЗАБОТЫ присутствуют;
     - письмо с действием оканчивается продолжением работы.
   WARN:
@@ -33,7 +33,15 @@ PATH_RE = re.compile(r"(?P<path>(?:/~|/)(?:[\w.-]+/)+[\w.-]*)")
 CONTINUE_RE = re.compile(r"после выполнения[^\n]{0,80}продолж", re.IGNORECASE)
 ACTION_RE = re.compile(r"(мандат|прошу|реализуй|исправь|нужно сделать|задача|диагности|докладывай|проверь|сделай)", re.IGNORECASE)
 SECTION_PARTS = ("СДЕЛАНО", "ЗАБЛОКИРОВАНО", "ЖДЁТ")
-MANDATE_RE = re.compile(r"\bР-(\d+)\b")
+# Регистрация номера — только явное объявление. Ссылка «Р-N» в теле не регистрация.
+MANDATE_DECLARE_RE = re.compile(
+    r"(?im)^\s*(?:[-*]\s*)?(?:новый\s+)?(?:mandate[_\s-]*number|номер\s+мандата"
+    r"|новый\s+мандат|mandate|мандат)\s*[:\-]\s*(?:№\s*)?Р?-?\s*(\d+)")
+
+
+def _declared_mandate_number(text):
+    m = MANDATE_DECLARE_RE.search(text or "")
+    return m.group(1) if m else None
 
 
 def _read(path):
@@ -99,10 +107,9 @@ def lint(args) -> int:
     if has_action or args.require_continue:
         if not CONTINUE_RE.search(text):
             fails.append("письмо с действием не оканчивается продолжением работы")
-    # Р-Н: номер мандата должен быть свободен и монотонен
-    m = MANDATE_RE.search(text)
-    if m:
-        num = m.group(1)
+    # Номер мандата: регистрируется только явное объявление нового номера.
+    num = _declared_mandate_number(text)
+    if num:
         rows = _mandate_rows()
         same = [r for r in rows if str(r.get("number")) == num]
         if same:
