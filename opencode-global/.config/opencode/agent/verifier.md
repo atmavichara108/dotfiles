@@ -1,7 +1,7 @@
 ---
 description: Strict acceptance verifier. Checks work against DoD. Returns PASS/FAIL, never edits.
 mode: subagent
-model: nvidia/stepfun-ai/step-5-preview
+model: nvidia/moonshotai/kimi-k2.6
 temperature: 0.1
 steps: 80
 permission:
