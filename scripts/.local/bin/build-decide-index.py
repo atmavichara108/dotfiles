@@ -97,7 +97,8 @@ def _roles_from_registry(text: str) -> list[dict]:
 def build() -> dict:
     now = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
     index: dict = {"built_utc": now, "vault": VAULT, "decisions": [],
-                   "roles": [], "sources": []}
+                   "roles": [], "sources": [], "signals": [],
+                  "signals_resolved_by_decision": []}
     for kind, path in SOURCES:
         if not os.path.exists(path):
             index["sources"].append({"path": path, "status": "missing"})
@@ -120,6 +121,15 @@ def build() -> dict:
                     count += 1
         index["sources"].append({"path": path, "status": "read",
                                  "md_files": len(files), "records": count})
+    # Перекрёстная сверка: сигнал Следопыта против решений канона
+    index["signals"] = _signals_from_follower()
+    resolved = _decision_ids(index["decisions"])
+    resolved.update({k: v for k, v in _archived_ids().items() if k})
+    for sig in index["signals"]:
+        owner_dec = resolved.get(sig["id"])
+        if owner_dec:
+            index["signals_resolved_by_decision"].append(
+                {"id": sig["id"], "what": sig["what"], "decision": owner_dec})
     os.makedirs(OUT_DIR, mode=0o700, exist_ok=True)
     fd = os.open(OUT_JSON, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -152,13 +162,75 @@ def _write_digest(index: dict) -> None:
         f.write("\n".join(lines) + "\n")
 
 
+FOLLOWER = os.path.join(os.path.expanduser("~/dotfiles"),
+                        "tools", "follower", "follower.py")
+
+
+def _signals_from_follower() -> list[dict]:
+    """Сигналы Следопыта: id + текст. Нужны, чтобы связать очередь и решения."""
+    import subprocess
+    out: list[dict] = []
+    try:
+        res = subprocess.run(["python3", FOLLOWER], capture_output=True,
+                             text=True, timeout=180)
+    except Exception:  # noqa: BLE001 — следопыт недоступен = нет сигналов
+        return out
+    in_signals = False
+    for line in (res.stdout or "").splitlines():
+        s = line.strip()
+        if s.startswith("■ СИГНАЛЫ"):
+            in_signals = True
+            continue
+        if in_signals and s.startswith("⚠"):
+            body = s[1:].strip()
+            sid = body.split(":")[0].strip()
+            out.append({"id": sid, "what": body})
+        elif in_signals and s.startswith("■"):
+            break
+    return out
+
+
+ARCHIVE = os.path.expanduser("~/.local/state/portal-tg/owner-decisions.json")
+
+
+def _archived_ids() -> dict[str, str]:
+    """Закрытые пункты очереди владельца -> решение, которым закрыты."""
+    out: dict[str, str] = {}
+    try:
+        with open(ARCHIVE, encoding="utf-8") as f:
+            data = json.load(f)
+        for item in data.get("archived", []):
+            ref = item.get("decision_ref", "")
+            m = re.search(r"Р-\d+", ref)
+            out[item.get("id", "")] = m.group(0) if m else item.get("status", "")
+    except Exception:  # noqa: BLE001 — нет архива = пусто
+        pass
+    return out
+
+
+def _decision_ids(decisions: list[dict]) -> dict[str, str]:
+    """id задачи -> решение, в тексте которого он упомянут."""
+    mapping: dict[str, str] = {}
+    for d in decisions:
+        text = d.get("what", "")
+        for tid in re.findall(r"\b([QT]-\d{3})\b", text):
+            mapping.setdefault(tid, d["id"] or "без номера")
+    return mapping
+
+
 def main(argv: list[str]) -> int:
     if argv and argv[0] not in ("--digest", "-h", "--help"):
         print(__doc__)
         return 0
     index = build()
     print(f"decide-index: собрано {index['built_utc']} · решений "
-          f"{len(index['decisions'])} · ролей {len(index['roles'])}")
+          f"{len(index['decisions'])} · ролей {len(index['roles'])} · "
+          f"сигналов {len(index['signals'])} · "
+          f"сигналов закрыты решением "
+          f"{len(index['signals_resolved_by_decision'])}")
+    for row in index["signals_resolved_by_decision"]:
+        print(f"  РАСХОЖДЕНИЕ: {row['id']} числится сигналом, но закрыт "
+              f"решением {row['decision']}")
     for s in index["sources"]:
         print(f"  {s['status']}: {s['path']} "
               f"(files={s.get('md_files', 0)}, records={s.get('records', 0)})")
