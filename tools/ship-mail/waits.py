@@ -293,7 +293,7 @@ def cmd_stitch_report(_a=None):
         n += 1
         print(f"ОТВЕТ БЕЗ ПРИШИВКИ (lag {r.get('lag_minutes')}м) {r.get('id')} "
               f"| ответил {r.get('answered_by')} | reply_to {r.get('reply_to')} "
-              f"| {str(r.get('what'))[:60]}")
+              f"| {str(r.get('what'))}")
     print(f"STITCH-REPORT {n}")
     return 0
 
@@ -366,7 +366,7 @@ def cmd_sweep(a):
             if a.ping:
                 cmd_ping(r)
             print(f"SWEEP NO-ANSWER {r.get('id')}: {_age_label(age)} без ответа "
-                  f"| ping/escalate к {r.get('who_owes')} | {str(r.get('what'))[:60]}")
+                  f"| ping/escalate к {r.get('who_owes')} | {str(r.get('what'))}")
         else:
             print(f"SWEEP WAITING {r.get('id')}: {_age_label(age)} без ответа, "
                   f"TTL ещё не вышел")
@@ -407,7 +407,7 @@ def cmd_list(a):
                 mark += " (пинок)"
         ttl = _ttl_minutes(r)
         print(f"{r['id']} [{wtype}/{state}] {mark} {_age_label(age)}/{ttl}м  "
-              f"{r['who_owes']}  {r['what'][:60]}")
+              f"{r['who_owes']}  {r['what']}")
     return 0
 
 
