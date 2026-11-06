@@ -184,5 +184,19 @@ if [ "${AGENT_PERMS_OK:-0}" != "1" ]; then
   fi
 fi
 
+# --- Гейт 8: сканер секретов в staged (мандат СБ C3, 2026-11-06) -------------
+# Блокирующий режим: высокочастотные сигнатуры секретов не уходят в коммит.
+# Исключения: маркер `secrets-scan:allow` в строке, путь из tools/secrets-scan/allowlist.json.
+# Осознанный обход: SECRET_SCAN_OK=1 (причина обязательна в сообщении коммита).
+if [ "${SECRET_SCAN:-1}" = "1" ] && [ "${SECRET_SCAN_OK:-0}" != "1" ]; then
+  _root8=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+  _scan="$_root8/tools/secrets-scan/scan.py"
+  if [ -f "$_scan" ]; then
+    if ! python3 "$_scan" --staged; then
+      die 'secrets-scan: признаки секретов в staged. Маркер secrets-scan:allow / allowlist / осознанный SECRET_SCAN_OK=1'
+    fi
+  fi
+fi
+
 echo "✅ tree-hygiene: ветка/маркеры/зоны в порядке"
 exit 0
