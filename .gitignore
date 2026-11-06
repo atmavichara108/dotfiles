@@ -130,3 +130,7 @@ mcode/
 
 # peer-comms: runtime claims log (append-only, данные сессий)
 tools/peer-comms/claims.jsonl
+
+# secrets-scan как инструмент (реестр запретов) трекается, хотя имя похоже на секрет
+!tools/secrets-scan/
+!tools/secrets-scan/*
