@@ -28,7 +28,7 @@ import sys
 import time
 
 HOME = os.path.expanduser("~/.local/share/ship-mail")
-JOURNAL = os.path.join(HOME, "mandate-numbers.jsonl")
+JOURNAL = os.environ.get("SHIP_MAIL_MANDATE_LOG") or os.path.join(HOME, "mandate-numbers.jsonl")
 # Регистрация — только явное объявление. Ссылка в теле не регистрируется.
 DECLARE_RE = re.compile(
     r"(?im)^\s*(?:[-*]\s*)?(?:новый\s+)?(?:mandate[_\s-]*number|номер\s+мандата"

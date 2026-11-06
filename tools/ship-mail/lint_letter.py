@@ -24,9 +24,14 @@ import os
 import re
 import sys
 
-HOME = os.path.expanduser("~/.local/share/ship-mail")
-SENT_LOG = os.path.join(HOME, "sent.jsonl")
-MANDATE_JOURNAL = os.path.join(HOME, "mandate-numbers.jsonl")
+# Журналы — через env (изоляция тестов; боевой путь по умолчанию).
+HOME = os.environ.get("SHIP_MAIL_HOME") or os.path.expanduser(
+    "~/.local/share/ship-mail"
+)
+SENT_LOG = os.environ.get("SHIP_MAIL_SENT_LOG") or os.path.join(HOME, "sent.jsonl")
+MANDATE_JOURNAL = os.environ.get("SHIP_MAIL_MANDATE_LOG") or os.path.join(
+    HOME, "mandate-numbers.jsonl"
+)
 SID_RE = re.compile(r"^ses_[A-Za-z0-9]{12,}$")
 SHA_RE = re.compile(r"\b[0-9a-fA-F]{64}\b")
 PATH_RE = re.compile(r"(?P<path>(?:/~|/)(?:[\w.-]+/)+[\w.-]*)")
