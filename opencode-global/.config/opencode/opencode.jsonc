@@ -59,7 +59,13 @@
       "rm -rf*": "deny",
       "rm -fr*": "deny",
       "rm*": "ask",
-      "ssh*": "ask"
+      "ssh*": "ask",
+      "curl*": "ask",
+      "wget*": "ask",
+      "scp*": "ask",
+      "rsync*": "ask",
+      "nc*": "ask",
+      "ncat*": "ask"
     }
   },
   "permissions": [
