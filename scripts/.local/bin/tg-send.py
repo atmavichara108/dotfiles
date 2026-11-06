@@ -231,10 +231,27 @@ def main(argv):
                 scope_txt += f" reply_to={reply_to}"
             sys.stderr.write(f"tg-send: как {me.username or me.id} -> {group} "
                              f"{scope_txt} format={fmt}\n")
-            msg = await client.send_message(
-                ent, wire,
-                **({"reply_to": reply_to if reply_to is not None else topic} if (reply_to is not None or topic is not None) else {}),
-                parse_mode=None, formatting_entities=entities)
+            # Повтор: Telethon иногда падает на разборе TL (отставание схемы к
+            # слою сервера) — одно и то же сообщение уходит со второй попытки.
+            # Без повтора теряется отправка, которую должен увидеть человек.
+            last_err: Exception | None = None
+            msg = None
+            for attempt in (1, 2, 3):
+                try:
+                    msg = await client.send_message(
+                        ent, wire,
+                        **({"reply_to": reply_to if reply_to is not None
+                            else topic} if (reply_to is not None
+                                            or topic is not None) else {}),
+                        parse_mode=None, formatting_entities=entities)
+                    break
+                except Exception as e:  # noqa: BLE001 — только повтор
+                    last_err = e
+                    sys.stderr.write(f"tg-send: попытка {attempt} не удалась "
+                                     f"({type(e).__name__}); повтор\n")
+                    await asyncio.sleep(1.5)
+            if msg is None:
+                raise last_err if last_err else RuntimeError("send failed")
             print(f"tg-send: ok id={msg.id} {scope_txt}")
             tg_profile.journal_append({"action": "sent", "topic": topic,
                                        "reply_to": reply_to,
