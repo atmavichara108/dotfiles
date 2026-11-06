@@ -287,8 +287,20 @@ def cmd_stitch(a):
 def cmd_stitch_report(_a=None):
     """Строчки «ответ без пришивки»: stitch-closed вне блока просрочки."""
     n = 0
+    now = time.time()
     for r in _rows(DONE):
         if r.get("op") != "stitch" or _state(r) != "answered":
+            continue
+        stitched_ts = _parse_ts(r.get("stitched_at"))
+        if stitched_ts is None:
+            continue
+        deadline = r.get("op_deadline_minutes") or 24 * 60
+        try:
+            deadline = int(deadline)
+        except Exception:
+            deadline = 24 * 60
+        age_minutes = (now - stitched_ts) / 60.0
+        if age_minutes >= deadline:
             continue
         n += 1
         print(f"ОТВЕТ БЕЗ ПРИШИВКИ (lag {r.get('lag_minutes')}м) {r.get('id')} "
