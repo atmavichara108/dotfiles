@@ -1,0 +1,8 @@
+{
+  "paths": [
+    "tools/secrets-scan/scan.py",
+    "tools/secrets-scan/selftest.py",
+    "tools/secrets-scan/allowlist.json"
+  ],
+  "_comment": "Здесь лежат образцы/практические строки секретов для теста и исключений"
+}
