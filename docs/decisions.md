@@ -330,6 +330,12 @@ append-only, без коммитов. Локальная `/flush` dotfiles со�
   проектных override.
 - Гейт не создаёт automatic router: неопределённый route — UNROUTABLE/вопрос.
 - **Поправка 2026-09-29:** фактический runtime-гейт мягче п.2 выше: `permission.task: "allow"`, `permission.edit.*: "allow"` (ask — только hot-files и необратимые bash). П.2 фиксирует исходный замысел, канон — `opencode.jsonc` + «Границы» глобального `AGENTS.md`. Prompt-контракт (подтверждение scope) действует независимо от гейта.
+- **Дополнение 2026-11-06 (мандат СБ через ЦУ):** к human-in-the-loop добавлен
+  runtime-гейт исходящих данных: `curl*`, `wget*`, `ssh*`, `scp*`, `rsync*`,
+  `nc*`, `ncat*` идут через permission-контур; скрытые сетевые вызовы внутри
+  пайпа блокируются `opencode-global/.config/opencode/plugins/exfil-guard.ts`.
+  Осознанный обход — `EXFIL_OK=1` с причиной. Цель — не пропускать утечку
+  через вложенную команду, когда prefix-permission её не покрывает.
 
 ---
 
