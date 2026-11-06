@@ -21,7 +21,7 @@ permission:
     "**/id_ed25519*": deny
 
   bash:
-    "*": ask
+    "*": deny
     "sudo *": deny
     "chown *": deny
     "chmod *": deny
