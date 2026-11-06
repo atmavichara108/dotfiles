@@ -266,7 +266,8 @@ cmd_inbox() {
   while IFS= read -r f; do
     from="$(frontmatter_field "$f" from)"
     title="$(frontmatter_field "$f" title)"
-    printf '%s  %s  %s\n' "$(basename "$f")" "$from" "$title"
+    id="$(frontmatter_field "$f" id)"
+    printf '%s  id=%s  from=%s  title=%s\n' "$(basename "$f")" "${id:-?}" "${from:-?}" "${title:-?}"
   done < <(unread_files "$sid")
   # --- «Активное ожидание» (слово владельца 2026-10-27): пустое ожидание
   # дольше TTL = дефект. Блок просроченного показывается при каждом inbox.
