@@ -1,0 +1,1 @@
+{"content":[{"text":"готов","type":"text"}],"id":"msg_0b35bfc5443e42b0924aa33482c1c802","model":"claude-opus-4-8","role":"assistant","stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cost":0.009245806744941958,"input_tokens":66552,"kiro_credits":0.4622903372470979,"output_tokens":7}}

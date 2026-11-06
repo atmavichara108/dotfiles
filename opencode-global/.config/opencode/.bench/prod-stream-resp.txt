@@ -1,0 +1,28 @@
+event: message_start
+data: {"message":{"content":[],"id":"msg_2c878dd35da84dffad427b95aae02cee","model":"claude-opus-4-8","role":"assistant","stop_reason":null,"stop_sequence":null,"type":"message","usage":{"input_tokens":88,"output_tokens":1}},"type":"message_start"}
+
+
+event: content_block_start
+data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+
+event: ping
+data: {"type": "ping"}
+
+
+event: content_block_delta
+data: {"delta":{"text":"работает.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+
+event: content_block_stop
+data: {"index":0,"type":"content_block_stop"}
+
+
+event: message_delta
+data: {"delta":{"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cost":0.00059550304145937,"input_tokens":6554,"kiro_credits":0.029775152072968495,"output_tokens":12}}
+
+
+event: message_stop
+data: {"type":"message_stop"}
+
+
