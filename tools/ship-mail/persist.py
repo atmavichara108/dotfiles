@@ -91,7 +91,7 @@ def _open_waits():
 
 
 def cmd_write(a):
-    text = a.text
+    text = getattr(a, "text", None)
     if a.file:
         text = open(a.file, encoding="utf-8").read().strip()
     if not text:
