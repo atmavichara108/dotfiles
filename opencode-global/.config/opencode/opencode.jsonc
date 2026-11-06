@@ -37,7 +37,11 @@
       "**/*.pem": "deny",
       "**/*.key": "deny",
       "**/id_rsa*": "deny",
-      "**/id_ed25519*": "deny"
+      "**/id_ed25519*": "deny",
+      "**/.secrets/**": "deny",
+      "**/.secrets/*": "deny",
+      "~/.secrets/**": "deny",
+      "~/.secrets/*": "deny"
     },
     "bash": {
       "*": "allow",
