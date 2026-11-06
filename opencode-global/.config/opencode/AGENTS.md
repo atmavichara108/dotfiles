@@ -159,9 +159,12 @@ peer-comms letter.sh — **в резерве (deprecated)**: аврал/реле
 - Runtime-гейт: штатные действия по умолчанию разрешены (`bash: "*": allow`,
   `edit: allow`, `task: allow` в opencode.jsonc). Одобрение (`ask`) требуется
   только для потенциально необратимых операций: `rm*`, `git reset --hard*`,
-  `git clean*`, `ssh*`, `sudo *`. Explicit `deny` — для разрушительных/секретных
-  операций: `git push --force*`, `git branch -D*`, `git tag -d*`, `rm -rf*`,
-  `chmod/chown`, `systemctl stop/disable/mask`, `mkfs/shutdown/reboot`.
+  `git clean*`, `ssh*`, `sudo *`, а также для исходящих сетевых команд
+  `curl*`, `wget*`, `scp*`, `rsync*`, `nc*`, `ncat*`. Explicit `deny` — для
+  разрушительных/секретных операций: `git push --force*`, `git branch -D*`,
+  `git tag -d*`, `rm -rf*`, `chmod/chown`, `systemctl stop/disable/mask`,
+  `mkfs/shutdown/reboot`. Скрытые сетевые вызовы внутри пайпа блокирует
+  `exfil-guard.ts`; осознанный обход — `EXFIL_OK=1` с причиной.
   Это не абсолютная runtime-гарантия: локальные project/agent permission
   overrides могут расширить гейт (agent rules take precedence). Prompt-контракт
   выше действует во всех проектах независимо от overrides. См. ADR-009
