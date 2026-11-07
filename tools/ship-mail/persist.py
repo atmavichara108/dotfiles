@@ -147,7 +147,25 @@ def cmd_bootstrap(a):
             print(f"ПОСЛЕДНЯЯ ЗАПИСЬ: {last[:16]}")
     else:
         print("ЗАПИСЕЙ НЕТ — записывай важное каждый ход")
+    # Поток счётчика токенов (ступень 1 экономии, мандат ЦУ ic-stage1-verdict):
+    # журнал команд — первичная правда, счётчик — сверка. Фидер идемпотентен
+    # (водяной знак), ошибки безопасны (bootstrap не роняем).
+    _feed_token_counter()
     print("=== КОНЕЦ ВОССТАНОВЛЕНИЯ ===")
+
+
+def _feed_token_counter():
+    """Идемпотентная подача токенов из журнала в счётчик (fail-safe)."""
+    try:
+        import subprocess
+        import sys
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmdlog = os.path.join(root, "ship-mail", "cmdlog.py")
+        if os.path.exists(cmdlog):
+            subprocess.run([sys.executable, cmdlog, "tokens", "--feed"],
+                           capture_output=True, timeout=60)
+    except Exception:  # noqa: BLE001 — поток счётчика не роняет восстановление
+        pass
     return 0
 
 
