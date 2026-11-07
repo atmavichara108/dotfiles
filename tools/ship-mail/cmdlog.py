@@ -109,6 +109,23 @@ def cmd_top(a):
     return 0
 
 
+ADOPT_LOG = os.path.join(HOME, "template-adoptions.jsonl")
+
+
+def cmd_adopt(a):
+    """Журнал принятия шаблона (условие ступени 4, ЦУ ic-app1-and-stage4).
+
+    Append-only: кто, когда, какой шаблон. Дописываемо, не перезаписываем.
+    """
+    rec = {"op": "adopt", "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+           "by": a.by, "template": a.template}
+    os.makedirs(HOME, exist_ok=True)
+    with open(ADOPT_LOG, "a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    print(f"ADOPT {a.by}: {a.template}")
+    return 0
+
+
 def _ts(s):
     try:
         import datetime
@@ -242,9 +259,12 @@ def main():
     tt = sub.add_parser("tokens")
     tt.add_argument("--feed", action="store_true")
     tt.add_argument("--limit", type=int, default=14)
+    ad = sub.add_parser("adopt")
+    ad.add_argument("--template", required=True, help="имя/текст шаблона")
+    ad.add_argument("--by", default=os.environ.get("OPENCODE_SID", "?"), help="кто принял")
     a = ap.parse_args()
     cmds = {"record": cmd_record, "norm": cmd_norm, "top": cmd_top,
-            "stats": cmd_stats, "tokens": cmd_tokens}
+            "stats": cmd_stats, "tokens": cmd_tokens, "adopt": cmd_adopt}
     return cmds[a.cmd](a)
 
 
