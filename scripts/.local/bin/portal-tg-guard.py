@@ -500,7 +500,7 @@ def make_beta_handler(client, ent, journal_path: str):
         while True:
             await asyncio.sleep(30)
             try:
-                msgs = await client.get_messages(ent, limit=50)
+                msgs = await fetch_recent(ent)
                 for m in sorted((x for x in msgs if x.id not in beta_seen),
                                 key=lambda x: x.id):
                     await handle_beta(m)
@@ -589,6 +589,23 @@ def main(argv):
 
     session = watch.prepare_session(GUARD_SESSION_SUFFIX)
 
+
+    async def fetch_recent(chat_ent, limit=50):
+        """Последние сообщения с повтором: Telethon иногда не разбирает слой
+        сервера (TypeNotFoundError) или теряет связь. Без повтора досмотр
+        молча пропускает целый цикл — а именно он обязан не терять события."""
+        last = None
+        for attempt in (1, 2, 3):
+            try:
+                return await client.get_messages(chat_ent, limit=limit)
+            except Exception as e:  # noqa: BLE001 — повод повторить
+                last = e
+                sys.stderr.write("portal-tg-guard: get_messages попытка %d "
+                                 "не удалась (%s); повтор\n"
+                                 % (attempt, type(e).__name__))
+                await asyncio.sleep(1.0 + attempt)
+        raise last
+
     async def run():
         seen = 0
         woken = 0
@@ -670,7 +687,7 @@ def main(argv):
                 while True:
                     await asyncio.sleep(20)
                     try:
-                        msgs = await client.get_messages(ent, limit=50)
+                        msgs = await fetch_recent(ent)
                         new = sorted((m for m in msgs
                                       if m.id not in portal_seen), key=lambda x: x.id)
                         if not new:
