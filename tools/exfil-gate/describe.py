@@ -37,9 +37,10 @@ DANGEROUS = (
 )
 SECRET_RE = re.compile(r"(~?/?)\.secrets/")  # secrets-scan:allow (имя содержит secret)
 SCHEME_RE = re.compile(r"\b(https?|ftp|sftp|ssh|rsync|file)://([A-Za-z0-9._-]+)(?::(\d{1,5}))?")
-USERHOST_RE = re.compile(r"\b([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+):")
+USERHOST_RE = re.compile(r"\b([A-Za-z0-9._-]+)@([A-Za-z0-9._-]+)(?=:|\s|$|[\"'])")
 HOSTPORT_RE = re.compile(r"\b([A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?):(\d{2,5})\b")
 PATH_RE = re.compile(r"(?:^|[\s='\"])((?:~|\.{1,2})?/[\w./-]+)")
+SLOT_RE = re.compile(r"<[A-Z][A-Z0-9_]*>")
 STDIN_RE = re.compile(r"<\s*([^\s;|&]+)")
 VAR_RE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 PRODUCERS = ("cat", "tar", "gzip", "zip", "jq", "yq", "python", "python3", "head", "tail", "rg", "grep", "awk", "sed", "xxd")
@@ -136,6 +137,13 @@ def describe(cmd: str, goal: str = ""):
                 f"и не описываются для гейта до разрешения секретов (owner-gate ask_secret)."], 2
 
     segs = _split_segments(cmd)
+    # Нераскрытый слот <SLOT> в команде = проверяется не та команда, что
+    # исполнится (дефект СБ sb-describe-failopen-defect): блок.
+    slot_left = sorted(set(SLOT_RE.findall(cmd)))
+    if slot_left:
+        return [f"БЛОК: нераскрытый слот {', '.join(slot_left)} — команда с "
+                f"неподставленным слотом не идёт в гейт (fail-closed)."], 2
+
     nets = [(s, _netcmd(s)) for s in segs]
     nets = [(s, c) for s, c in nets if c]
     if not nets:
@@ -143,25 +151,48 @@ def describe(cmd: str, goal: str = ""):
 
     lines = []
     what, where = [], []
+    unknown = []
     for seg, net in nets:
         dest = _destination(seg)
-        where.append(f"{dest or 'адрес не распознан'} (через {net})")
-        res = _resources(seg)
+        seg_vars = _vars(seg)
         if "|" in seg:
             prod = _producer(seg.split("|", 1)[0])
-            what.append(f"пайп: поток от «{prod or 'неизвестный производитель'}» "
-                        f"через {net}")
-        elif res:
-            what.append("ресурс: " + ", ".join(res))
+            if not prod:
+                unknown.append("неизвестный производитель пайпа")
+                what.append("пайп: производитель не распознан")
+            else:
+                what.append(f"пайп: поток от «{prod}» через {net}")
+        if dest:
+            where.append(f"{dest} (через {net})")
+        elif seg_vars:
+            # Переменный адрес — заявленный эталон (СБ): честно назвать, не резолвить.
+            where.append(f"адрес в переменной {', '.join(seg_vars)}, "
+                         f"значение не резолвилось (через {net})")
         else:
-            what.append(f"уход без файла: {net} без аргумента-ресурса — уходит "
-                        f"stdout/параметры URL")
+            unknown.append(f"адрес не распознан для «{net}»")
+            where.append(f"адрес не распознан (через {net})")
+        if "|" not in seg:
+            res = _resources(seg)
+            if res:
+                what.append("ресурс: " + ", ".join(res))
+            else:
+                what.append(f"уход без файла: {net} без аргумента-ресурса — уходит "
+                            f"stdout/параметры URL")
+    if unknown:
+        # Fail-closed (требование СБ): неизвестный адрес/источник не трактуется
+        # как локальный — гейт не пропускает.
+        return ["БЛОК: адрес/источник не распознан — гейт не пропускает "
+                f"неизвестный адрес: {'; '.join(dict.fromkeys(unknown))}. "
+                f"Дай конкретный адрес или разрешённый слот."], 2
     lines.append("ЧТО: " + "; ".join(dict.fromkeys(what)))
     lines.append("КУДА: " + "; ".join(dict.fromkeys(where)))
 
     allow = _allow_hosts()
     ext = []
+    var_addr = False
     for w in where:
+        if "в переменной" in w or "не распознан" in w:
+            var_addr = True
         m = re.search(r"//([A-Za-z0-9._-]+)|@([A-Za-z0-9._-]+)", w)
         host = (m.group(1) or m.group(2)) if m else None
         if host and host not in ("127.0.0.1", "localhost", "::1") and host not in allow:
@@ -170,6 +201,9 @@ def describe(cmd: str, goal: str = ""):
         lines.append("РИСК: внешний адрес вне списка разрешённых — "
                      + ", ".join(sorted(set(ext)))
                      + " (exfil-класс: данные покидают хост)")
+    elif var_addr:
+        lines.append("РИСК: адрес в переменной/не резолвился — выход за хост "
+                     "исключить нельзя, exfil-класс НЕ снимается")
     else:
         lines.append("РИСК: адрес локальный/разрешённый — утечка вне хоста не следует из разбора")
     vars_ = _vars(cmd)
