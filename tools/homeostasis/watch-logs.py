@@ -139,12 +139,9 @@ def run():
             h = hashlib.sha256(json.dumps(row, sort_keys=True,
                                           ensure_ascii=False).encode()).hexdigest()[:12]
             if seen_has(h):
-                incident({"ts": int(time.time()),
-                          "class": "drift:" + str(row.get("class")),
-                          "axis": row.get("axis"), "repeat": h,
-                          "sid": row.get("sid", ""),
-                          "ref": row.get("ref", ""),
-                          "message_id": row.get("message_id", "")})
+                # повтор уже записан — новой строки нет (слух подавлен,
+                # инцидент 2026-11-07: журнал раздулся до 371к строк)
+                continue
                 continue
             seen_add(h)
             incident({"ts": int(time.time()),
@@ -161,9 +158,7 @@ def run():
             if needle in line:
                 h = hashlib.sha256(line.encode("utf-8", "replace")).hexdigest()[:12]
                 if seen_has(h):
-                    incident({"ts": int(time.time()), "class": cls,
-                              "file": os.path.basename(path),
-                              "repeat": h, "snippet": line[:SNIPPET_MAX]})
+                    # повтор уже записан — новой строки нет (слух подавлен)
                     break
                 seen_add(h)
                 incident({"ts": int(time.time()), "class": cls,
