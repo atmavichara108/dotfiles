@@ -129,6 +129,7 @@ cmd_send() {
   # self-check транспорта до любой отправки: битый хук = отказ, не письмо.
   transport_guard
   local to="" from="" title="letter" ref="" text="" src="" use_stdin=0
+  local task_mode=0 deadline_min=15 expect="письмо с исполнением"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --to) to="$2"; shift 2 ;;
@@ -138,6 +139,9 @@ cmd_send() {
       --file) src="$2"; shift 2 ;;
       --stdin) use_stdin=1; shift ;;
       --text) text="$2"; shift 2 ;;
+      --task) task_mode=1; shift ;;
+      --deadline) deadline_min="$2"; shift 2 ;;
+      --expect) expect="$2"; shift 2 ;;
       *) fail "send: unknown option '$1'" 1 ;;
     esac
   done
@@ -241,6 +245,15 @@ PY
     fi
   fi
   echo "DELIVERED $dir/$fname"
+  # Канон доставки (Р-120): письмо-задание автоматически встаёт в очередь дел
+  # адресата — строка-ожидание с дедлайном (по умолчанию 15 минут).
+  if [[ "$task_mode" -eq 1 ]]; then
+    python3 "$SELF_DIR/waits.py" add --owe "$to" \
+      --what "задание: $expect [письмо $id]" --by "$from" --type mandate \
+      --return-condition "$expect" --ttl-minutes "$deadline_min" \
+      --deadline-minutes "$((deadline_min * 2))" --ref "${ref:-task}" \
+      >/dev/null 2>&1 && echo "TASK-QUEUE: строка-ожидание создана (дедлайн ${deadline_min}м)" || true
+  fi
 }
 
 # Unread letters of a session, sorted, one path per line (glob-safe).
