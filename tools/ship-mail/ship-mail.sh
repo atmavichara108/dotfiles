@@ -263,6 +263,11 @@ cmd_inbox() {
     count=$((count + 1))
   done < <(unread_files "$sid")
   echo "unread: $count"
+  # --- Карта почты (канон Р-117): авторы + срез «важное» — компактной строкой.
+  # Тяжёлый срез идёт отдельно: tools/ship-mail/authors.py [--important|--measure].
+  if [ -x "$(command -v python3)" ]; then
+    python3 "$SELF_DIR/authors.py" --measure 2>/dev/null | head -2 || true
+  fi
   while IFS= read -r f; do
     from="$(frontmatter_field "$f" from)"
     title="$(frontmatter_field "$f" title)"
