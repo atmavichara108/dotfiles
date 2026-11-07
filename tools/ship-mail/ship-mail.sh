@@ -316,7 +316,7 @@ cmd_show() {
 }
 
 cmd_ack() {
-  local sid="$1" what="$2" dir f moved=0
+  local sid="$1" what="$2" dir f moved=0 ids=""
   sid_sane "$sid" || fail "'$sid' is not a session id" 1
   dir="$(inbox_dir "$sid")"
   mkdir -p "$dir/read"
@@ -324,12 +324,19 @@ cmd_ack() {
     while IFS= read -r f; do
       mv "$f" "$dir/read/$(basename "$f")"
       moved=$((moved + 1))
+      ids="$ids $(basename "$f")"
     done < <(unread_files "$sid")
   else
     [[ -f "$dir/$what" ]] || fail "no such letter: $what" 2
     mv "$dir/$what" "$dir/read/$what"
     moved=1
+    ids=" $what"
   fi
+  # Факт снятия на диске (переживает смерть хода: пинг-письмо-снято-отчёта-нет)
+  local stamp; stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","sid":"%s","moved":%d,"letters":"%s"}\n' \
+    "$stamp" "$sid" "$moved" "${ids# }" \
+    >> "$HOME/.local/state/ship-mail/acks.jsonl" 2>/dev/null || true
   echo "ACK $moved"
 }
 

@@ -216,9 +216,14 @@ def main(argv):
                              "unread": n})
                     print(f"wake-sweep: {sid} {n} писем, лимит ({left}с)")
                     continue
-                text = (f"ship-mail: у тебя {n} непрочитанных писем в ящике. "
-                        f"Прочти первым шагом хода (ship-mail.sh inbox), "
-                        f"обработай и ack.")
+                first = sorted(f for f in os.listdir(box)
+                               if f.endswith(".md") and os.path.isfile(
+                                   os.path.join(box, f)))
+                letter = first[0] if first else ""
+                tail = (f" Первое письмо: {letter}." if letter else "")
+                text = (f"ship-mail: у тебя {n} непрочитанных писем в ящике."
+                        f" Прочти первым шагом хода (ship-mail.sh inbox), "
+                        f"обработай и ack.{tail}")
                 rc = _send(sid, text, agent_note=(sess or {}).get("agent_note", ""))
                 journal({"ts": int(time.time()), "sid": sid,
                          "result": "ok" if rc == 0 else "failed",
