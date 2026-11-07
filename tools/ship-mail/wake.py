@@ -43,9 +43,31 @@ def die(msg, code=2):
 
 
 def journal(row):
-    os.makedirs(WAKE_DIR, exist_ok=True)
-    with open(JOURNAL, "a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    row = dict(row)
+    row.setdefault("ts", int(time.time()))
+    import fcntl
+    with open(JOURNAL, "a", encoding="utf-8") as f:  # NUL-байт от concurrent-write
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    return
+
+
+def consuming(sid, box, fresh_min=120):
+    """Линия проверяемо потребляет канал? (канон Р-116: пинг только потребляющей).
+    Свежесть — по последнему прочитанному письму; если прочитанного никогда,
+    линия не потребляет (безголевая сессия)."""
+    rd = os.path.join(box, "read")
+    if not os.path.isdir(rd):
+        return False
+    newest = 0
+    for name in os.listdir(rd):
+        path = os.path.join(rd, name)
+        if os.path.isfile(path):
+            newest = max(newest, int(os.path.getmtime(path)))
+    return newest > 0 and (time.time() - newest) < fresh_min * 60
 
 
 def headers():
@@ -174,6 +196,12 @@ def main(argv):
                              os.path.join(box, f))])
                 if n == 0:
                     continue
+                if not consuming(sid, box):
+                    journal({"ts": int(time.time()), "sid": sid,
+                             "result": "skipped", "reason": "не потребляет канал (Р-116)",
+                             "unread": n})
+                    print(f"wake-sweep: {sid} {n} писем, но линия не потребляет — зов удержан")
+                    continue
                 ok, reason, sess = preflight(sid)
                 if not ok:
                     journal({"ts": int(time.time()), "sid": sid,
@@ -183,12 +211,18 @@ def main(argv):
                     continue
                 limited, left = rate_limited(sid)
                 if limited:
+                    journal({"ts": int(time.time()), "sid": sid,
+                             "result": "limited", "reason": f"пауза {left}с",
+                             "unread": n})
                     print(f"wake-sweep: {sid} {n} писем, лимит ({left}с)")
                     continue
                 text = (f"ship-mail: у тебя {n} непрочитанных писем в ящике. "
                         f"Прочти первым шагом хода (ship-mail.sh inbox), "
                         f"обработай и ack.")
                 rc = _send(sid, text, agent_note=(sess or {}).get("agent_note", ""))
+                journal({"ts": int(time.time()), "sid": sid,
+                         "result": "ok" if rc == 0 else "failed",
+                         "reason": f"rc={rc}", "unread": n})
                 if rc == 0:
                     woken += 1
         print(f"wake-sweep: разбужено {woken}")
