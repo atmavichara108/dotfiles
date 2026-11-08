@@ -1,0 +1,12 @@
+[Unit]
+Description=homeostasis-ping — пинг операции «гомеостаз» ЦУ (слово владельца: раз в 30 минут, пока цели не закрыты)
+Documentation=file:///home/rudra/dotfiles/scripts/.local/bin/homeostasis-ping.py
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/dotfiles/scripts/.local/bin/homeostasis-ping.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
