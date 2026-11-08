@@ -12,7 +12,8 @@
     "owner-gate": {
       "type": "local",
       "command": ["python3", "/home/rudra/dotfiles/tools/owner-gate/server.py"],
-      "enabled": true
+      "enabled": true,
+      "pool": true
     }
   },
   "permission": {
