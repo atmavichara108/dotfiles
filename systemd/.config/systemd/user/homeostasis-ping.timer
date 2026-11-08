@@ -3,7 +3,7 @@ Description=Раз в 30 минут пинговать ЦУ по операци�
 
 [Timer]
 OnBootSec=120
-OnUnitActiveSec=30min
+OnUnitActiveSec=2h
 AccuracySec=30s
 Unit=homeostasis-ping.service
 
