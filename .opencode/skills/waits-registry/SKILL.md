@@ -1,6 +1,6 @@
 ---
 name: waits-registry
-description: Реестр ожиданий Корабля — waits.py (add/done/list/overdue/ping), TTL, пинки, дедлайны, пришивка писем. Ни одно открытое ожидание не застаивается: просрочка — пинок, дедлайн — в what. Использовать при открытии/закрытии ожиданий, передаче мандатов, автоповещении.
+description: Реестр ожиданий Корабля — waits.py (add/done/list/overdue/ping), TTL, пинки, дедлайны, пришивка писем. Ни одно открытое ожидание не застаивается — просрочка это пинок, дедлайн в what. Использовать при открытии и закрытии ожиданий, передаче мандатов, автоповещении.
 ---
 
 # Waits Registry — реестр ожиданий
@@ -10,13 +10,13 @@ description: Реестр ожиданий Корабля — waits.py (add/done
 | Слой | Что принуждает |
 |------|----------------|
 | `tools/ship-mail/waits.py` | реестр ожиданий: `add`/`done`/`list`/`overdue`/`ping`/`stitch`/`sweep` |
-| TTL / deadline | просрочка → пинок (не дефект), дедлайн → в what; TTL-лимит ограничивает backoff |
-| `ship-mail.sh inbox` | первый шаг хода — чтение почты + открытых ожиданий |
+| TTL / deadline | TTL — каденс пинга (просрочка → пинок, не дефект); deadline режет backoff, дедлайн — в what |
+| `ship-mail.sh inbox` | первый шаг хода — чтение почты; показывает просроченные ожидания + stitch-report |
 
 ## Понятия
 
 - **Ожидание** — открытый пункт «жду X от Y». Поля: owe (кто должен), what (что жду),
-  by (до кого), тип (mandate/question/acceptance/pilot/external/proposal), ref.
+  by (кто ждёт, дефолт — сессия-ожидатель), тип (mandate/question/acceptance/pilot/external/proposal), ref.
 - **TTL** (ttl-minutes) — время, после которого ожидание «пингуется» (не дефект, напоминание).
 - **Deadline** (deadline-minutes) — срок исполнения от since; ограничивает backoff; дедлайн — в what.
 - **Просрочка** — пинок, не дефект: дедлайн и что ждём читаются из what.
@@ -24,7 +24,7 @@ description: Реестр ожиданий Корабля — waits.py (add/done
 ## Поток
 
 1. **Открыть ожидание**: `waits.py add --owe <sid> --what "<что>" [--by <sid>] --ttl-minutes <N> --deadline-minutes <M> --ref <r>`.
-2. **Проверить открытые** (первый шаг хода): `ship-mail.sh inbox <sid>` и `waits.py list` / `waits.py overdue`.
+2. **Проверить открытые** (первый шаг хода): `waits.py list` (открытые) / `waits.py overdue` (просроченные); `ship-mail.sh inbox <sid>` показывает просроченные + stitch-report.
 3. **Закрыть**: `waits.py done <wid>` — когда ожидание выполнено (получил ответ/артефакт).
 4. **Пришить письмо к ожиданию**: `waits.py stitch` / `stitch-report` — связывает письмо с wid.
 5. **Пинг** просроченного: `waits.py ping` (напоминание, не эскалация).
