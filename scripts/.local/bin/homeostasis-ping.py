@@ -28,7 +28,7 @@ MY_SID = "ses_e714b5c4bffeh1ri37WHF8Q7Bx"
 CU_SID = "ses_eceb23a71ffeJO9QnFou8VngZC"
 SHIP_MAIL = os.path.expanduser("~/.local/bin/ship-mail.sh")
 INBOX = pathlib.Path.home() / ".local/share/ship-mail/inbox" / MY_SID
-WAITS = pathlib.Path.home() / ".local/share/ship-mail/waits.jsonl"
+WAITS_CLI = os.path.expanduser("~/dotfiles/tools/ship-mail/waits.py")
 STATE_DIR = os.path.expanduser("~/.local/state/homeostasis")
 STATE = os.path.join(STATE_DIR, "ping.json")
 MSK = dt.timezone(dt.timedelta(hours=3))
@@ -70,28 +70,36 @@ def _save(d: dict) -> None:
 
 
 def _waits_facts() -> dict:
+    """Факты из реестра — через канонический счётчик waits.py overdue.
+
+    Дефект, который я внесла сама и который поймала ЦУ (задача У-3): свой
+    подсчёт по полю ttl_hours — а в реестре поля ttl_minutes и deadline_minutes.
+    Поэтому мой экран показывал «просрочено 0», когда канон видел 8. Один
+    счётчик на двоих: только waits.py."""
     out = {"open": 0, "overdue": 0, "owed_by_me": 0, "lines": []}
-    if not WAITS.is_file():
-        return out
-    now = time.time()
-    for line in WAITS.read_text(encoding="utf-8").splitlines():
-        try:
-            w = json.loads(line)
-        except Exception:  # noqa: BLE001
-            continue
-        if w.get("state") not in (None, "open"):
-            continue
-        out["open"] += 1
-        since = w.get("since_ts") or 0
-        ttl_h = float(w.get("ttl_hours") or 0)
-        overdue = ttl_h and (now - since) > ttl_h * 3600
-        if overdue:
+    try:
+        r = subprocess.run(["python3", WAITS_CLI, "overdue"],
+                           capture_output=True, text=True, timeout=120)
+        for line in (r.stdout or "").splitlines():
+            if not line.startswith("ПРОСРОЧЕНО"):
+                continue
             out["overdue"] += 1
-        if w.get("who_owes") == MY_SID:
-            out["owed_by_me"] += 1
-        if overdue:
-            out["lines"].append("%s → %s (TTL %.0f часов)" % (
-                (w.get("what") or "")[:60], (w.get("who_owes") or "")[:22], ttl_h))
+            parts = line.split("|")
+            if len(parts) >= 3:
+                what = parts[1].strip()
+                who = parts[2].replace("ждём от", "").strip()
+                if who == MY_SID:
+                    out["owed_by_me"] += 1
+                out["lines"].append("%s → %s" % (what[:70], who[:20]))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        r = subprocess.run(["python3", WAITS_CLI, "list"],
+                           capture_output=True, text=True, timeout=120)
+        out["open"] = sum(1 for l in (r.stdout or "").splitlines()
+                          if l.strip().startswith("{"))
+    except Exception:  # noqa: BLE001
+        pass
     return out
 
 
