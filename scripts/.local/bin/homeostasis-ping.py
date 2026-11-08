@@ -29,6 +29,7 @@ CU_SID = "ses_eceb23a71ffeJO9QnFou8VngZC"
 SHIP_MAIL = os.path.expanduser("~/.local/bin/ship-mail.sh")
 INBOX = pathlib.Path.home() / ".local/share/ship-mail/inbox" / MY_SID
 WAITS_CLI = os.path.expanduser("~/dotfiles/tools/ship-mail/waits.py")
+WAITS = pathlib.Path.home() / ".local/share/ship-mail/waits.jsonl"
 STATE_DIR = os.path.expanduser("~/.local/state/homeostasis")
 STATE = os.path.join(STATE_DIR, "ping.json")
 MSK = dt.timezone(dt.timedelta(hours=3))
@@ -70,34 +71,42 @@ def _save(d: dict) -> None:
 
 
 def _waits_facts() -> dict:
-    """Факты из реестра — через канонический счётчик waits.py overdue.
+    """Факты из машинного источника — самого waits.jsonl, со сверкой waits.py.
 
-    Дефект, который я внесла сама и который поймала ЦУ (задача У-3): свой
-    подсчёт по полю ttl_hours — а в реестре поля ttl_minutes и deadline_minutes.
-    Поэтому мой экран показывал «просрочено 0», когда канон видел 8. Один
-    счётчик на двоих: только waits.py."""
-    out = {"open": 0, "overdue": 0, "owed_by_me": 0, "lines": []}
+    Канон (принят ЦУ 08.11): линии, читающие вывод чужих инструментов, считают
+    по машиночитаемому выходу, а не по разбору печати. Флага json у waits.py
+    нет, поэтому источник — файл реестра; утита overdue оставлена как сверка,
+    и каждый пинг несёт оба числа."""
+    out = {"open": 0, "overdue": 0, "owed_by_me": 0, "lines": [],
+           "cross_check": None}
+    now = time.time()
+    rows = []
+    try:
+        for line in WAITS.read_text(encoding="utf-8").splitlines():
+            try:
+                w = json.loads(line)
+            except Exception:  # noqa: BLE001
+                continue
+            if w.get("state", "open") != "open":
+                continue
+            rows.append(w)
+    except OSError:
+        pass
+    out["open"] = len(rows)
+    for w in rows:
+        ttl = float(w.get("ttl_minutes") or 0)
+        if ttl and (now - float(w.get("since_ts") or 0)) > ttl * 60:
+            out["overdue"] += 1
+            if w.get("who_owes") == MY_SID:
+                out["owed_by_me"] += 1
+            out["lines"].append("%s → %s" % ((w.get("what") or "")[:70],
+                                             (w.get("who_owes") or "?")[:22]))
     try:
         r = subprocess.run(["python3", WAITS_CLI, "overdue"],
                            capture_output=True, text=True, timeout=120)
-        for line in (r.stdout or "").splitlines():
-            if not line.startswith("ПРОСРОЧЕНО"):
-                continue
-            out["overdue"] += 1
-            parts = line.split("|")
-            if len(parts) >= 3:
-                what = parts[1].strip()
-                who = parts[2].replace("ждём от", "").strip()
-                if who == MY_SID:
-                    out["owed_by_me"] += 1
-                out["lines"].append("%s → %s" % (what[:70], who[:20]))
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        r = subprocess.run(["python3", WAITS_CLI, "list"],
-                           capture_output=True, text=True, timeout=120)
-        # формат waits.py list — строки «id [type/open] …»; считаем по метке
-        out["open"] = (r.stdout or "").count("/open]")
+        canon = sum(1 for l in (r.stdout or "").splitlines()
+                    if l.startswith("ПРОСРОЧЕНО"))
+        out["cross_check"] = canon
     except Exception:  # noqa: BLE001
         pass
     return out
@@ -181,8 +190,11 @@ def main(argv: list[str]) -> int:
     facts = [
         "СТАРТ: %s · СРОК: %s%s" % (started, deadline,
                                     " — СРОК ПРОШЁЛ" if overdue_op else ""),
-        "Ожидания (реестр): открыто %d · просрочено %d · должны мне %d"
-        % (waits["open"], waits["overdue"], waits["owed_by_me"]),
+        "Ожидания (реестр): открыто %d · просрочено %d · должны мне %d%s"
+        % (waits["open"], waits["overdue"], waits["owed_by_me"],
+           " · сверка waits.py overdue: %s (совпало)" % waits["cross_check"]
+           if waits["cross_check"] == waits["overdue"]
+           else " · СВЕРКА РАСХОДИТСЯ: waits.py overdue=%s" % waits["cross_check"]),
         "Непрочитанные письма: %d · самое старое %d мин%s"
         % (unread["count"], unread["oldest_min"],
            " — ДЕФЕКТ (порог %d)" % UNREAD_LIMIT_MIN
