@@ -153,6 +153,19 @@ def _rewrite_rows(rows):
 
 
 def cmd_add(a):
+    ref0 = getattr(a, "ref", "") or ""
+    # Дедупликация (У-7, дефект найден живьём): ручная строка и авто-строка
+    # ship-mail send --task с одним ref создавали две строки на одно дело,
+    # и адресат получал два пинка. Активная (open) строка с тем же ref+owe
+    # на это дело уже есть -> повтор не плодит строку.
+    if ref0:
+        for r in _rows(WAITS):
+            if (str(r.get("ref") or "") == ref0
+                    and str(r.get("who_owes") or "") == str(a.owe)
+                    and _state(r) == "open"):
+                print(f"WAIT-SKIP {r.get('id')}: дело ref '{ref0}' уже стоит "
+                      f"в очереди у {a.owe} ({_state(r)}) — дубль не создаём")
+                return 0
     if getattr(a, "ttl_minutes", 0):
         ttl = int(a.ttl_minutes)
     elif getattr(a, "ttl_hours", 0):

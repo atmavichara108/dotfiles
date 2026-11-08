@@ -261,11 +261,18 @@ PY
   # Канон доставки (Р-120): письмо-задание автоматически встаёт в очередь дел
   # адресата — строка-ожидание с дедлайном (по умолчанию 15 минут).
   if [[ "$task_mode" -eq 1 ]]; then
-    python3 "$SELF_DIR/waits.py" add --owe "$to" \
+    # У-7: одно дело (ref+адресат) — одна строка. Повтор не плодит вторую,
+    # адресат не получает двойной пинок; вывод waits.py различает исход.
+    local q_out
+    q_out="$(python3 "$SELF_DIR/waits.py" add --owe "$to" \
       --what "задание: $expect [письмо $id]" --by "$from" --type mandate \
       --return-condition "$expect" --ttl-minutes "$deadline_min" \
-      --deadline-minutes "$((deadline_min * 2))" --ref "${ref:-task}" \
-      >/dev/null 2>&1 && echo "TASK-QUEUE: строка-ожидание создана (дедлайн ${deadline_min}м)" || true
+      --deadline-minutes "$((deadline_min * 2))" --ref "${ref:-task}" 2>&1)" || true
+    if [[ "$q_out" == WAIT-SKIP* ]]; then
+      echo "TASK-QUEUE: ${q_out#WAIT-SKIP }"
+    elif [[ "$q_out" == WAIT\ * ]]; then
+      echo "TASK-QUEUE: строка-ожидание создана (дедлайн ${deadline_min}м)"
+    fi
   fi
 }
 
