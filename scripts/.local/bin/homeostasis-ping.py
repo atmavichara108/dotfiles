@@ -187,6 +187,24 @@ def main(argv: list[str]) -> int:
     overdue_op = _now() > dt.datetime.strptime(deadline, "%Y-%m-%d %H:%M МСК") \
         .replace(tzinfo=MSK) if deadline != "?" else False
 
+    prev = d.get("last_facts") or {}
+    now_facts = {"open": waits["open"], "overdue": waits["overdue"],
+                 "owed_by_me": waits["owed_by_me"],
+                 "unread_oldest": unread["oldest_min"],
+                 "tl_errors": guard["tl_errors_1h"],
+                 "guard": guard["active"]}
+    degraded = []
+    for key, val in now_facts.items():
+        old_val = prev.get(key)
+        if old_val is None:
+            continue
+        if isinstance(val, int) and isinstance(old_val, int) and val > old_val:
+            degraded.append("%s: %s → %s" % (key, old_val, val))
+        if key == "guard" and val != "active" and old_val == "active":
+            degraded.append("сторож: active → %s" % val)
+    d["last_facts"] = now_facts
+    d["degraded"] = degraded
+
     facts = [
         "СТАРТ: %s · СРОК: %s%s" % (started, deadline,
                                     " — СРОК ПРОШЁЛ" if overdue_op else ""),
@@ -201,6 +219,8 @@ def main(argv: list[str]) -> int:
            if unread["oldest_min"] > UNREAD_LIMIT_MIN else ""),
         "Сторож портала: %s · ошибок разбора за час: %d"
         % (guard["active"], guard["tl_errors_1h"]),
+        ("ДЕГРАДАЦИЯ с прошлого пинга: " + "; ".join(degraded))
+        if degraded else "ДЕГРАДАЦИИ нет (факты не хуже прошлого пинга)",
         "",
         "Просрочено сейчас:",
     ]
@@ -256,6 +276,9 @@ def main(argv: list[str]) -> int:
         d["last_send_error"] = _fmt(_now())
         _save(d)
         return 1
+    d["last_facts"] = now_facts
+
+    d["degraded"] = degraded
     d["pings"] = ping_no
     d["last_ping_msk"] = _fmt(_now())
     d.pop("last_send_error", None)
