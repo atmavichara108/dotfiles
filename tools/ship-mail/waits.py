@@ -397,20 +397,6 @@ def cmd_sweep(a):
     return 0
 
 
-def cmd_overdue(a):
-    n = 0
-    for r in _rows(WAITS):
-        od, age = _overdue(r)
-        if od:
-            n += 1
-            ttl = _ttl_minutes(r)
-            kind = " (пинок, не дефект; дедлайн в what)" if _has_deadline(r) else ""
-            print(f"ПРОСРОЧЕНО {r['id']} [{_type(r)}]: {_age_label(age)} > TTL {ttl}м{kind} "
-                  f"| ждём от {r['who_owes']} | {r['what'][:70]}")
-    print(f"WAITS-OVERDUE {n}")
-    return 0
-
-
 def _age_label(minutes):
     if minutes >= 120:
         return f"{minutes:.0f}м ({minutes / 60:.1f}ч)"
@@ -449,6 +435,142 @@ def cmd_overdue(a):
     return 0
 
 
+PINGS = os.path.join(HOME, "waits-pings.jsonl")
+
+
+def _self_sids():
+    """Свои линии: письмо самому себе = подмена отправителя (Р-028), не шлём.
+
+    Источник: OPENCODE_SESSION_ID текущего процесса + SHIP_MAIL_SELF_SID
+    (список через запятую, для линий-двойников и релеев).
+    """
+    out = set()
+    for var in ("SHIP_MAIL_SELF_SID", "OPENCODE_SESSION_ID"):
+        raw = (os.environ.get(var) or "").strip()
+        for part in re.split(r"[,\s]+", raw):
+            if part.startswith("ses_"):
+                out.add(part)
+    return out
+
+
+def _ping_text(row, age_min, ttl_min):
+    """Письмо-пинок Р-090: три раздела + строка продолжения работы.
+
+    Содержимое детерминировано из самой строки ожидания: модель не участвует,
+    домыслов нет.
+    """
+    wid = row.get("id", "?")
+    what = str(row.get("what") or "").strip()
+    ret = str(row.get("return_condition") or "ответ строкой").strip()
+    ref = str(row.get("ref") or "").strip()
+    since = str(row.get("since") or "").strip()
+    dlm = row.get("deadline_minutes")
+    extra = f"\n- Дедлайн (минут от открытия): {dlm}" if dlm else ""
+    ref_line = f"\n- Ref ожидания: {ref}" if ref else ""
+    return (
+        "## СДЕЛАНО\n"
+        f"- Пинок по протоколу ожиданий: строка {wid} открыта {since}, "
+        f"возраст {age_min:.0f}м > TTL {ttl_min}м, тип {_type(row)}. "
+        "Это пинок, не дефект (Р-075).\n\n"
+        f"## ЗАБЛОКИРОВАНО (ждём от {row.get('who_owes')})\n"
+        f"- {what}\n"
+        f"- Условие возврата: {ret}{extra}\n"
+        f"- Канал ответа: письмо по ship-mail{ref_line}\n\n"
+        "## ЖДЁТ-ЗАБОТЫ\n"
+        "- Ответить строкой по существу; ожидание закрывается пришивкой "
+        "(waits stitch), не молчанием.\n"
+        "- TTL строки удвоен этим пинком (backoff, Р-075).\n\n"
+        "После выполнения — продолжай свою работу. — авто-пинок реестра ожиданий\n"
+    )
+
+
+def _send_ping(row, text):
+    """Отправка через ship-mail.sh (единственный путь, Р-028 rolling). -> rc, out"""
+    import subprocess
+    import tempfile
+    fd, path = tempfile.mkstemp(prefix="autoping-", suffix=".md", dir="/tmp/opencode")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        r = subprocess.run(
+            ["bash", SEND_CMD, "send",
+             "--to", str(row.get("who_owes") or ""),
+             "--from", str(row.get("who_waits") or ""),
+             "--title", f"ПИНГ {row.get('id')}: ожидание просрочено",
+             "--ref", f"waits-autoping-{row.get('id')}",
+             "--file", path],
+            capture_output=True, text=True, timeout=90)
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def cmd_autoping(a):
+    """Авто-пинг просроченных ожиданий (спека ic-waits-in-wake-cycle-20261107).
+
+    Правила:
+      - только открытые строки; адресат не sid (owner и т.п.) — SKIP, письмо
+        владельцу автоматически не шлём;
+      - не чаще одного пинка на строку за цикл ТТЛ: прошло меньше текущего TTL
+        с прошлого пинка — SKIP (повтор придёт на новом ТТЛ);
+      - письмо ушло -> ping <id>: TTL удваивается (backoff, Р-075);
+      - письмо не ушло -> TTL не растёт, факт в журнал, повторит следующий цикл.
+    Метод программный: тело письма собирается из строки, модель не участвует.
+    """
+    rows = _rows(WAITS)
+    now = int(time.time())
+    self_sids = _self_sids()
+    pinged = skipped = failed = overdue = 0
+    for r in rows:
+        od, age = _overdue(r)
+        if not od:
+            continue
+        overdue += 1
+        wid = r.get("id") or "?"
+        owe = str(r.get("who_owes") or "")
+        if not owe.startswith("ses_"):
+            print(f"AUTOPING SKIP {wid}: адресат '{owe}' — не сессия, письмо не шлём")
+            skipped += 1
+            continue
+        if owe in self_sids:
+            # Ждём от себя: письмо было бы подделкой отправителя и пустым ходом.
+            # Механизм не спит — он зовёт линию работать (сигнал в stdout/sweep).
+            print(f"AUTOPING SELF {wid}: ждём от своей линии ({owe}) — "
+                  f"письмо не шлём, это моя работа: {str(r.get('what'))[:70]}")
+            skipped += 1
+            continue
+        ttl = _ttl_minutes(r)
+        prev = _parse_ts(r.get("pinged"))
+        if prev is not None and (now - prev) < ttl * 60:
+            print(f"AUTOPING SKIP {wid}: внутри цикла ТТЛ "
+                  f"({(now - prev) / 60:.0f}м < {ttl}м)")
+            skipped += 1
+            continue
+        if a.dry_run:
+            print(f"AUTOPING DRY {wid} -> {owe}: {age:.0f}м > TTL {ttl}м")
+            pinged += 1
+            continue
+        rc, out = _send_ping(r, _ping_text(r, age, ttl))
+        if rc == 0:
+            cmd_ping(wid)
+            _append(PINGS, {"ts": now, "id": wid,
+                            "to": owe, "from": str(r.get("who_waits") or ""),
+                            "age_min": round(age), "rc": 0})
+            print(f"AUTOPING OK {wid} -> {owe} ({age:.0f}м > TTL {ttl}м)")
+            pinged += 1
+        else:
+            _append(PINGS, {"ts": now, "id": wid, "to": owe,
+                            "age_min": round(age), "rc": rc})
+            print(f"AUTOPING FAIL {wid} -> {owe} (rc={rc}): {out.strip()[:200]}")
+            failed += 1
+    print(f"AUTOPING: просрочено {overdue}, пинг {pinged}, "
+          f"пропуск {skipped}, сбой {failed}")
+    return 0 if failed == 0 else 1
+
+
 def main():
     p = argparse.ArgumentParser(prog="waits")
     sub = p.add_subparsers(dest="cmd")
@@ -483,6 +605,9 @@ def main():
                     help="на просроченном без ответа — применить пинок TTL")
     pi = sub.add_parser("ping")
     pi.add_argument("wid")
+    ap_ = sub.add_parser("autoping")
+    ap_.add_argument("--dry-run", action="store_true",
+                     help="только показать, писем не слать")
     sub.add_parser("list")
     sub.add_parser("overdue")
     args = p.parse_args()
@@ -500,6 +625,8 @@ def main():
         return cmd_ping(args.wid)
     elif args.cmd == "overdue":
         return cmd_overdue(args)
+    elif args.cmd == "autoping":
+        return cmd_autoping(args)
     else:
         return cmd_list(args)
     return 0
