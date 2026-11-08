@@ -1,30 +1,25 @@
 #!/usr/bin/env python3
-"""homeostasis-ping — пингер операции «гомеостаз» (слово владельца 2026-11-07).
+"""homeostasis-ping v2 — операция «гомеостаз» после провала (перезапуск 08.11).
 
-Слово владельца (basis: quoted): «Пинай цу каждые 30 минут пока операция
-гомеостаз не выполнит все цели».
+Приказ владельца 2026-11-08: «Найти причины провала и запиить операцию заново»
+и «Операция гомеостаз запущена?» — ответ: запущена, вот механизм.
 
-Принцип: пингер не спрашивает «как дела?», а предъявляет **проверяемые факты** и
-останавливается, когда они закрыты. Пинг вслепую — тот дефект, который мы чиним.
-
-Откуда берёт факты (всё с диска, ничего из памяти):
-  * просрочки и ждущие строки — `~/.local/share/ship-mail/waits*.jsonl` (через
-    вывод ship-mail inbox: строки ПРОСРОЧЕНО и WAITS-OVERDUE);
-  * ответы без пришивки — строки «ОТВЕТ БЕЗ ПРИШИВКИ»;
-  * здоровье сторожа портала — journalctl (ошибки TypeNotFoundError за последний
-    час) и is-active службы.
-
-Критерий остановки: владелец положил `cleared: true` в файле состояния (или
-перечислил цели в `goals` — тогда проверка идёт по ним). По умолчанию стучим,
-пока хозяин не скажет «стоп»: молчащий таймер и есть тот дефект.
-
-Состояние: ~/.local/state/homeostasis/ping.json (last_ping, clears, pings).
+Что изменено против версии, которая молчала 9 часов и считала по врщему экрану:
+1. Факты берутся из РЕЕСТРА ожиданий (waits.jsonl), не из вывода команды inbox.
+2. Возраст самого старого НЕПРОЧИТАННОГО письма считается отдельно: >30 минут —
+   это дефект (причина №1 провала: 9 часов непрочитанных ответов).
+3. Наблюдатель операции: старт, срок, и статус восьми целей в каждом пинге.
+4. Самопроверка: если отправка не удалась — строка в журнал с причиной (таймер больше
+   не «сыплет молча»).
+5. Цели — канон ЦУ (cu-goals-canon-20261107): адресация, учёт, доказательства,
+   канал, сторожа, идемпотентность, устойчивость, ночь без хозяина.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
-import re
+import pathlib
 import subprocess
 import sys
 import time
@@ -32,9 +27,31 @@ import time
 MY_SID = "ses_e714b5c4bffeh1ri37WHF8Q7Bx"
 CU_SID = "ses_eceb23a71ffeJO9QnFou8VngZC"
 SHIP_MAIL = os.path.expanduser("~/.local/bin/ship-mail.sh")
+INBOX = pathlib.Path.home() / ".local/share/ship-mail/inbox" / MY_SID
+WAITS = pathlib.Path.home() / ".local/share/ship-mail/waits.jsonl"
 STATE_DIR = os.path.expanduser("~/.local/state/homeostasis")
 STATE = os.path.join(STATE_DIR, "ping.json")
-INTERVAL_MIN = 30
+MSK = dt.timezone(dt.timedelta(hours=3))
+
+GOALS = [
+    ("G1 адресация", "0 получателей вне реестра и 0 строк реестра без агента/каталога/зоны"),
+    ("G2 учёт", "0 строк без билета/срока; ответ-без-пришивки = 0"),
+    ("G3 доказательства", "100% слов владельца дословно; 0 решений без persist"),
+    ("G4 канал", "0 писем без линта; 0 зовов без записи"),
+    ("G5 сторожа", "0 повторов; 0 claims вне реестра; 0 неистёкших просроченных"),
+    ("G6 идемпотентность", "двойной feed/ack/send без дублей"),
+    ("G7 устойчивость", "падение одного таймера не глушит остальные"),
+    ("G8 ночь без хозяина", "ночной прогон без вмешательства; вердикт владельца"),
+]
+UNREAD_LIMIT_MIN = 30
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(MSK)
+
+
+def _fmt(d: dt.datetime) -> str:
+    return d.strftime("%Y-%m-%d %H:%M МСК")
 
 
 def _load() -> dict:
@@ -42,8 +59,7 @@ def _load() -> dict:
         with open(STATE, encoding="utf-8") as f:
             return json.load(f)
     except Exception:  # noqa: BLE001
-        return {"cleared": False, "goals": [], "last_ping_msk": None,
-                "pings": 0}
+        return {}
 
 
 def _save(d: dict) -> None:
@@ -53,30 +69,63 @@ def _save(d: dict) -> None:
         json.dump(d, f, ensure_ascii=False, indent=1)
 
 
-def _inbox_facts() -> dict:
-    out = {"overdue": 0, "unstitched": 0, "lines": []}
-    try:
-        res = subprocess.run([SHIP_MAIL, "inbox", MY_SID],
-                             capture_output=True, text=True, timeout=60)
-    except Exception:  # noqa: BLE001
+def _waits_facts() -> dict:
+    out = {"open": 0, "overdue": 0, "owed_by_me": 0, "lines": []}
+    if not WAITS.is_file():
         return out
-    text = res.stdout or ""
-    m = re.search(r"WAITS-OVERDUE (\d+)", text)
-    out["overdue"] = int(m.group(1)) if m else 0
-    for line in text.splitlines():
-        if line.startswith("ПРОСРОЧЕНО"):
-            out["lines"].append(line[:150])
-        if line.startswith("ОТВЕТ БЕЗ ПРИШИВКИ"):
-            out["unstitched"] += 1
+    now = time.time()
+    for line in WAITS.read_text(encoding="utf-8").splitlines():
+        try:
+            w = json.loads(line)
+        except Exception:  # noqa: BLE001
+            continue
+        if w.get("state") not in (None, "open"):
+            continue
+        out["open"] += 1
+        since = w.get("since_ts") or 0
+        ttl_h = float(w.get("ttl_hours") or 0)
+        overdue = ttl_h and (now - since) > ttl_h * 3600
+        if overdue:
+            out["overdue"] += 1
+        if w.get("who_owes") == MY_SID:
+            out["owed_by_me"] += 1
+        if overdue:
+            out["lines"].append("%s → %s (TTL %.0f часов)" % (
+                (w.get("what") or "")[:60], (w.get("who_owes") or "")[:22], ttl_h))
     return out
 
 
-def _guard_health() -> dict:
-    out = {"active": "unknown", "tl_errors_1h": 0}
+def _unread_facts() -> dict:
+    """Непрочитанные — только письма в папках отправителей, НЕ в read/ (архив).
+
+    Дефект, который я внесла сама: первая версия обходила все подкаталоги и
+    считала архив прочитанных как непрочитанные — получилось «95 писем, старое
+    7.7 суток». Экрана, который врёт, быть не должно (канон A6)."""
+    out = {"count": 0, "oldest_min": 0, "archived": 0}
+    if not INBOX.is_dir():
+        return out
+    oldest = None
+    for sid in INBOX.iterdir():
+        if not sid.is_dir() or sid.name == "read":
+            continue
+        for f in sid.glob("*.md"):
+            out["count"] += 1
+            mtime = dt.datetime.fromtimestamp(f.stat().st_mtime, MSK)
+            oldest = mtime if oldest is None else min(oldest, mtime)
+    archive = INBOX / "read"
+    if archive.is_dir():
+        out["archived"] = len(list(archive.glob("*.md")))
+    if oldest:
+        out["oldest_min"] = int((_now() - oldest).total_seconds() // 60)
+    return out
+
+
+def _guard_facts() -> dict:
+    out = {"tl_errors_1h": 0, "active": "?"}
     try:
         r = subprocess.run(["systemctl", "--user", "is-active",
-                            "portal-tg-guard.service"],
-                           capture_output=True, text=True, timeout=30)
+                            "portal-tg-guard.service"], capture_output=True,
+                           text=True, timeout=30)
         out["active"] = (r.stdout or "").strip()
     except Exception:  # noqa: BLE001
         pass
@@ -90,81 +139,113 @@ def _guard_health() -> dict:
     return out
 
 
-def build_ping() -> tuple[str, dict]:
-    facts = _inbox_facts()
-    health = _guard_health()
-    body = [
-        "ПИНГ ОПЕРАЦИИ «ГОМЕОСТАЗ» (слово владельца: каждые 30 минут, пока цели не закрыты).",
-        "",
-        "ФАКТЫ (с диска, не по памяти):",
-        "* просроченных ожиданий: %d" % facts["overdue"],
-        "* ответов без пришивки: %d" % facts["unstitched"],
-        "* сторож портала: %s; ошибок разбора TL за час: %d"
-        % (health["active"], health["tl_errors_1h"]),
-    ]
-    if facts["lines"]:
-        body += ["", "Просрочено сейчас:"] + ["  " + l for l in facts["lines"][:8]]
-    body += [
-        "",
-        "ПРОШУ: строка статуса операции — что закрыто, что в работе, что блокирует.",
-        "Цели операции я запросила письмом `homeostasis-goals-required-20261107`;",
-        "пока перечня нет, пингер предъявляет факты и стучит по слову владельца.",
-    ]
-    return "\n".join(body), {"facts": facts, "health": health}
-
-
-def _ref() -> str:
-    """ref уникален на пинг: шина отклоняет повторный ref как дубль."""
-    return "homeostasis-ping-%s" % time.strftime(
-        "%Y%m%d-%H%M", time.gmtime(time.time() + 3 * 3600))
-
-
 def main(argv: list[str]) -> int:
     dry = "--dry-run" in argv
+    relaunch = "--relaunch" in argv
     d = _load()
-    if d.get("cleared"):
+    if relaunch:
+        start = _now()
+        d.update({
+            "cleared": False,
+            "started_msk": _fmt(start),
+            "deadline_msk": _fmt(start + dt.timedelta(hours=8)),
+            "pings": 0,
+            "last_ping_msk": None,
+            "goals": [g[0] for g in GOALS],
+        })
+        _save(d)
+        print("homeostasis: ОПЕРАЦИЯ ПЕРЕЗАПУЩЕНА · старт %s · срок %s"
+              % (d["started_msk"], d["deadline_msk"]))
         return 0
-    ref = _ref()
-    text, snap = build_ping()
+    if not d or d.get("cleared"):
+        sys.stderr.write("homeostasis: операция не запущена (нет состояния или "
+                         "cleared) — сначала --relaunch\n")
+        return 0 if d.get("cleared") else 2
+
+    waits = _waits_facts()
+    unread = _unread_facts()
+    guard = _guard_facts()
+    started = d.get("started_msk") or "?"
+    deadline = d.get("deadline_msk") or "?"
+    overdue_op = _now() > dt.datetime.strptime(deadline, "%Y-%m-%d %H:%M МСК") \
+        .replace(tzinfo=MSK) if deadline != "?" else False
+
+    facts = [
+        "СТАРТ: %s · СРОК: %s%s" % (started, deadline,
+                                    " — СРОК ПРОШЁЛ" if overdue_op else ""),
+        "Ожидания (реестр): открыто %d · просрочено %d · должны мне %d"
+        % (waits["open"], waits["overdue"], waits["owed_by_me"]),
+        "Непрочитанные письма: %d · самое старое %d мин%s"
+        % (unread["count"], unread["oldest_min"],
+           " — ДЕФЕКТ (порог %d)" % UNREAD_LIMIT_MIN
+           if unread["oldest_min"] > UNREAD_LIMIT_MIN else ""),
+        "Сторож портала: %s · ошибок разбора за час: %d"
+        % (guard["active"], guard["tl_errors_1h"]),
+        "",
+        "Просрочено сейчас:",
+    ]
+    facts += ["  " + l for l in waits["lines"][:10]] or ["  нет"]
+    goals = [
+        "",
+        "ЦЕЛИ (канон ЦУ, cu-goals-canon-20261107):",
+    ]
+    for name, check in GOALS:
+        goals.append("  %s — проверка: %s" % (name, check))
+    goals += [
+        "",
+        "Вычислимо сейчас: G2 учёт — просрочено %d; G8 ночь — ошибок разбора %d;"
+        % (waits["overdue"], guard["tl_errors_1h"]),
+        "остальные цели требуют линий — прошу статус по каждой.",
+    ]
+    body = "\n".join(facts + goals)
+    ping_no = int(d.get("pings", 0)) + 1
+    head = ("---\ntype: Letter\ntitle: \"Пинг операции гомеостаз #%d: "
+            "факты и цели\"\nref: %s\n---\n\n" % (ping_no, _ref(ping_no)))
+    letter = head + (
+        "## СДЕЛАНО\n1. Пингер v2: факты из реестра ожиданий, возраст "
+        "непрочитанного, наблюдатель операции, восемь целей канона.\n\n"
+        "## ЗАБЛОКИРОВАНО\n2. Цели, требующие линий — статус от линий.\n\n"
+        "## ЖДЁТ-ЗАБОТЫ\n3. Статус по каждой из восьми целей и первая строка "
+        "«закрыто».\n\n" + body + "\n\n"
+        "После выполнения — продолжай свою работу.\n")
+
     if dry:
-        print(text)
+        print(letter)
         return 0
-    fd, path = None, None
+
     import tempfile
     fd, path = tempfile.mkstemp(suffix=".md", prefix="homeostasis-ping-")
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        head = ("---\ntype: Letter\ntitle: \"Пинг операции гомеостаз:"
-                " факты\"\nref: %s\n---\n\n" % ref)
-        body = ("## СДЕЛАНО\n1. Пингер собрал факты с диска (просрочки,"
-                " ответы без пришивки, здоровье сторожа).\n\n"
-                "## ЗАБЛОКИРОВАНО\n2. Цели операции не объявлены —"
-                " перечень запрошен письмом"
-                " `homeostasis-goals-required-20261107`.\n\n"
-                "## ЖДЁТ-ЗАБОТЫ\n3. Строка статуса операции от ЦУ."
-                "\n\n" + text + "\n\n"
-                "После выполнения — продолжай свою работу.\n")
-        letter = head + body
         f.write(letter)
     try:
         proc = subprocess.run(
             [SHIP_MAIL, "send", "--to", CU_SID, "--from", MY_SID,
-             "--title", "Пинг гомеостаза: факты и запрос статуса",
-             "--ref", ref, "--file", path],
+             "--title", "Пинг гомеостаза #%d: факты и цели" % ping_no,
+             "--ref", _ref(ping_no), "--file", path],
             capture_output=True, text=True, timeout=180)
-        if proc.returncode != 0:
-            sys.stderr.write((proc.stdout or "") + (proc.stderr or "")[-300:] + "\n")
-            return 1
+        ok = proc.returncode == 0
+        if not ok:
+            sys.stderr.write("homeostasis: отправка не удалась: %s\n"
+                             % ((proc.stdout or "") + (proc.stderr or ""))[-300:])
     finally:
         try:
             os.unlink(path)
         except OSError:
             pass
-    d["last_ping_msk"] = time.strftime("%Y-%m-%d %H:%M МСК",
-                                       time.gmtime(time.time() + 3 * 3600))
-    d["pings"] = int(d.get("pings", 0)) + 1
+    if not ok:
+        d["last_send_error"] = _fmt(_now())
+        _save(d)
+        return 1
+    d["pings"] = ping_no
+    d["last_ping_msk"] = _fmt(_now())
+    d.pop("last_send_error", None)
     _save(d)
-    print("homeostasis-ping: №%d отправлен (%s)" % (d["pings"], d["last_ping_msk"]))
+    print("homeostasis: пинг #%d отправлен (%s)" % (ping_no, d["last_ping_msk"]))
     return 0
+
+
+def _ref(n: int) -> str:
+    return "homeostasis-ping-20261108-%03d" % n
 
 
 if __name__ == "__main__":
