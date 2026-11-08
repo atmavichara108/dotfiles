@@ -45,20 +45,33 @@ REGISTRY_SNAPSHOT="${SHIP_MAIL_REGISTRY_SNAPSHOT:-$MAIL_HOME/peer-registry.snaps
 VAULT="${SHIP_MAIL_VAULT:-$HOME/Projects/OpenCode-Vault}"
 
 refresh_registry_snapshot() {
-  # 1) живой файл доступен — обновляем снапшот и работаем как раньше
-  if [[ -r "$REGISTRY" ]]; then
-    cp -f "$REGISTRY" "$REGISTRY_SNAPSHOT" 2>/dev/null || true
-    return 0
-  fi
-  # 2) файла нет (чужая ветка) — берём последнюю зафиксированную версию из git
+  # КАНОН (мандат IC 08.11): источник снапшота — зафиксированная версия реестра
+  # из git (main), а не живое дерево рабочей ветки: рабочее дерево живёт под
+  # чужими ветками, и реестр там бывает устаревшим/отсутствующим (INC-18).
+  # Порядок: main → origin/main → последний коммит, трогавший файл → живой файл.
   if [[ -d "$VAULT/.git" ]]; then
-    local c
+    local ref c
+    for ref in main origin/main HEAD; do
+      c="$(git -C "$VAULT" rev-parse --verify -q "$ref" 2>/dev/null || true)"
+      [[ -n "$c" ]] || continue
+      if git -C "$VAULT" show "$ref:04-Memory/peer-registry.md" \
+           > "$REGISTRY_SNAPSHOT".tmp 2>/dev/null; then
+        mv -f "$REGISTRY_SNAPSHOT".tmp "$REGISTRY_SNAPSHOT"
+        REGISTRY="$REGISTRY_SNAPSHOT"
+        return 0
+      fi
+    done
     c="$(git -C "$VAULT" log --all --format=%H -1 -- 04-Memory/peer-registry.md 2>/dev/null || true)"
     if [[ -n "$c" ]] && git -C "$VAULT" show "$c:04-Memory/peer-registry.md" > "$REGISTRY_SNAPSHOT".tmp 2>/dev/null; then
       mv -f "$REGISTRY_SNAPSHOT".tmp "$REGISTRY_SNAPSHOT"
       REGISTRY="$REGISTRY_SNAPSHOT"
       return 0
     fi
+  fi
+  # Последнее средство: живой файл рабочего дерева (без git-канона).
+  if [[ -r "$REGISTRY" ]]; then
+    cp -f "$REGISTRY" "$REGISTRY_SNAPSHOT" 2>/dev/null || true
+    return 0
   fi
   return 1
 }
