@@ -13,6 +13,9 @@ set -euo pipefail
 TTL_MINUTES=30
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAIMS_FILE="${CLAIMS_FILE:-${SCRIPT_DIR}/claims.jsonl}"
+# Реестр адресов — единственный источник адресов (INC-18). Claim от sid вне
+# реестра = отказ (У-1 операции «Гомеостаз»: fail-closed, не предупреждение).
+REGISTRY_FILE="${PEER_REGISTRY:-${HOME}/Projects/OpenCode-Vault/04-Memory/peer-registry.md}"
 
 # --- Helpers ---
 die() { echo "Error: $*" >&2; exit 1; }
@@ -79,6 +82,31 @@ cmd_hello() {
   echo "Registered session '${session}' (${role}, ${model}) — scope: ${scope}"
 }
 
+# _in_registry — sid зарегистрирован в peer-registry? (У-1: claim вне реестра = отказ)
+_in_registry() {
+  local sid="$1"
+  [[ -r "${REGISTRY_FILE}" ]] || return 1
+  grep -qF "${sid}" "${REGISTRY_FILE}" 2>/dev/null
+}
+
+# _active_claims — активные чужие claim (op=claim без release/bye после него,
+# не истёкшие по своему TTL). Формат: branch<TAB>session<TAB>age_sec<TAB>ttl_min
+_active_claims() {
+  local now ttl_default; now="$(now_epoch)"; ttl_default=$(( TTL_MINUTES * 60 ))
+  [[ -f "${CLAIMS_FILE}" ]] || return 0
+  jq -rs --argjson now "${now}" --argjson def "${ttl_default}" '
+    reduce .[] as $r ({};
+      if $r.op == "claim" then .[$r.branch] = {session: $r.session, ts: $r.ts, ttl: ($r.ttl_minutes // 30)}
+      elif ($r.op == "release" or $r.op == "bye") then del(.[$r.branch // ""])
+      else . end)
+    | to_entries[]
+    | ($now - .value.ts) as $age
+    | select($age < (.value.ttl * 60))
+    | [.key, .value.session, ($age|tostring), (.value.ttl|tostring)]
+    | @tsv
+  ' "${CLAIMS_FILE}" 2>/dev/null
+}
+
 # cmd_claim — заявить владение task/*-веткой (B22, плоскость scope).
 cmd_claim() {
   local session="" branch="" scope="" ttl_min=240
@@ -95,6 +123,21 @@ cmd_claim() {
   [[ -n "${branch}" ]]  || die "--branch is required"
   [[ -n "${scope}" ]]   || die "--scope is required"
   [[ "${branch}" == task/* ]] || die "--branch must be task/*"
+
+  # У-1 fail-closed (операция «Гомеостаз»): заявка от sid вне peer-registry
+  # не проходит. Реестр недоступен = тоже отказ (нельзя проверить — не пускаем).
+  if [[ ! -r "${REGISTRY_FILE}" ]]; then
+    die "claim refused: реестр адресов не читается (${REGISTRY_FILE}) — fail-closed"
+  fi
+  if ! _in_registry "${session}"; then
+    die "claim refused: sid '${session}' отсутствует в peer-registry (У-1 fail-closed). Зарегистрируй линию либо эскалируй ЦУ."
+  fi
+  # Чужая активная заявка на эту же ветку = отказ (один scope — один исполнитель).
+  local holder
+  holder="$(_active_claims | awk -F'\t' -v b="${branch}" -v s="${session}" '$1==b && $2!=s {print $2; exit}')"
+  if [[ -n "${holder}" ]]; then
+    die "claim refused: ветка '${branch}' уже заявлена активной линией ${holder} (истёкшие claim не блокируют — TTL истекает сам)"
+  fi
 
   ensure_claims_file
   local ts; ts="$(now_epoch)"
