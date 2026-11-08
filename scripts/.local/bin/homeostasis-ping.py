@@ -193,13 +193,23 @@ def main(argv: list[str]) -> int:
                  "unread_oldest": unread["oldest_min"],
                  "tl_errors": guard["tl_errors_1h"],
                  "guard": guard["active"]}
+    # Различие (канон ЦУ 08.11): рост по решению с именем — не деградация;
+    # деградация — рост без имени. Причины фиксируются в approved_deltas.
+    approved = d.get("approved_deltas") or {}
     degraded = []
+    named = []
     for key, val in now_facts.items():
         old_val = prev.get(key)
         if old_val is None:
             continue
         if isinstance(val, int) and isinstance(old_val, int) and val > old_val:
-            degraded.append("%s: %s → %s" % (key, old_val, val))
+            delta = val - old_val
+            reason = approved.get(key)
+            line = "+%d %s (%s → %s)" % (delta, key, old_val, val)
+            if reason:
+                named.append(line + " — по решению: %s" % reason)
+            else:
+                degraded.append(line)
         if key == "guard" and val != "active" and old_val == "active":
             degraded.append("сторож: active → %s" % val)
     d["last_facts"] = now_facts
@@ -219,8 +229,11 @@ def main(argv: list[str]) -> int:
            if unread["oldest_min"] > UNREAD_LIMIT_MIN else ""),
         "Сторож портала: %s · ошибок разбора за час: %d"
         % (guard["active"], guard["tl_errors_1h"]),
-        ("ДЕГРАДАЦИЯ с прошлого пинга: " + "; ".join(degraded))
-        if degraded else "ДЕГРАДАЦИИ нет (факты не хуже прошлого пинга)",
+        ("ДЕГРАДАЦИЯ (рост без имени): " + "; ".join(degraded))
+        if degraded else
+        ("ДЕГРАДАЦИИ нет — факты не хуже прошлого пинга"
+         if not named else
+         "ДЕГРАДАЦИИ нет; рост по решению: " + "; ".join(named)),
         "",
         "Просрочено сейчас:",
     ]
