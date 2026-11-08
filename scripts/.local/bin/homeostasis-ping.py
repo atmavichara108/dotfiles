@@ -96,8 +96,8 @@ def _waits_facts() -> dict:
     try:
         r = subprocess.run(["python3", WAITS_CLI, "list"],
                            capture_output=True, text=True, timeout=120)
-        out["open"] = sum(1 for l in (r.stdout or "").splitlines()
-                          if l.strip().startswith("{"))
+        # формат waits.py list — строки «id [type/open] …»; считаем по метке
+        out["open"] = (r.stdout or "").count("/open]")
     except Exception:  # noqa: BLE001
         pass
     return out
