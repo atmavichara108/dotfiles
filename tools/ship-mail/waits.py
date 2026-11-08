@@ -20,6 +20,13 @@ append-only реестре; TTL просрочки превращает пуст
   waits.py stitch-report        # ответы без пришивки (lag N), вне блока просрочки
   waits.py sweep [--ping]       # ответ есть -> stitch; нет ответа -> ping/escalate
   waits.py ping <id>            # пинок: каденс TTL удваивается (backoff до срока)
+  waits.py autoping             # авто-пинг из цикла пробуждений (спека
+                                # ic-waits-in-wake-cycle-20261107): каждой
+                                # просроченной строке — письмо-пинок Р-090
+                                # адресату + ping <id> (TTL растёт); не чаще
+                                # одного пинга на строку за цикл ТТЛ; адресат
+                                # owner — без авто-письма (письмо владельцу
+                                # не автим)
   waits.py list [--all]
   waits.py overdue              # только просроченные (для inbox-блока)
 
@@ -49,9 +56,14 @@ import os
 import re
 import time
 
-HOME = os.path.expanduser("~/.local/share/ship-mail")
+HOME = os.environ.get("SHIP_MAIL_HOME") or os.path.expanduser(
+    "~/.local/share/ship-mail")
 WAITS = os.path.join(HOME, "waits.jsonl")
 DONE = os.path.join(HOME, "waits-done.jsonl")
+# Отправка авто-пингов: штатно — ship-mail.sh рядом со скриптом (единственный
+# путь отправки, Р-028); selftest подменяет фейком через SHIP_MAIL_CMD.
+SEND_CMD = os.environ.get("SHIP_MAIL_CMD") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "ship-mail.sh")
 DEFAULT_TTL_MINUTES = 5
 CU_TTL_MINUTES = 10
 CU_SID = "ses_eceb23a71ffeJO9QnFou8VngZC"  # приёмки ЦУ — удлинённый TTL
