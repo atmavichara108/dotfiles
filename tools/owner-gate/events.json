@@ -1,106 +1,156 @@
 {
- "_comment": "Заявленные события форм Ворот владельца (owner-gate). Форма показывается ТОЛЬКО для события из этого списка; неизвестное событие = отказ без формы. Добавление события — правка ИЦ в task-ветке с пометкой в ADR/реестре; событие живёт, пока живёт его триггер.",
- "events": [
-  {
-   "id": "apply.approve",
-   "title": "Апрув опасного применения (high-risk apply)",
-   "trigger": "system-ops: после dry-run/preflight, перед реальным apply на хосте",
-   "tools": [
-    "ask_confirm"
-   ],
-   "canon_ref": "AGENTS.md: high-risk host scope — explicit user approval между plan и apply"
-  },
-  {
-   "id": "ship.override",
-   "title": "Обход гейта при /ship (STOP-вердикт копа)",
-   "trigger": "tree-cop ship-check вернул STOP и primary предлагает осознанный обход",
-   "tools": [
-    "ask_confirm"
-   ],
-   "canon_ref": "AGENTS.md: STOP — доложить и ждать решения, молча не чинить"
-  },
-  {
-   "id": "canon.choice",
-   "title": "Каноническая развилка (выбор варианта)",
-   "trigger": "ХПФ/ИЦ приносят 2+ варианта канона (S0-сжатие, Bases/Dataview, маршрут)",
-   "tools": [
-    "ask_choice"
-   ],
-   "canon_ref": "S0-канон; резолюции ХПФ §5"
-  },
-  {
-   "id": "mail-hub.secret",
-   "title": "Секрет почтового хаба",
-   "trigger": "нужен ключ Resend / пароль приложения IMAP — вставляет только владелец",
-   "tools": [
-    "ask_secret"
-   ],
-   "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600"
-  },
-  {
-   "id": "mail-hub.dns",
-   "title": "DNS-запись для домена почты",
-   "trigger": "SPF/DKIM/MX записи в панели регистратора — вставляет только владелец",
-   "tools": [
-    "ask_dns"
-   ],
-   "canon_ref": "mail-hub v0.3; канон-адрес rudra108@re-search.wiki"
-  },
-  {
-   "id": "apinex.secret",
-   "title": "Ключ провайдера APInex",
-   "trigger": "ключ apinex нужен серверу для резервного провайдера (второй живой канал при квоте opencode-go и ECONNRESET nvidia); в конфиге — {env:APINEX_API_KEY}",
-   "tools": [
-    "ask_secret"
-   ],
-   "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600",
-   "secret_file": "apinex.key"
-  },
-  {
-   "id": "portal.access",
-   "title": "Доступ к кабинету портала (права/токен)",
-   "trigger": "готовность Ворот доступа к бизнес-аккаунту/каналу портала: что нужно от владельца — business_connection, права бота-админа группы -1003786610623 или вставка токена через ask_secret",
-   "tools": [
-    "ask_choice",
-    "ask_secret"
-   ],
-   "canon_ref": "мандат ЦУ ic-portal-dvtg-mandates (2026-10-31), п.3; владелец в гараже, связь через портал"
-  },
-  {
-   "id": "dvhub.dns",
-   "title": "DNS A-записи re-search.wiki / meet.re-search.wiki (Namecheap)",
-   "trigger": "переезд ДВ-Хаб на Zomro (ADR-010): A-записи @, www, meet → новый IP; и откат обратно на Fornex — вставляет только владелец",
-   "tools": [
-    "ask_dns"
-   ],
-   "canon_ref": "ADR-010 (docs/architecture.md, 2026-11-01); runbook §9.6/9.7; домен у Namecheap"
-  },
-  {
-   "id": "dvhub.server-secret",
-   "title": "Секреты нового сервера ДВ-Хаб",
-   "trigger": "переезд на Zomro: TELEGRAM_BOT_TOKEN / RESEND_API_KEY / MiroTalk API_KEY_SECRET+SALT для .env нового сервера — вставляет только владелец",
-   "tools": [
-    "ask_secret"
-   ],
-   "canon_ref": "AGENTS.md: секретов в репо нет; runbook §9.4.6"
-  },
-  {
-   "id": "kruk.mail.send",
-   "title": "Отправка письма из рубки (КРУК: Mail Hub / Global Inbox)",
-   "trigger": "apps-dev/ship: POST-прослойка пульта перед mail-hub send --actor kruk:*",
-   "tools": [
-    "ask_confirm"
-   ],
-   "canon_ref": "Р-074 п.5 (Ворота не обходятся) + Р-064/Р-067 (реестр отправителей, красная линия)"
-  },
-  {
-   "id": "apps-wave-a-package-approve",
-   "title": "да на пакет решений волны A (стек В1, слои/транспорт, 6 модулей, наследие)",
-   "trigger": "owner_route TTL 60м истёк, wait a95bb79b, return_condition пуст",
-   "tools": [
-    "ask_confirm"
-   ],
-   "canon_ref": "А2, протокол 05.11 п.5, owner-TTL"
-  }
- ]
+  "_comment": "Заявленные события форм Ворот владельца (owner-gate). Форма показывается ТОЛЬКО для события из этого списка; неизвестное событие = отказ без формы. Добавление события — правка ИЦ в task-ветке с пометкой в ADR/реестре; событие живёт, пока живёт его триггер.",
+  "events": [
+    {
+      "id": "apply.approve",
+      "title": "Апрув опасного применения (high-risk apply)",
+      "trigger": "system-ops: после dry-run/preflight, перед реальным apply на хосте",
+      "tools": [
+        "ask_confirm"
+      ],
+      "canon_ref": "AGENTS.md: high-risk host scope — explicit user approval между plan и apply"
+    },
+    {
+      "id": "ship.override",
+      "title": "Обход гейта при /ship (STOP-вердикт копа)",
+      "trigger": "tree-cop ship-check вернул STOP и primary предлагает осознанный обход",
+      "tools": [
+        "ask_confirm"
+      ],
+      "canon_ref": "AGENTS.md: STOP — доложить и ждать решения, молча не чинить"
+    },
+    {
+      "id": "canon.choice",
+      "title": "Каноническая развилка (выбор варианта)",
+      "trigger": "ХПФ/ИЦ приносят 2+ варианта канона (S0-сжатие, Bases/Dataview, маршрут)",
+      "tools": [
+        "ask_choice"
+      ],
+      "canon_ref": "S0-канон; резолюции ХПФ §5"
+    },
+    {
+      "id": "mail-hub.secret",
+      "title": "Секрет почтового хаба",
+      "trigger": "нужен ключ Resend / пароль приложения IMAP — вставляет только владелец",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600"
+    },
+    {
+      "id": "mail-hub.dns",
+      "title": "DNS-запись для домена почты",
+      "trigger": "SPF/DKIM/MX записи в панели регистратора — вставляет только владелец",
+      "tools": [
+        "ask_dns"
+      ],
+      "canon_ref": "mail-hub v0.3; канон-адрес rudra108@re-search.wiki"
+    },
+    {
+      "id": "apinex.secret",
+      "title": "Ключ провайдера APInex",
+      "trigger": "ключ apinex нужен серверу для резервного провайдера (второй живой канал при квоте opencode-go и ECONNRESET nvidia); в конфиге — {env:APINEX_API_KEY}",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600",
+      "secret_file": "apinex.key"
+    },
+    {
+      "id": "portal.access",
+      "title": "Доступ к кабинету портала (права/токен)",
+      "trigger": "готовность Ворот доступа к бизнес-аккаунту/каналу портала: что нужно от владельца — business_connection, права бота-админа группы -1003786610623 или вставка токена через ask_secret",
+      "tools": [
+        "ask_choice",
+        "ask_secret"
+      ],
+      "canon_ref": "мандат ЦУ ic-portal-dvtg-mandates (2026-10-31), п.3; владелец в гараже, связь через портал"
+    },
+    {
+      "id": "dvhub.dns",
+      "title": "DNS A-записи re-search.wiki / meet.re-search.wiki (Namecheap)",
+      "trigger": "переезд ДВ-Хаб на Zomro (ADR-010): A-записи @, www, meet → новый IP; и откат обратно на Fornex — вставляет только владелец",
+      "tools": [
+        "ask_dns"
+      ],
+      "canon_ref": "ADR-010 (docs/architecture.md, 2026-11-01); runbook §9.6/9.7; домен у Namecheap"
+    },
+    {
+      "id": "dvhub.server-secret",
+      "title": "Секреты нового сервера ДВ-Хаб",
+      "trigger": "переезд на Zomro: TELEGRAM_BOT_TOKEN / RESEND_API_KEY / MiroTalk API_KEY_SECRET+SALT для .env нового сервера — вставляет только владелец",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: секретов в репо нет; runbook §9.4.6"
+    },
+    {
+      "id": "kruk.mail.send",
+      "title": "Отправка письма из рубки (КРУК: Mail Hub / Global Inbox)",
+      "trigger": "apps-dev/ship: POST-прослойка пульта перед mail-hub send --actor kruk:*",
+      "tools": [
+        "ask_confirm"
+      ],
+      "canon_ref": "Р-074 п.5 (Ворота не обходятся) + Р-064/Р-067 (реестр отправителей, красная линия)"
+    },
+    {
+      "id": "apps-wave-a-package-approve",
+      "title": "да на пакет решений волны A (стек В1, слои/транспорт, 6 модулей, наследие)",
+      "trigger": "owner_route TTL 60м истёк, wait a95bb79b, return_condition пуст",
+      "tools": [
+        "ask_confirm"
+      ],
+      "canon_ref": "А2, протокол 05.11 п.5, owner-TTL"
+    },
+    {
+      "id": "lunaroute.secret",
+      "title": "Ключ провайдера LunaRoute (7-дневный trial)",
+      "trigger": "владелец зарегистрировал trial на app.lunaroute.com; нужен ключ для подключения провайдера lunaroute в opencode и probe моделей",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: секреты только через Ворота, минимум прав; значение в ~/.secrets/lunaroute.key (600)",
+      "secret_file": "lunaroute.key"
+    },
+    {
+      "id": "embeddings.secret",
+      "title": "Ключ embedding-провайдера (ступень 3 программы экономии)",
+      "trigger": "ступень 3 программы экономии (встраивания для индекса похожести) стоит до ключа; владелец создаёт бесплатный ключ (рекомендация: Gemini free tier; альтернативы OpenRouter qwen3-embedding / Cohere trial) и вставляет через Ворота",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: секреты только через Ворота, минимум прав; значение в ~/.secrets/embeddings.key (600)",
+      "secret_file": "embeddings.key"
+    },
+    {
+      "id": "recruiting-hr.crm-tg-token",
+      "title": "Токен Telegram-бота CRM (рекрутинг: уведомления в личку владельца)",
+      "trigger": "владелец создал бота у @BotFather (мандат dev-crm-mandate-20261107, ЖДУ b510c08c); нужен токен для relay crm/relay — бот шлёт уведомления только владельцу",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: секреты только через Ворота, минимум прав; значение в ~/.secrets/crm_tg_token (600)",
+      "secret_file": "crm_tg_token"
+    },
+    {
+      "id": "recruiting-hr.crm-tg-chat",
+      "title": "chat_id владельца для уведомлений CRM",
+      "trigger": "после создания бота: владелец пишет боту любое сообщение, chat_id берётся из getUpdates; нужен для маршрута relay (вариант А — личка владельца)",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: секреты только через Ворота; значение в ~/.secrets/crm_tg_chat (600)",
+      "secret_file": "crm_tg_chat"
+    },
+    {
+      "id": "recruiting-hr.vk-user-token",
+      "title": "VK user-токен (рекрутинг): полный доступ wall/groups/messages",
+      "trigger": "Смотритель HR: владелец получает токен VK (Сферум/Standalone) и вставляет строку авторизации или чистый токен; значение идёт в ~/.secrets/vk_user_token (600), вне git",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600",
+      "secret_file": "vk_user_token"
+    }
+  ]
 }
