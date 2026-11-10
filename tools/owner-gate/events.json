@@ -151,6 +151,16 @@
       ],
       "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600",
       "secret_file": "vk_user_token"
+    },
+    {
+      "id": "recruiting-hr.vk-community-token",
+      "title": "VK community-токен (сообщество рекрутинга): боты/сообщения сообщества",
+      "trigger": "Смотритель HR: владелец создал сообщество VK, включил «Сообщения» и «Возможности ботов», выписал community-токен в настройках сообщества; значение идёт в ~/.secrets/vk_group_token (600), вне git",
+      "tools": [
+        "ask_secret"
+      ],
+      "canon_ref": "AGENTS.md: никаких секретов в репо; секреты — вне репо, файлом 600",
+      "secret_file": "vk_group_token"
     }
   ]
 }
