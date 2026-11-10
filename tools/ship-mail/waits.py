@@ -498,7 +498,14 @@ def _ping_text(row, age_min, ttl_min):
 
 
 def _send_ping(row, text):
-    """Отправка через ship-mail.sh (единственный путь, Р-028 rolling). -> rc, out"""
+    """Отправка через ship-mail.sh (единственный путь, Р-028 rolling). -> rc, out
+
+    ref уникален на каждый пинок: waits-autoping-<id>-<ping_count+1>.
+    Фиксированный ref на строку реестра вечно ловил lint no-resend
+    (sent.jsonl): rc!=0 -> cmd_ping не звался -> TTL не рос -> вечный FAIL.
+    Инкремент ping_count делает cmd_ping уже после успешной отправки,
+    поэтому в ref идёт значение ДО инкремента (+1).
+    """
     import subprocess
     import tempfile
     fd, path = tempfile.mkstemp(prefix="autoping-", suffix=".md", dir="/tmp/opencode")
@@ -510,7 +517,7 @@ def _send_ping(row, text):
              "--to", str(row.get("who_owes") or ""),
              "--from", str(row.get("who_waits") or ""),
              "--title", f"ПИНГ {row.get('id')}: ожидание просрочено",
-             "--ref", f"waits-autoping-{row.get('id')}",
+             "--ref", f"waits-autoping-{row.get('id')}-{int(row.get('ping_count') or 0) + 1}",
              "--file", path],
             capture_output=True, text=True, timeout=90)
         return r.returncode, (r.stdout or "") + (r.stderr or "")
