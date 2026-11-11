@@ -266,6 +266,91 @@ def _deadline(row):
     return dl if dl > 0 else None
 
 
+# --- Два времени строки (аудит Школы 2026-11-07, sha 9ccec4db41f5a500) ---
+# since  — когда строка создана (шкала пинков);
+# event_at — когда событие свершается. До event_at строка event-pending:
+# просрочки нет, пинг не идёт (event-pending доминирует над TTL).
+# Строки Корабля ведутся в MSK (+03): смещение явное, чтобы epoch не зависел
+# от машины и от TZ процесса.
+EVENT_TZ_HOURS = int(os.environ.get("WAITS_EVENT_TZ", "3"))
+
+_PAT_ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})[T ](\d{1,2}):(\d{2})")
+_PAT_DMY = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\s+(\d{1,2}):(\d{2})")
+_PAT_DM = re.compile(r"\b(\d{1,2})\.(\d{1,2})\s+(\d{1,2}):(\d{2})\b")
+
+
+def _event_at(row, now=None):
+    """Epoch момента события (или None). Явное поле event_at важнее парсинга.
+
+    Парсинг консервативный: только явные формы даты-времени, и только если
+    момент ещё не наступил (иначе это не «будущее событие», а факт/шум).
+    Возвращает (epoch, source) либо (None, "").
+    """
+    import calendar
+    import datetime as _dt
+
+    now = time.time() if now is None else now
+    tz = _dt.timezone(_dt.timedelta(hours=EVENT_TZ_HOURS))
+
+    def _local_ts(value):
+        """ISO -> epoch; без tz-смещения трактуем как MSK (строки Корабля)."""
+        try:
+            dt = _dt.datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=tz)
+        return dt.timestamp()
+
+    raw = row.get("event_at")
+    ts = _local_ts(raw) if raw else None
+    # Явное поле тоже должно быть В БУДУЩЕМ: прошедшая дата — это факт,
+    # а не план; иначе event-pending навсегда прячет просрочку.
+    if ts is not None and ts > now:
+        return ts, "event_at"
+
+    text = " ".join(str(row.get(k) or "") for k in ("what", "return_condition"))
+    m = _PAT_ISO.search(text)
+    if m:
+        y, mo, d, hh, mm = (int(x) for x in m.groups())
+        try:
+            dt = _dt.datetime(y, mo, d, hh, mm, tzinfo=tz)
+            ts = dt.timestamp()
+            if ts > now:
+                return ts, "what(iso)"
+        except ValueError:
+            pass
+    m = _PAT_DMY.search(text)
+    if m:
+        d, mo, y, hh, mm = (int(x) for x in m.groups())
+        try:
+            ts = _dt.datetime(y, mo, d, hh, mm, tzinfo=tz).timestamp()
+            if ts > now:
+                return ts, "what(date)"
+        except ValueError:
+            pass
+    m = _PAT_DM.search(text)
+    if m:
+        d, mo, hh, mm = (int(x) for x in m.groups())
+        # Без года — только ближайшее будущее В ЭТОМ году. Гадать «через год»
+        # нельзя: любая прошедшая дата притворилась бы планом и спрятала
+        # просрочку (дефект дня 08.11). Событие дальше года — с годом в тексте.
+        try:
+            ts = _dt.datetime(_dt.datetime.now(tz).year, mo, d, hh, mm,
+                              tzinfo=tz).timestamp()
+        except ValueError:
+            ts = None
+        if ts is not None and ts > now:
+            return ts, "what(dm)"
+    return None, ""
+
+
+def _is_event_pending(row, now=None):
+    """Event-pending: событие ещё не наступило -> не просрочка (доминирует)."""
+    ts, _src = _event_at(row, now)
+    return ts is not None
+
+
 def _parse_ts(value):
     """ISO-строка -> epoch; сбой -> None (не выдумываем лаг)."""
     if not value:
@@ -286,6 +371,10 @@ def _parse_ts(value):
 def _overdue(row):
     age_min = (time.time() - row.get("since_ts", 0)) / 60.0
     if _type(row) == "proposal" or _state(row) != "open":
+        return False, age_min
+    # event-pending доминирует над TTL: до наступления события просрочки нет
+    # (дефект дня 08.11: since+ttl считал возраст от первой даты и врал «просрочено»).
+    if _is_event_pending(row):
         return False, age_min
     return age_min > _ttl_minutes(row), age_min
 
@@ -499,9 +588,14 @@ def cmd_list(a):
         elif state != "open":
             mark = state
         else:
-            mark = "ПРОСРОЧЕНО" if od else "в ожидании"
-            if od and _has_deadline(r):
-                mark += " (пинок)"
+            ev_ts, _src = _event_at(r)
+            if ev_ts is not None:
+                mark = "event-pending до " + time.strftime(
+                    "%d.%m %H:%M", time.localtime(ev_ts))
+            else:
+                mark = "ПРОСРОЧЕНО" if od else "в ожидании"
+                if od and _has_deadline(r):
+                    mark += " (пинок)"
         ttl = _ttl_minutes(r)
         print(f"{r['id']} [{wtype}/{state}] {mark} {_age_label(age)}/{ttl}м  "
               f"{r['who_owes']}  {r['what']}")
