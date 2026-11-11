@@ -232,12 +232,6 @@ def main(argv):
                              os.path.join(box, f))])
                 if n == 0:
                     continue
-                if not consuming(sid, box):
-                    journal({"ts": int(time.time()), "sid": sid,
-                             "result": "skipped", "reason": "не потребляет канал (Р-116)",
-                             "unread": n})
-                    print(f"wake-sweep: {sid} {n} писем, но линия не потребляет — зов удержан")
-                    continue
                 ok, reason, sess = preflight(sid)
                 if not ok:
                     journal({"ts": int(time.time()), "sid": sid,
@@ -245,6 +239,16 @@ def main(argv):
                              "unread": n})
                     print(f"wake-sweep: {sid} {n} писем, но ОТКАЗ: {reason}")
                     continue
+                # Р-116 уточнена словом владельца 2026-11-11 (завал 61 письмо
+                # у живой линии, зов был удержан — канал встал): consuming()
+                # больше не отсекает зов живой линии. Порядок: сначала
+                # preflight (мёртвую не зовём), затем зов живой линии
+                # независимо от свежести read — живая обязана разгрести
+                # ящик; consuming() остаётся телеметрией в журнале.
+                if not consuming(sid, box):
+                    journal({"ts": int(time.time()), "sid": sid,
+                             "result": "stale-consumer", "reason": "read несвежий, зов всё равно идёт (Р-116/Р-122)",
+                             "unread": n})
                 limited, left = rate_limited(sid)
                 if limited:
                     journal({"ts": int(time.time()), "sid": sid,
