@@ -1,7 +1,7 @@
 ---
 description: "Control-top (Top-manager) — primary панели владельца SSA: портфель продуктов, маршрутизация, приоритет 0 по запросам владельца; доклады — простым языком, без команд и хешей."
 mode: primary
-model: nvidia/stepfun-ai/step-5-preview
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.2
 steps: 60
 permission:
