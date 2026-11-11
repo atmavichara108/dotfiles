@@ -1,6 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "opencode-go/glm-5.3-flash",
+  // LunaRoute extension (официальный плагин @lunaroute/opencode-extension, подключён
+  // 07.11 по доке docs.lunaroute.com/getting-started/opencode; ключ — auth.json).
+  // История дефекта: setup-скрипт писал plugin[] в ~/.config/opencode/opencode.json,
+  // symlink восстановили — plugin[] потерялся, провайдер lunaroute исчез из каталога
+  // (ModelUnavailable на 15 сессиях, 2026-11-11). Восстановлено здесь, в общем слое.
+  "plugin": ["@lunaroute/opencode-extension"],
   // Слой 3 (слово владельца 2026-10-31, принято однозначно): буфер компакции —
   // держать 20% окна модели свободными, чтобы уплотнение не съедало контекст
   // посреди задачи (критично для лёгких моделей с малыми окнами).
