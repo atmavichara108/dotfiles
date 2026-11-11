@@ -73,6 +73,9 @@ CU_SID = "ses_eceb23a71ffeJO9QnFou8VngZC"  # приёмки ЦУ — удлин�
 WAIT_TYPES = ("mandate", "question", "acceptance", "pilot", "external", "proposal")
 DEFAULT_TYPE = "mandate"
 DEFAULT_STATE = "open"
+# Потолок backoff: даже ожидание без дедлайна не пингуется чаще, чем раз в сутки
+# (страховка от вечного цикла, если deadline_minutes забыли поставить).
+MAX_TTL_MINUTES = 24 * 60
 
 
 def _rows(path):
@@ -214,7 +217,15 @@ def cmd_done(wid):
 
 
 def cmd_ping(wid):
-    """Пинок: каденс удваивается, но не выше дедлайна (если он задан)."""
+    """Пинок: каденс удваивается до потолка; дедлайн — не потолок TTL.
+
+    Дефект 11.11 (флуд 100 писем): при deadline_minutes == ttl_minutes
+    min(old*2, deadline) возвращал ТОТ ЖЕ TTL — backoff не рос, пинг
+    повторялся вечно каждые deadline минут. Теперь:
+      - TTL растёт до MAX_TTL_MINUTES (сутки), дедлайн его не замораживает;
+      - достигнутый дедлайн помечается escalated — строка уходит человеку,
+        авто-пинги по ней прекращаются (см. cmd_autoping).
+    """
     rows = _rows(WAITS)
     hit = [r for r in rows if r.get("id") == wid]
     if not hit:
@@ -222,18 +233,37 @@ def cmd_ping(wid):
         return 1
     row = hit[0]
     old = _ttl_minutes(row)
-    new = old * 2
-    dl = row.get("deadline_minutes")
-    if dl is not None:
-        new = min(new, max(0, int(dl)))
-    # не плодим zero-каденс
-    new = max(1, new)
+    new = max(1, min(old * 2, MAX_TTL_MINUTES))
+    dl = _deadline(row)
+    # Дедлайн — срок исполнения ОТ ОТКРЫТИЯ (канон waits-registry), поэтому
+    # сравниваем с фактическим возрастом строки, а не с очередным TTL:
+    # иначе задание с ttl=15/deadline=30 эскалировалось бы через 15 минут.
+    age_min = (time.time() - int(row.get("since_ts") or time.time())) / 60.0
+    if dl is not None and age_min >= dl:
+        if not row.get("escalated"):
+            row["escalated"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            row["escalate_to"] = row.get("escalate_to") or "owner"
+            print(f"PING {wid}: TTL {old}м достиг дедлайна {dl}м — ЭСКАЛАЦИЯ "
+                  f"к {row['escalate_to']}: авто-пинги по строке прекращены")
+    else:
+        print(f"PING {wid}: TTL {old}м -> {new}м (пинок, не дефект)")
     row["ttl_minutes"] = new
     row["pinged"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     row["ping_count"] = int(row.get("ping_count", 0)) + 1
     _rewrite_rows(rows)
-    print(f"PING {wid}: TTL {old}м -> {new}м (пинок, не дефект)")
     return 0
+
+
+def _deadline(row):
+    """Дедлайн строки в минутах от since; None — не задан."""
+    dl = row.get("deadline_minutes")
+    if dl is None:
+        return None
+    try:
+        dl = int(dl)
+    except (TypeError, ValueError):
+        return None
+    return dl if dl > 0 else None
 
 
 def _parse_ts(value):
@@ -551,6 +581,13 @@ def cmd_autoping(a):
         overdue += 1
         wid = r.get("id") or "?"
         owe = str(r.get("who_owes") or "")
+        if r.get("escalated"):
+            # Дедлайн исчерпан: строка уже эскалирована человеку (cmd_ping).
+            # Авто-пинги по ней прекращены — иначе вечный цикл каждые TTL минут.
+            print(f"AUTOPING SKIP {wid}: эскалирована к {r.get('escalate_to')} "
+                  f"({r.get('escalated')}) — авто-пинги прекращены")
+            skipped += 1
+            continue
         if not owe.startswith("ses_"):
             print(f"AUTOPING SKIP {wid}: адресат '{owe}' — не сессия, письмо не шлём")
             skipped += 1
