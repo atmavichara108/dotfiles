@@ -1,7 +1,7 @@
 ---
 description: Bash-специалист. Пишет/правит shell-скрипты, автоматизации, хуки, cron-задачи, systemd-юниты.
 mode: subagent
-model: nvidia/stepfun-ai/step-5-preview
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.1
 steps: 40
 permission:
