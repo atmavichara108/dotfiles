@@ -299,14 +299,58 @@ def cmd_stitch(a):
     """
     rows = _rows(WAITS)
     hit = [r for r in rows if r.get("id") == a.wid]
+    recover = bool(getattr(a, "recover", False))
     if not hit:
         done = [r for r in _rows(DONE) if r.get("id") == a.wid]
-        if done:
-            print(f"waits: ожидание {a.wid} уже закрыто "
-                  f"({done[0].get('state', '?')}) — повтор не нужен")
+        stitched = [r for r in done if r.get("op") in ("stitch", "stitch-recovery")]
+        if stitched:
+            print(f"waits: ожидание {a.wid} уже пришито "
+                  f"({stitched[0].get('op')}, {stitched[0].get('stitched_at', '?')}) "
+                  f"— повтор не нужен")
             return 0
-        print(f"waits: ожидание {a.wid} не найдено")
-        return 1
+        if not done:
+            print(f"waits: ожидание {a.wid} не найдено")
+            return 1
+        if not recover:
+            # Дефект, найденный живьём (письмо Храма 1173282c815c, 11.11):
+            # закрытие без пришивки возможно, а штатного восстановления не было —
+            # восстановительные записи делали в обход инструмента.
+            print(f"waits: ожидание {a.wid} закрыто БЕЗ пришивки "
+                  f"({done[0].get('state', '?')}, {done[0].get('closed', '?')}). "
+                  f"Штатное восстановление: stitch {a.wid} --recover "
+                  f"--evidence <чем доказан ответ> --authorized-by <кто санкционировал> "
+                  f"--answered-at <ISO>")
+            return 3
+        evidence = (getattr(a, "evidence", "") or "").strip()
+        authorized = (getattr(a, "authorized_by", "") or "").strip()
+        if not evidence or not authorized:
+            print("waits: --recover требует --evidence и --authorized-by "
+                  "— восстановление без доказательства и санкции не пишется")
+            return 2
+        answered_ts = _parse_ts(a.answered_at)
+        if answered_ts is None:
+            print(f"waits: не разбираю answered_at={a.answered_at!r} — формат ISO")
+            return 2
+        base = dict(done[0])
+        since_ts = int(base.get("since_ts") or int(time.time()))
+        lag_min = round((answered_ts - since_ts) / 60.0, 1)
+        base.update({
+            "op": "stitch-recovery",
+            "reply_to": a.reply_to or base.get("ref", ""),
+            "answered_by": a.answered_by or base.get("who_owes", ""),
+            "answered_at": a.answered_at,
+            "stitched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "lag_minutes": lag_min,
+            "evidence": evidence,
+            "authorized_by": authorized,
+            "recovery": True,
+            "state": "answered",
+            "sweep_lag_defect": lag_min > 60,
+        })
+        _append(DONE, base)  # append-only: прежние записи не переписываются
+        print(f"RECOVER {a.wid}: пришито штатно, append-only "
+              f"(санкция: {authorized}; lag {lag_min}м)")
+        return 0
     row = hit[0]
     answered_ts = _parse_ts(a.answered_at)
     if answered_ts is None:
@@ -656,6 +700,11 @@ def main():
     st.add_argument("--answered-at", required=True,
                     help="ISO-время ответа (для lag)")
     st.add_argument("--evidence", default="")
+    st.add_argument("--recover", action="store_true",
+                    help="штатное восстановление строки, закрытой без пришивки "
+                         "(требует --evidence и --authorized-by)")
+    st.add_argument("--authorized-by", default="",
+                    help="кто санкционировал восстановление (для --recover)")
     sub.add_parser("stitch-report")
     sw = sub.add_parser("sweep")
     sw.add_argument("--ping", action="store_true",
