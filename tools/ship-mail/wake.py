@@ -22,6 +22,7 @@ import base64
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -35,6 +36,9 @@ PEER_REGISTRY = os.path.expanduser(
 WAKE_DIR = os.path.expanduser("~/.local/state/opencode/wake")
 JOURNAL = os.path.join(WAKE_DIR, "journal.jsonl")
 RATELIMIT = int(os.environ.get("WAKE_RATELIMIT_SEC", "900"))
+# Реестр ожиданий: путь задаётся явно — wake.py не зависит от cwd сессии.
+WAITS_PY = os.environ.get("SHIP_MAIL_WAITS_PY") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "waits.py")
 
 
 def die(msg, code=2):
@@ -169,6 +173,34 @@ def rate_limited(sid):
     return False, 0
 
 
+def autoping_step():
+    """Шаг пробуждения: просроченные ожидания сами пингуют адресатов.
+
+    Механизм, не дисциплина (спека Бизнес-школы ic-waits-in-wake-cycle-20261107,
+    слово владельца: «корабль должен работать как часы»). Письмо шлёт
+    waits.py autoping через ship-mail (единственный транспорт, Р-028),
+    кулдаун — один пинг на строку за цикл ТТЛ. В журнал — только счётчики.
+    """
+    try:
+        r = subprocess.run(
+            [sys.executable, WAITS_PY, "autoping"],
+            capture_output=True, text=True, timeout=120)
+        lines = [ln for ln in (r.stdout or "").splitlines() if ln.startswith("AUTOPING")]
+        summary = next((ln for ln in reversed(lines) if ln.startswith("AUTOPING:")), "")
+        if summary:
+            print(f"wake-sweep: {summary}")
+        if r.returncode != 0:
+            journal({"ts": int(time.time()), "result": "autoping-fail",
+                     "reason": f"rc={r.returncode}"})
+            return
+        if summary:
+            journal({"ts": int(time.time()), "result": "autoping",
+                     "summary": summary})
+    except Exception as e:  # noqa: BLE001
+        journal({"ts": int(time.time()), "result": "autoping-error",
+                 "reason": type(e).__name__})
+
+
 def main(argv):
     if "--status" in argv:
         state_file = os.path.join(WAKE_DIR, "ratelimit.json")
@@ -182,6 +214,10 @@ def main(argv):
             print(f"{sid}: {'готов' if left <= 0 else f'пауза {left}с'}")
         return 0
     if "--sweep" in argv:
+        # Шаг 0 — ожидания: просроченная строка сама пингует адресата письмом
+        # (механизм, не дисциплина; спека ic-waits-in-wake-cycle-20261107).
+        # В журнал идут только счётчики: тело письма в журнал не попадает.
+        autoping_step()
         # Слаженность без человека: у кого в ящике непрочитанные письма —
         # тех зовём (те же предпроверки и лимит), текст нейтральный.
         home = os.path.expanduser("~/.local/share/ship-mail/inbox")
@@ -196,12 +232,6 @@ def main(argv):
                              os.path.join(box, f))])
                 if n == 0:
                     continue
-                if not consuming(sid, box):
-                    journal({"ts": int(time.time()), "sid": sid,
-                             "result": "skipped", "reason": "не потребляет канал (Р-116)",
-                             "unread": n})
-                    print(f"wake-sweep: {sid} {n} писем, но линия не потребляет — зов удержан")
-                    continue
                 ok, reason, sess = preflight(sid)
                 if not ok:
                     journal({"ts": int(time.time()), "sid": sid,
@@ -209,6 +239,16 @@ def main(argv):
                              "unread": n})
                     print(f"wake-sweep: {sid} {n} писем, но ОТКАЗ: {reason}")
                     continue
+                # Р-116 уточнена словом владельца 2026-11-11 (завал 61 письмо
+                # у живой линии, зов был удержан — канал встал): consuming()
+                # больше не отсекает зов живой линии. Порядок: сначала
+                # preflight (мёртвую не зовём), затем зов живой линии
+                # независимо от свежести read — живая обязана разгрести
+                # ящик; consuming() остаётся телеметрией в журнале.
+                if not consuming(sid, box):
+                    journal({"ts": int(time.time()), "sid": sid,
+                             "result": "stale-consumer", "reason": "read несвежий, зов всё равно идёт (Р-116/Р-122)",
+                             "unread": n})
                 limited, left = rate_limited(sid)
                 if limited:
                     journal({"ts": int(time.time()), "sid": sid,

@@ -1,9 +1,116 @@
 {
-  "lnl": { "provider": "linaliapi", "medium": "linaliapi/anthropic/claude-opus-5", "free": "linaliapi/z-ai/glm-5.3", "note": "модели условно равнозначны; режимы — ориентиры" },
-  "ocg": { "provider": "opencode-go", "medium": "opencode-go/glm-5.3-flash", "free": null, "note": "free нет: брать бесплатные у провайдера opencode (zen); medium кандидаты: glm-5.3-flash (2x usage), gpt-5.6-luna; добор deepseek/qwen" },
-  "oc":  { "provider": "opencode", "medium": null, "free": null, "note": "opencode zen — источник free-моделей для ocg" },
-  "orr": { "provider": "openrouter", "medium": null, "free": null, "note": "заглушка, пока не используется; абузный (free-модели :free)" },
-  "mst": { "provider": "mistral", "medium": null, "free": null, "note": "заглушка, пока не используется" },
-  "jwk": { "provider": "justwoker", "medium": null, "free": null, "note": "заглушка; BLOCKED/NO_MODELS — пустой /v1/models, чат-проб Cloudflare 403 (карточка 01-Reference/provider-cards/justwoker)" },
-  "agr": { "provider": "agentrouter", "medium": null, "free": null, "note": "ключ есть в auth.json, провайдер в конфиге не объявлен; endpoint/модели не подтверждены — [проверить] перед подключением" }
+  "lnl": {
+    "provider": "linaliapi",
+    "medium": "linaliapi/anthropic/claude-opus-5",
+    "free": "linaliapi/z-ai/glm-5.3",
+    "note": "модели условно равнозначны; режимы — ориентиры"
+  },
+  "ocg": {
+    "provider": "opencode-go",
+    "medium": "opencode-go/glm-5.3-flash",
+    "free": null,
+    "note": "free нет: брать бесплатные у провайдера opencode (zen); medium кандидаты: glm-5.3-flash (2x usage), gpt-6-luna; добор deepseek/qwen"
+  },
+  "oc": {
+    "provider": "opencode",
+    "medium": null,
+    "free": null,
+    "note": "opencode zen — источник free-моделей для ocg"
+  },
+  "orr": {
+    "provider": "openrouter",
+    "medium": null,
+    "free": null,
+    "note": "заглушка, пока не используется; абузный (free-модели :free)"
+  },
+  "mst": {
+    "provider": "mistral",
+    "medium": null,
+    "free": null,
+    "note": "заглушка, пока не используется"
+  },
+  "jwk": {
+    "provider": "justwoker",
+    "medium": null,
+    "free": null,
+    "note": "заглушка; BLOCKED/NO_MODELS — пустой /v1/models, чат-проб Cloudflare 403 (карточка 01-Reference/provider-cards/justwoker)"
+  },
+  "agr": {
+    "provider": "agentrouter",
+    "medium": null,
+    "free": null,
+    "note": "ключ есть в auth.json, провайдер в конфиге не объявлен; endpoint/модели не подтверждены — [проверить] перед подключением"
+  },
+  "nv": {
+    "provider": "nvidia",
+    "medium": "nvidia/stepfun-ai/step-5-preview",
+    "free": null,
+    "note": "в общем списке по слову владельца 14.11; здоровье неровное (451/504 в пробах) — пробу перед роутингом; агенты с него эвакуированы 11.11"
+  },
+  "ar": {
+    "provider": "amd-radeon",
+    "medium": "amd-radeon/DeepSeek-V4.1-Flash",
+    "free": null,
+    "note": "рабочая лошадка после эвакуации 11.11 (bash-dev/qtile-dev/verifier проходят на ней)"
+  },
+  "apx": {
+    "provider": "apinex",
+    "medium": null,
+    "free": "apinex/free/claude-opus-4.6",
+    "note": "free-модели шлюза"
+  },
+  "am": {
+    "provider": "anymodel",
+    "medium": "anymodel/cc/claude-opus-5",
+    "free": "anymodel/am/free",
+    "note": "агрегатор; cc/cx/cv-модели"
+  },
+  "go": {
+    "provider": "google",
+    "medium": null,
+    "free": null,
+    "note": "gemini-семейство (auto); в пикере"
+  },
+  "z": {
+    "provider": "zai",
+    "medium": null,
+    "free": null,
+    "note": "GLM-источник (auto)"
+  },
+  "zn": {
+    "provider": "anthropic",
+    "medium": null,
+    "free": null,
+    "note": "auto; из RU возможно country-not-supported"
+  },
+  "amCN": {
+    "provider": "amd",
+    "medium": "amd/GLM-5.3-Flash",
+    "free": null,
+    "note": "стенд родной amd-radeon (CN)"
+  },
+  "na": {
+    "provider": "newapi",
+    "medium": null,
+    "free": "newapi/free-general",
+    "note": "локальный шлюз free-code/general/vision"
+  },
+  "ld": {
+    "provider": "local-deepseek",
+    "medium": null,
+    "free": null,
+    "note": "локальный deepseek (127.0.0.1:8000)"
+  },
+  "mh": {
+    "provider": "modelhub",
+    "medium": null,
+    "free": null,
+    "note": "гейтвей codestral/gemini-3.1-flash-lite"
+  },
+  "gc": {
+    "provider": "github-copilot",
+    "medium": null,
+    "free": null,
+    "note": "0 моделей в каталоге до авторизации аккаунта; Auto pool опционален (2.2.7)"
+  }
 }

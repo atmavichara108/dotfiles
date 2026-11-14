@@ -1,0 +1,11 @@
+[Unit]
+Description=Раз в 30 минут пинговать ЦУ по операции «гомеостаз», пока цели не закрыты
+
+[Timer]
+OnBootSec=120
+OnUnitActiveSec=2h
+AccuracySec=30s
+Unit=homeostasis-ping.service
+
+[Install]
+WantedBy=timers.target

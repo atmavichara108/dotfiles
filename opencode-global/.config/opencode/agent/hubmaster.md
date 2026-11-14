@@ -1,7 +1,7 @@
 ---
 description: "Центральный Узел (Hubmaster) — primary координации Корабля: маршрутизация между ведомствами, сквозные мандаты, сводка владельцу. Дирижёр, не музыкант."
 mode: primary
-model: nvidia/stepfun-ai/step-5-preview
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.2
 steps: 60
 permission:

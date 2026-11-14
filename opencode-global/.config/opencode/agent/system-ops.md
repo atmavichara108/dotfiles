@@ -1,7 +1,7 @@
 ---
 description: "system-ops: approval-gated high-risk host apply planner"
 mode: subagent
-model: nvidia/stepfun-ai/step-5-preview
+model: amd-radeon/DeepSeek-V4.1-Flash
 temperature: 0.1
 steps: 50
 permission:
