@@ -1127,3 +1127,10 @@ Nemotron не пригоден для primary-роли. Владелец пра�
 - Фикс: read-only allow-набор + полный deny (правка caabc20, ветка task/verifier-perms-20261112 HR-репо, влита в master приёмкой).
 - Верификация: read-only 8/8 OK; deny из штатного dispatch — rm и git push остановлены гейтом ДО исполнения (PASS, письмо fix-verifier-perms-20261112-accept); миграция принята 12/12.
 - Контекст (не блокер): API-созданные сессии исполняются с cwd /home/rudra — project-слой не находит agent-файл, agent-rules не применяются; в штатном subagent-dispatch всё работает. Записано на случай будущих API-проверок прав.
+
+## Инцидент BF-20261116-01: nvidia/step-5-preview — 404 Function '<uuid>' Not found for account (закрыт)
+- Symptom: после исчерпания шагов сессии и команды «продолжай» — AI.Error: Function '<uuid>': Not found for account 'QbkMvEK8LvEaPdr7CrfxEZusJQhyI-LMdcmZasYbgLA', 404 provider.invalid-request. Тот же uuid (d64c848d) у разных сессий в один день — не история сессии, а состояние функции аккаунта на стороне провайдера.
+- Repro: свежая сессия nvidia/stepfun-ai/step-5-preview (low), первый ход = FAILED с этой ошибкой; ПОВТОРНЫЙ тот же ход = succeeded (доказано на репро-сеансе ses_e1c523c7 и на пробе без variant).
+- Root cause: транзитная ошибка первой доставки после resume (steps-exhausted): шлюз nvidia теряет function-registry, привязанный к id ожидающего tool-call аккаунта; ретрай проходит без него. Не ключ (401/403 нет — 404), не квота, не конфиг, не сессия-история (пустая сессия = тоже первая ошибка → повтор ОК).
+- Fix: повторить ход после первой ошибки; конфигурацию менять не требуется. Модель nvidia/step-5-preview признана здоровой (две успешные пробы при повторе). deepseek-проба на том же провайдере — дополнительное подтверждение.
+- Статус: ЗАКРЫТ 2026-11-16 (срабатывает retry; upstream-баг OpenCode resume — кандидат в report, если повторится).
