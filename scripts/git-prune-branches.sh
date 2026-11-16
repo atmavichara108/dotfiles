@@ -18,10 +18,12 @@ prune_repo() {
   [ -d "$repo/.git" ] || { log "skip $repo: не git-репо"; return 0; }
   log "== $repo =="
   git -C "$repo" fetch origin --prune 2>/dev/null || log "fetch пропущен (офлайн?)"
-  local now current cutoff branch ts
+  local now current cutoff branch ts err worktrees
   now=$(date +%s)
   current=$(git -C "$repo" branch --show-current)
   cutoff=$((now - MAX_AGE_DAYS * 86400))
+  # Ветки, занятые каким-либо worktree: их удалять нельзя — пропускаем.
+  worktrees=$(git -C "$repo" worktree list --porcelain | sed -n 's|^branch refs/heads/||p')
   git -C "$repo" branch --format='%(refname:short) %(committerdate:unix)' | while read -r branch ts; do
     case "$branch" in
       task/*) ;;
@@ -29,9 +31,15 @@ prune_repo() {
     esac
     [ "$branch" = "$current" ] && continue
     [ "$ts" -ge "$cutoff" ] && continue
+    if printf '%s\n' "$worktrees" | grep -qx "$branch"; then
+      log "пропуск $branch: занят в worktree"
+      continue
+    fi
     if git -C "$repo" branch --merged main --format='%(refname:short)' | grep -qx "$branch"; then
       log "удаляю $branch (влита, старше 7д)"
-      git -C "$repo" branch -d "$branch"
+      if ! err=$(git -C "$repo" branch -d "$branch" 2>&1); then
+        log "пропуск $branch: branch -d отказал: $err"
+      fi
     fi
   done
 }
