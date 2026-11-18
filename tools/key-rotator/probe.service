@@ -1,0 +1,12 @@
+[Unit]
+Description=probe: суточная проба живности провайдеров (key-rotator -> vault provider-health.jsonl)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/Projects/OpenCode-Vault/tools/key-rotator/probe.py --all --quiet
+# read-only GET /models + append-only журнал; без привилегий, без smoke-чата.
+# Коды пробы: 0 всё чисто / 1 есть ERROR / 2 ошибка ввода / 3 фатальная.
+# ERROR провайдера — ПРЕДМЕТ наблюдения (рапорт в health-журнале), а не авария
+# таймера. Фатальная (2/3) — настоящая поломка, остаётся видимой в journal.
+SuccessExitStatus=0 1
+NoNewPrivileges=yes
