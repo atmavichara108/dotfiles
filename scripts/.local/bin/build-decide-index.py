@@ -123,6 +123,7 @@ def build() -> dict:
                                  "md_files": len(files), "records": count})
     # Перекрёстная сверка: сигнал Следопыта против решений канона
     index["signals"] = _signals_from_follower()
+    index["blind_spot_verdicts"] = _blind_spot_verdicts(index["signals"])
     resolved = _decision_ids(index["decisions"])
     resolved.update({k: v for k, v in _archived_ids().items() if k})
     for sig in index["signals"]:
@@ -216,6 +217,57 @@ def _decision_ids(decisions: list[dict]) -> dict[str, str]:
         for tid in re.findall(r"\b([QT]-\d{3})\b", text):
             mapping.setdefault(tid, d["id"] or "без номера")
     return mapping
+
+
+def _blind_spot_verdicts(signals: list[dict]) -> list[dict]:
+    """По каждому сигналу: где след, свежий ли, живая запись в каноне или нет."""
+    out: list[dict] = []
+    for sig in signals:
+        files: list[str] = []
+        for base, _dirs, names in os.walk(VAULT):
+            if "/node_modules/" in base or "/.git/" in base:
+                continue
+            for name in names:
+                if not name.endswith(".md"):
+                    continue
+                path = os.path.join(base, name)
+                try:
+                    if sig["id"] in open(path, encoding="utf-8",
+                                         errors="replace").read():
+                        files.append(path)
+                except OSError:
+                    continue
+        canon = [f for f in files if "/.meta-worktrees/" not in f]
+        stale = [f for f in files if "/.meta-worktrees/" in f]
+
+        def newest(paths: list[str]) -> str:
+            best = ""
+            for f in paths:
+                try:
+                    txt = open(f, encoding="utf-8", errors="replace").read()
+                except OSError:
+                    continue
+                for date in re.findall(r"2026-\d{2}-\d{2}", txt):
+                    if date > best:
+                        best = date
+            return best
+        out.append({
+            "id": sig["id"],
+            "what": sig["what"],
+            "files_total": len(files),
+            "in_canon": len(canon),
+            "in_stale_worktrees": len(stale),
+            "newest_canon": newest(canon),
+            "newest_anywhere": newest(files),
+            "verdict": ("слепота журнала: свежий след в каноне есть, session-log "
+                        "не подключён — источник"
+                        if newest(canon) >= "2026-11-05" else
+                        ("след только в разборе/старом: статус не зафиксирован — "
+                         "требуется держатель"
+                         if newest(canon) <= "2026-11-04" else
+                         "след в каноне средней давности — подтвердить держателем")),
+        })
+    return out
 
 
 def main(argv: list[str]) -> int:
