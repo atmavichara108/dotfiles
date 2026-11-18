@@ -108,6 +108,31 @@ def _registry_agent(sid):
     return None
 
 
+def dead_addrs():
+    """Адреса, помеченные мёртвыми в peer-registry (СЛОВО ВЛАДЕЛЬЦА 18.11).
+
+    КОРЕНЬ (inc. meta-wake-loop-20261116 + «почему письмо не пришло» 18.11):
+    API не видит смерти — сессия с исчерпанной квотой модели отвечает 200 и
+    preflight её пропускает, тогда как она не может прочитать письмо. Петля
+    «непрочитано → зов → квота → опять непрочитано» шла 2016 раз за 6 дней.
+    Реестр — единственный источник, который об этом знает: строка
+    «Мёртвый адрес: <sid>» (блок peer-registry, см. строки 53-57).
+    НЕ будим такие адреса — письмо остаётся в ящике, зов в журнал не идёт.
+    """
+    dead = set()
+    try:
+        text = open(PEER_REGISTRY, encoding="utf-8").read()
+    except OSError:
+        return dead
+    for line in text.splitlines():
+        # Формат строки: «2. **Мёртвый адрес:** <sid> — ...» (markdown-жирный).
+        m = re.search(r"[Мм]ёртв\w*\s+адрес[^\s:]*\**\s*:\**\s*(ses_[A-Za-z0-9]+)",
+                      line)
+        if m:
+            dead.add(m.group(1))
+    return dead
+
+
 def preflight(sid):
     """-> (ok: bool, reason: str, session_data)"""
     req = urllib.request.Request(f"{ENDPOINT}/api/session/{sid}",
@@ -222,10 +247,24 @@ def main(argv):
         # тех зовём (те же предпроверки и лимит), текст нейтральный.
         home = os.path.expanduser("~/.local/share/ship-mail/inbox")
         woken = 0
+        dead = dead_addrs()  # реестр говорит «мёртв» → письмо в ящике, зова нет
         if os.path.isdir(home):
             for sid in sorted(os.listdir(home)):
                 box = os.path.join(home, sid)
                 if not os.path.isdir(box):
+                    continue
+                if sid in dead:
+                    n = len([f for f in os.listdir(box)
+                             if f.endswith(".md") and os.path.isfile(
+                                 os.path.join(box, f))])
+                    if n:
+                        journal({"ts": int(time.time()), "sid": sid,
+                                 "result": "refused",
+                                 "reason": "адрес мёртв по peer-registry — "
+                                           "письмо в ящике, зов не будит",
+                                 "unread": n})
+                        print(f"wake-sweep: {sid} {n} писем, адрес мёртв по "
+                              f"реестру — пропуск (письмо в ящике)")
                     continue
                 n = len([f for f in os.listdir(box)
                          if f.endswith(".md") and os.path.isfile(
