@@ -1,7 +1,7 @@
 ---
 description: "Офис Серплюкс (Serp-office) — primary представительства проекта SERPLUX: портфель, коммуникации, телеграм-канал только от Голоса Корабля (@AllIsMaya), администрирование продукта. Красная линия: credentials.json не читать НИКОГДА."
 mode: primary
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.2
 steps: 60
 permission:

@@ -1,7 +1,7 @@
 ---
 description: Bash-специалист. Пишет/правит shell-скрипты, автоматизации, хуки, cron-задачи, systemd-юниты.
 mode: subagent
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.1
 steps: 40
 permission:

@@ -124,7 +124,8 @@ keys = [
     Key([mod, "shift"], "period", lazy.window.toscreen(1), desc="Move window to next monitor"),
     Key([mod, "shift"], "comma", lazy.window.toscreen(0), desc="Move window to prev monitor"),
     Key([mod], "F6", lazy.spawn(os.path.expanduser("~/.local/bin/monitor-setup")), desc="Detect monitors"),
-    Key([mod], "F8", lazy.spawn("bash /home/rudra/Projects/ability-lab/.cache/voice-pilot/voice-input-opencode.sh"), desc="Toggle voice input for OpenCode (local STT, no auto-send)"),
+    Key([mod], "F8", lazy.spawn("bash /home/rudra/Projects/ability-lab/.cache/voice-pilot/voice-input-opencode.sh"), desc="Toggle voice input for OpenCode (local STT → clipboard only, no auto-send)"),
+    Key([mod, "shift"], "F8", lazy.spawn("bash /home/rudra/Projects/ability-lab/tools/voice-wer/wer_batch_gui.sh"), desc="Acceptance batch: voice input phrases (21) — window: phrase, countdown, record"),
     Key([mod], "XF86TouchpadToggle", lazy.spawn("bash /home/rudra/Projects/ability-lab/.cache/voice-pilot/voice-input-opencode.sh"), desc="Fallback: ноутбучная F8 — voice input OpenCode (local STT)"),
 
     KeyChord([mod], "p", [

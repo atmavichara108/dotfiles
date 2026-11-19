@@ -1,7 +1,7 @@
 ---
 description: "Senior-dev — субагент разработки Офиса Серплюкс: код, тесты, багфиксы в serp с живым прогоном; отчитывается Serp-office. Красная линия: credentials.json не читать НИКОГДА."
 mode: subagent
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.2
 steps: 60
 permission:

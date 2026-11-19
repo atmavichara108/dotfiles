@@ -1,7 +1,7 @@
 ---
 description: "Институт Передовых Технологий (Institute) — primary ведомства исследований: read-research по sourced evidence, карты сырья, варианты архитектур с гейтами. Не канонизирует и не внедряет."
 mode: primary
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.3
 steps: 60
 permission:
