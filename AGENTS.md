@@ -87,13 +87,18 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 | **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
 | **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
 | **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `vercel/recursive/flint-v1.0` · Free (пин по решению Ротатора 19.11: прежний `nvidia/moonshotai/kimi-k2.6` в каталоге отсутствовал) |
-| **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `anymodel/cx/gpt-5.6-sol` |
-| **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `nvidia/z-ai/glm-5.3-flash` · Strategic |
+| **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `nvidia/meta/muse-glimmer-30b` · Free |
+| **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `nvidia/meta/muse-glimmer-30b` · Free |
 | **system-ops** | subagent (global) | approval-gated high-risk apply planning | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
 | **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `nvidia/poolside/laguna-xs-2.1` · Free (пин по решению Ротатора 19.11: прежний провайдер AnyModel выкинут словом владельца 18.11) |
 | **researcher** | subagent (global) | Read-only research: code, files, git, docs, web | `opencode-go/glm-5.3-flash` · Go |
-| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `nvidia/z-ai/glm-5.3-flash` · Strategic |
+| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `nvidia/meta/muse-glimmer-30b` · Free |
 
+
+Таблица выше — зеркало фактических пинов: для dotfiles-агентов с локальным
+файлом `.opencode/agent/<имя>.md` действует локальный пин (он перекрывает
+глобальный слой `opencode-global/.config/opencode/agent/`), для глобальных
+агентов — глобальный. Проверено 19.11.
 Роутинг субагентов задаёт primary `sysop`: `task(agent=…)` под конкретную задачу. Нет задачи из чьей-то зоны → primary делает сам, для несвойственной себе работы не молча отдаёт `general`.
 
 Canonical global system-audit prompt: `opencode-global/.config/opencode/agent/system-audit.md`
