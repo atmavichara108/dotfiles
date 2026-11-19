@@ -77,8 +77,6 @@ def main() -> int:
     (agents / "bad-model.md").write_text(
         agent_md("nvidia/moonshotai/kimi-k2.6"), encoding="utf-8")
     (agents / "bad-provider.md").write_text(
-        agent_md("nvidia/whatever"), encoding="utf-8")
-    (agents / "bad-provider.md").write_text(
         agent_md("nosuchprov/whatever"), encoding="utf-8")
     (agents / "template.md").write_text(agent_md("{{МОДЕЛЬ}}"), encoding="utf-8")
     (agents / "nopin.md").write_text(agent_md(None), encoding="utf-8")
