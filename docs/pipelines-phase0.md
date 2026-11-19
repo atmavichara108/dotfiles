@@ -72,7 +72,6 @@ stow -n systemd 2>&1
 ```
 
 ### Что будет захвачено:
-- `taskchampion-server.service`
 - `tmux-tpm-update.service`
 - `tmux-tpm-update.timer`
 - `default.target.wants/` (если не пусто)
