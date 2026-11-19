@@ -86,11 +86,11 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 | **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `amd-radeon/DeepSeek-V4.1-Flash` · Strategic |
 | **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `amd-radeon/DeepSeek-V4.1-Flash` · Strategic |
 | **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `amd-radeon/GLM-5.3-Flash` · Strategic |
-| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `nvidia/meta/muse-glimmer-30b` · Free |
+| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `vercel/recursive/flint-v1.0` · Free (пин по решению Ротатора 19.11: прежний `nvidia/moonshotai/kimi-k2.6` в каталоге отсутствовал) |
 | **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `anymodel/cx/gpt-5.6-sol` |
 | **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `amd-radeon/GLM-5.3-Flash` · Strategic |
 | **system-ops** | subagent (global) | approval-gated high-risk apply planning | `amd-radeon/DeepSeek-V4.1-Flash` · Strategic |
-| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `amd-radeon/GLM-5.3-Flash` · Strategic |
+| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `nvidia/poolside/laguna-xs-2.1` · Free (пин по решению Ротатора 19.11: прежний провайдер AnyModel выкинут словом владельца 18.11) |
 | **researcher** | subagent (global) | Read-only research: code, files, git, docs, web | `opencode-go/glm-5.3-flash` · Go |
 | **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `amd-radeon/GLM-5.3-Flash` · Strategic |
 
