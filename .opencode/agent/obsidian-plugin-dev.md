@@ -1,7 +1,7 @@
 ---
 description: "Служитель Обсидиан — субагент разработчика плагинов Обсидиан (TypeScript): пишет и переписывает плагины в песочнице волта; не трогает код приложений Корабля. Канон: Р-016, мандат obsidian-plugin-agent-20261025."
 mode: subagent
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.1
 steps: 50
 permission:

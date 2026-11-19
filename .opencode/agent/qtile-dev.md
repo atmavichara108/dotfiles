@@ -1,7 +1,7 @@
 ---
 description: Qtile-специалист. Пишет/правит конфиги qtile, виджеты, хуки, keybindings, screen layouts. Python + qtile API.
 mode: subagent
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.1
 steps: 40
 permission:
