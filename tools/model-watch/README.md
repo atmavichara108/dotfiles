@@ -52,3 +52,28 @@ jev-1.13 и jev-1.13-free есть в первоисточнике models.dev и
 от 2026-09-27) их не содержит; `opencode models` кэш не обновляет.
 Декларация в opencode.jsonc оставлена. Смоук `opencode run -m opencode-go/jev-1.13-free`
 даёт `Model unavailable` до обновления кэша (перезапуск сервера OpenCode).
+
+## Проверка пинов агентов (pin-check)
+
+Пин модели, которой нет в каталоге, OpenCode принимает БЕЗ ошибки
+(`POST /api/session/<id>/model` → 204) и на запросе тихо уводит сессию на
+дефолтную модель агента (инцидент 2026-11-19: verifier
+`nvidia/moonshotai/kimi-k2.6` → AMD-ключ с лимитом 1 запрос/сутки).
+
+    python3 tools/model-watch/pin-check.py                 # оба слоя dotfiles
+    python3 tools/model-watch/pin-check.py --staged         # то, что в коммите
+    python3 tools/model-watch/pin-check.py --strict         # любой битый пин = FAIL
+    python3 tools/model-watch/pin-check.py --offline        # models.dev (advisory)
+    python3 tools/model-watch/pin-check-selftest.py         # selftest (зелёный прогон)
+
+Каталог — только `GET /api/model` живой машины (канон метода): у
+openai-compatible провайдеров `/api/provider` пуст и это НЕ значит «моделей нет».
+Токен — `~/.config/opencode/service.json` (тот же путь, что у `wake.py`).
+
+Diff-гейт: в режиме `--staged` блокируется только НОВЫЙ битый пин (не битый в
+HEAD). Уже сломанный пин печатается как ⚠️, но не блокирует чужие коммиты —
+иначе один старый пин встанет весь флот. `--strict` отключает это правило.
+
+Отчёт (меты-only, без секретов): `~/.local/state/opencode/model-watch/pin-report.json`.
+
+Обход (осознанный): `PIN_OK=1` — причина обязательна в сообщении коммита.
