@@ -12,6 +12,27 @@
 // обычным permission-контуром и здесь не дублируются.
 
 import { Plugin } from "@opencode/plugin"
+import { execFile } from "node:child_process"
+
+// Детерминированное автописание гейта (приложение 1, требования СБ):
+// ЧТО/КУДА/РИСК — разбор команды, ЗАЧЕМ — дословно из цели. Секретный путь и
+// опасные классы — блок внутри разбора. Слоты ступени 4 идут тем же путём
+// (selftest tools/exfil-gate).
+const DESCRIBE = "/home/rudra/dotfiles/tools/exfil-gate/describe.py"
+
+function describeCmd(cmd: string, goal: string): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(
+      "/usr/bin/env",
+      ["python3", DESCRIBE, cmd, "--goal", goal],
+      { timeout: 10000 },
+      (_err, stdout, stderr) => {
+        const out = String(stdout ?? "").trim()
+        resolve(out || String(stderr ?? "").trim().slice(0, 400))
+      },
+    )
+  })
+}
 
 export default Plugin.define({
   id: "exfil-guard",
@@ -30,10 +51,13 @@ export default Plugin.define({
         // только вложенные/замаскированные случаи.
         if (NET_PREFIX_RE.test(cmd.trim())) return
         if (NET_RE.test(cmd)) {
+          const goal = process.env.SESSION_GOAL ?? "цель не зафиксирована"
+          const desc = await describeCmd(cmd, goal)
           throw new Error(
             "ExfilGuard: исходящая сетевая команда обнаружена не напрямую. " +
             "Разрешаю только через permission-контур (curl*/wget*/ssh*/scp*/rsync*) " +
-            "или осознанно EXFIL_OK=1.",
+            "или осознанно EXFIL_OK=1.\n" +
+            "--- автописание гейта (что/куда/риск) ---\n" + desc,
           )
         }
       } catch (err) {

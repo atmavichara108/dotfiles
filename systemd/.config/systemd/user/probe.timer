@@ -1,0 +1,11 @@
+[Unit]
+Description=Суточная свежесть проб провайдеров (24h; слово владельца 2026-10-29, реестр Р-Д-004)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=24h
+AccuracySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

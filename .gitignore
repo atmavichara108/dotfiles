@@ -137,3 +137,6 @@ tools/peer-comms/claims.jsonl
 
 # secrets-guard как инструмент (гейт путей секретов) трекается, хотя имя похоже на секрет
 !opencode-global/.config/opencode/plugins/secrets-guard.ts
+
+# операционные журналы инструментов (sys-health, follower, anatomy, linkage, pacman)
+/logs/
