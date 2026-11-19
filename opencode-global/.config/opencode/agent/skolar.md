@@ -1,7 +1,7 @@
 ---
 description: "Школа концептуальных изысканий (Skolar) — primary исследовательского крыла ХПФ (не путать с Храмом — Philosopher, lead): перевод внешней мудрости в карточки-кандидаты доктрины, справки для гейт-вердиктов (М-001), выращивание tension_with для карточек."
 mode: primary
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.3
 steps: 60
 permission:

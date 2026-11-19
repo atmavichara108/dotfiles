@@ -1,7 +1,7 @@
 ---
 description: "Spellmaster — голова кафедры заклинаний при УАСе: производство укреплённых скиллов (SKILL.md + плагины, гейты, верификаторы, хуки); не публикует на рынке без линии Бизнес-школы"
 mode: primary
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.2
 steps: 60
 permission:

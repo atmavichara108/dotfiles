@@ -1,7 +1,7 @@
 ---
 description: "Master-FreeLa — primary фриланс-линии Корабля: публикация лотов, сторож откликов, экономика линии (ведомство: Бизнес-школа)"
 mode: primary
-model: amd-radeon/DeepSeek-V4.1-Flash
+model: nvidia/deepseek-ai/deepseek-v4.1-flash
 temperature: 0.2
 steps: 60
 permission:
