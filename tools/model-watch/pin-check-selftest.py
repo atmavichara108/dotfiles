@@ -80,11 +80,12 @@ def main() -> int:
         agent_md("nosuchprov/whatever"), encoding="utf-8")
     (agents / "template.md").write_text(agent_md("{{МОДЕЛЬ}}"), encoding="utf-8")
     (agents / "nopin.md").write_text(agent_md(None), encoding="utf-8")
+    (agents / "malformed.md").write_text(agent_md("notaprovider-model"), encoding="utf-8")
 
     pins = mod.pins_from_dir(agents)
     names = {a for a, _ in pins}
     ok("сбор: только агенты с пином",
-       names == {"good", "bad-model", "bad-provider"}, f"получили {names}")
+       names == {"good", "bad-model", "bad-provider", "malformed"}, f"получили {names}")
 
     catalog = {("nvidia", "meta/muse-glimmer-30b")}
     providers = {"nvidia"}
@@ -95,6 +96,12 @@ def main() -> int:
        by_agent.get("bad-model") == "MISSING_MODEL", str(by_agent))
     ok("вердикт: провайдера нет → MISSING_PROVIDER",
        by_agent.get("bad-provider") == "MISSING_PROVIDER", str(by_agent))
+    ok("вердикт: неразбираемый пин → MALFORMED",
+       by_agent.get("malformed") == "MALFORMED", str(by_agent))
+    ok("вердикт: is_pin_broken совпадает с вердиктом check()",
+       mod.is_pin_broken("nvidia/meta/muse-glimmer-30b", catalog) is False and
+       mod.is_pin_broken("nvidia/moonshotai/kimi-k2.6", catalog) is True and
+       mod.is_pin_broken("notaprovider-model", catalog) is True, "")
 
     # --- 3. CLI: битый пин блокирует --------------------------------------
     catalog_file = tmp / "catalog.json"
@@ -119,7 +126,7 @@ def main() -> int:
     if report.exists():
         data = json.loads(report.read_text(encoding="utf-8"))
         ok("отчёт: status=FAIL и есть находки",
-           data.get("status") == "FAIL" and data.get("pins_bad") == 2, json.dumps(data)[:300])
+           data.get("status") == "FAIL" and data.get("pins_bad") == 3, json.dumps(data)[:300])
         ok("отчёт: без секретов/путей-в-куках",
            "password" not in json.dumps(data).lower(), "")
 
@@ -151,12 +158,30 @@ def main() -> int:
     try:
         data = json.loads(rc.stdout)
         json_ok = (data.get("status") == "FAIL" and
-                   len(data.get("new_findings", [])) == 2 and
+                   len(data.get("new_findings", [])) == 3 and
                    data.get("known_findings") == [])
     except json.JSONDecodeError as exc:
         json_ok = False
         data = {"err": str(exc)}
     ok("CLI: --json отдаёт валидный JSON с находками", json_ok, json.dumps(data)[:300])
+
+    # --- 5b. пустой каталог → WARN и пропуск (не блокируем флот) -----------
+    empty_catalog = tmp / "empty-catalog.json"
+    empty_catalog.write_text("[]", encoding="utf-8")
+    rc = run(["--agents-dir", str(agents), "--catalog-file", str(empty_catalog)])
+    ok("CLI: пустой каталог → exit 0 + WARN",
+       rc.returncode == 0 and "WARN" in rc.stdout, f"rc={rc.returncode} {rc.stdout[:200]}")
+
+    # --- 5c. битая структура снапшота → явная ошибка, не тихая --------------
+    broken_snapshot = tmp / "broken-snapshot.json"
+    broken_snapshot.write_text(json.dumps({"providers": {"nvidia": "строка"}}),
+                               encoding="utf-8")
+    rc = run(["--agents-dir", str(agents), "--offline",
+              "--snapshot", str(broken_snapshot)])
+    ok("CLI: битый снапшот → exit 0 + WARN (ошибка не проглатывается молча)",
+       rc.returncode == 0 and "WARN" in rc.stdout, f"rc={rc.returncode} {rc.stdout[:200]}")
+    ok("CLI: битый снапшот — в сообщении видна причина",
+       "провайдер" in rc.stdout or "не объект" in rc.stdout, rc.stdout[:300])
 
     # --- 6. недоступный живой каталог → PASS с предупреждением ------------
     rc = run(["--agents-dir", str(agents)], {"OPENCODE_ENDPOINT": "http://127.0.0.1:1"})

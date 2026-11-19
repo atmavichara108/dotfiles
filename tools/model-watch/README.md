@@ -64,7 +64,7 @@ jev-1.13 и jev-1.13-free есть в первоисточнике models.dev и
     python3 tools/model-watch/pin-check.py --staged         # то, что в коммите
     python3 tools/model-watch/pin-check.py --strict         # любой битый пин = FAIL
     python3 tools/model-watch/pin-check.py --offline        # models.dev (advisory)
-    python3 tools/model-watch/pin-check-selftest.py         # selftest (25 проверок)
+    python3 tools/model-watch/pin-check-selftest.py         # selftest (зелёный прогон)
 
 Каталог — только `GET /api/model` живой машины (канон метода): у
 openai-compatible провайдеров `/api/provider` пуст и это НЕ значит «моделей нет».

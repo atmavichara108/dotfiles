@@ -71,6 +71,9 @@ DEFAULT_AGENT_DIRS = (
 
 PIN_RE = re.compile(r"^model:\s*(\S+)\s*$", re.M)
 TEMPLATE_MARK = ("{", "}", "<", ">")
+# Агентский каталог — каталог с именем ровно "agent" (тот же отбор, что и в
+# гейте pre-commit: '(^|/)agent/[^/]+\.md$').
+AGENT_PATH_RE = re.compile(r"(^|/)agent/[^/]+\.md$")
 
 
 def die(msg: str, code: int = 2) -> None:
@@ -129,6 +132,10 @@ def pins_from_index(repo: Path) -> list[tuple[str, str]]:
         if len(parts) < 4:
             continue
         sha, path = parts[1], parts[3]
+        # Тот же отбор, что и у pins_from_ref и у гейта в pre-commit:
+        # агентский каталог — это каталог с именем ровно "agent".
+        if not AGENT_PATH_RE.search(path):
+            continue
         blob = subprocess.run(["git", "cat-file", "blob", sha], cwd=repo, env=env,
                               capture_output=True, text=True, timeout=60)
         if blob.returncode != 0:
@@ -152,7 +159,7 @@ def pins_from_ref(ref: str, repo: Path) -> list[tuple[str, str]]:
     if listing.returncode != 0:
         return out
     for path in listing.stdout.splitlines():
-        if not re.search(r"(^|/)agent/[^/]+\.md$", path):
+        if not AGENT_PATH_RE.search(path):
             continue
         blob = subprocess.run(["git", "show", f"{ref}:{path}"], cwd=repo, env=env,
                               capture_output=True, text=True, timeout=60)
@@ -187,14 +194,36 @@ def catalog_live() -> tuple[set[tuple[str, str]], set[str]]:
 
 
 def catalog_offline(path: Path) -> tuple[set[tuple[str, str]], set[str]]:
-    """Снапшот models.dev: providers.<id>.models.<modelID>."""
+    """Снапшот models.dev: providers.<id>.models.<modelID>.
+
+    Структура проверяется: битый снапшот должен дать явную ошибку, а не молча
+    превратиться в «каталог без моделей» (иначе проверка пинов станет
+    фиктивно-зелёной или фиктивно-красной).
+    """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("снапшот: ожидался объект JSON")
     providers = data.get("providers", {})
+    if not isinstance(providers, dict):
+        raise ValueError("снапшот: providers — не объект")
     pairs = set()
     for prov, block in providers.items():
-        for mid in (block or {}).get("models", {}):
+        if not isinstance(block, dict):
+            raise ValueError(f"снапшот: провайдер {prov} — не объект")
+        models = block.get("models", {})
+        if not isinstance(models, dict):
+            raise ValueError(f"снапшот: models провайдера {prov} — не объект")
+        for mid in models:
             pairs.add((prov, mid))
     return pairs, set(providers)
+
+
+def is_pin_broken(pin: str, catalog: set[tuple[str, str]]) -> bool:
+    """Пин не разрешается в каталоге (включая неразбираемый формат)."""
+    parts = split_pin(pin)
+    if parts is None:
+        return True
+    return parts not in catalog
 
 
 def collect_pins(args: argparse.Namespace) -> list[tuple[str, str]]:
@@ -317,6 +346,14 @@ def main(argv: list[str] | None = None) -> int:
         write_report(source, pins, [], "SKIPPED_NO_CATALOG")
         return 0
 
+    if not catalog:
+        # Пустой ответ сервера неотличим от сломанного сервера: трактовать его
+        # как «все модели исчезли» нельзя (ложная тревога на весь флот), молча
+        # пропускать — тоже нельзя. Явный WARN и пропуск проверки.
+        print("pin-check: WARN — каталог пуст (модели не вернулись); проверка пропущена")
+        write_report(source, pins, [], "SKIPPED_EMPTY_CATALOG")
+        return 0
+
     findings = check(pins, catalog, providers)
 
     # Diff-гейт: в --staged блокируем только НОВЫЕ битые пины; уже сломанный
@@ -327,7 +364,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.staged and not args.strict:
         baseline = pins_from_ref(args.baseline, Path(args.repo))
         baseline_broken = {pin for _, pin in baseline
-                           if (split_pin(pin) or ("", "")) not in catalog}
+                           if is_pin_broken(pin, catalog)}
         new = split_new_findings(findings, baseline_broken)
         known = [f for f in findings if f not in new]
 
