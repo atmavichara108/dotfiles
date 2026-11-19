@@ -17,7 +17,9 @@ append-only реестре; TTL просрочки превращает пуст
   waits.py done <id>            # ожидание снято (ответ получен/отказ)
   waits.py stitch <id> --reply-to <file|id> --answered-by <sid> \
               --answered-at <ISO> [--evidence TEXT]  # пришить ответ (Р-092)
-  waits.py stitch-report        # ответы без пришивки (lag N), вне блока просрочки
+  waits.py stitch-report        # ответы без пришивки: закрыто, а пришивки нет
+                                # (пометка «ответ найден/не найден» + команда
+                                # починки; окно находки — 24ч, старые — сводкой)
   waits.py sweep [--ping]       # ответ есть -> stitch; нет ответа -> ping/escalate
   waits.py ping <id>            # пинок: каденс TTL удваивается (backoff до срока)
   waits.py autoping             # авто-пинг из цикла пробуждений (спека
@@ -76,6 +78,13 @@ DEFAULT_STATE = "open"
 # Потолок backoff: даже ожидание без дедлайна не пингуется чаще, чем раз в сутки
 # (страховка от вечного цикла, если deadline_minutes забыли поставить).
 MAX_TTL_MINUTES = 24 * 60
+# Окно жизни находки в отчёте «ответ без пришивки» (cmd_stitch_report).
+# Это жизненный цикл САМОЙ НАХОДКИ (сколько живёт сигнал в inbox), а НЕ
+# дедлайн ожидания: `deadline_minutes` строки измеряет срок исполнения
+# ожидания и не должен убирать непришитый ответ из отчёта быстрее, чем его
+# успели пришить. Переопределить окно может только `op_deadline_minutes`
+# самой записи отчёта (поле пришивки), но не дедлайн ожидания.
+REPORT_WINDOW_MINUTES = 24 * 60
 
 
 def _rows(path):
@@ -213,6 +222,17 @@ def cmd_done(wid):
     hit[0]["closed"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     _append(DONE, hit[0])
     print(f"DONE {wid}: ожидание снято")
+    # Ответ без пришивки — указываем сразу, где он остался (дефект
+    # BF-20261119-02: закрытие молча теряло связь ответа с ожиданием,
+    # а отчёт показывал здоровые строки вместо таких).
+    answered_at, reply = _detect_reply(hit[0])
+    already = any(r.get("op") in ("stitch", "stitch-recovery")
+                  for r in _rows(DONE) if r.get("id") == wid)
+    if answered_at and not already:
+        print(f"  ВНИМАНИЕ: ответ от {hit[0].get('who_owes')} найден ({reply}) — "
+              f"ожидание закрыто БЕЗ пришивки; оформите пришивку: "
+              f"waits.py stitch {wid} --recover --evidence \"<чем доказан ответ>\" "
+              f"--authorized-by \"<кто санкционировал>\" --answered-at {answered_at}")
     return 0
 
 
@@ -473,27 +493,67 @@ def cmd_stitch(a):
 
 
 def cmd_stitch_report(_a=None):
-    """Строчки «ответ без пришивки»: stitch-closed вне блока просрочки."""
+    """Строчки «ответ без пришивки»: ожидание закрыто, ответ есть, пришивки нет.
+
+    Дефект 19.11 (Мастерская Багфикс, BF-20261119-02): отбор был ИНВЕРТИРОВАН —
+    в отчёт попадали строки, пришитые штатно (op=stitch, state=answered), а
+    строки, закрытые через done БЕЗ пришивки, не показывались вовсе. На живых
+    данных это дало ложные «ОТВЕТ БЕЗ ПРИШИВКИ» на здоровых строках (f0f0ab51)
+    и ноль сигнала по реально непришитым (f0d4c8e8, f0ed90f4) — то есть отчёт
+    показывал ровно не то, что должен.
+
+    Теперь отчёт — это закрытые без пришивки строки (в журнале закрытий у id
+    нет записи op=stitch/stitch-recovery), у которых в яжике ожидающего есть
+    ответ. Пометки op=close-note — не закрытия, в отчёт не идут. Окно находки —
+    REPORT_WINDOW_MINUTES (24ч), переопределяется только op_deadline_minutes
+    самой записи; deadline_minutes ожидания окном отчёта не является (он
+    измеряет срок исполнения ожидания). Старые строки считаются, но не
+    шумят подробностями.
+    """
+    rows = _rows(DONE)
+    stitched_ids = {r.get("id") for r in rows
+                    if r.get("op") in ("stitch", "stitch-recovery")}
     n = 0
+    old = []
+    old_window = REPORT_WINDOW_MINUTES
+    seen = set()
     now = time.time()
-    for r in _rows(DONE):
-        if r.get("op") != "stitch" or _state(r) != "answered":
+    for r in rows:
+        if r.get("op") not in (None, ""):
+            continue  # close-note и прочие пометки — не закрытие ожидания
+        wid = r.get("id")
+        if wid in stitched_ids or wid in seen:
             continue
-        stitched_ts = _parse_ts(r.get("stitched_at"))
-        if stitched_ts is None:
-            continue
-        deadline = r.get("op_deadline_minutes") or 24 * 60
+        seen.add(wid)
+        deadline = r.get("op_deadline_minutes") or REPORT_WINDOW_MINUTES
         try:
             deadline = int(deadline)
         except Exception:
-            deadline = 24 * 60
-        age_minutes = (now - stitched_ts) / 60.0
-        if age_minutes >= deadline:
+            deadline = REPORT_WINDOW_MINUTES
+        closed_ts = _parse_ts(r.get("closed"))
+        if closed_ts is None:
+            raw = r.get("since_ts")
+            closed_ts = float(raw) if isinstance(raw, (int, float)) else None
+        if closed_ts is None or (now - closed_ts) / 60.0 >= deadline:
+            old.append(wid)
+            old_window = deadline
             continue
+        answered_at, reply = _detect_reply(r)
+        mark = "ответ найден" if reply else "ответ не найден"
         n += 1
-        print(f"ОТВЕТ БЕЗ ПРИШИВКИ (lag {r.get('lag_minutes')}м) {r.get('id')} "
-              f"| ответил {r.get('answered_by')} | reply_to {r.get('reply_to')} "
-              f"| {str(r.get('what'))}")
+        print(f"ОТВЕТ БЕЗ ПРИШИВКИ ({mark}) {wid} "
+              f"| закрыто {r.get('closed') or '?'} "
+              f"| ждал {r.get('who_waits') or '?'} "
+              f"| ждал от {r.get('who_owes') or '?'} "
+              f"| reply_to {reply or '—'} | {str(r.get('what') or '')} "
+              f"| починить: waits.py stitch {wid} --recover "
+              f"--evidence \"<чем доказан ответ>\" --authorized-by \"<кто санкционировал>\" "
+              f"--answered-at {answered_at or '<ISO ответа>'}")
+    if old:
+        shown = ", ".join(str(i) for i in old[:10])
+        more = " …" if len(old) > 10 else ""
+        print(f"СТАРЫЕ БЕЗ ПРИШИВКИ ({len(old)}, старше окна {old_window}м): "
+              f"{shown}{more} — восстановление по требованию")
     print(f"STITCH-REPORT {n}")
     return 0
 
