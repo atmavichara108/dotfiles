@@ -17,7 +17,9 @@ append-only реестре; TTL просрочки превращает пуст
   waits.py done <id>            # ожидание снято (ответ получен/отказ)
   waits.py stitch <id> --reply-to <file|id> --answered-by <sid> \
               --answered-at <ISO> [--evidence TEXT]  # пришить ответ (Р-092)
-  waits.py stitch-report        # ответы без пришивки (lag N), вне блока просрочки
+  waits.py stitch-report        # ответы без пришивки: закрыто, а пришивки нет
+                                # (пометка «ответ найден/не найден» + команда
+                                # починки; окно находки — 24ч, старые — сводкой)
   waits.py sweep [--ping]       # ответ есть -> stitch; нет ответа -> ping/escalate
   waits.py ping <id>            # пинок: каденс TTL удваивается (backoff до срока)
   waits.py autoping             # авто-пинг из цикла пробуждений (спека
@@ -76,6 +78,13 @@ DEFAULT_STATE = "open"
 # Потолок backoff: даже ожидание без дедлайна не пингуется чаще, чем раз в сутки
 # (страховка от вечного цикла, если deadline_minutes забыли поставить).
 MAX_TTL_MINUTES = 24 * 60
+# Окно жизни находки в отчёте «ответ без пришивки» (cmd_stitch_report).
+# Это жизненный цикл САМОЙ НАХОДКИ (сколько живёт сигнал в inbox), а НЕ
+# дедлайн ожидания: `deadline_minutes` строки измеряет срок исполнения
+# ожидания и не должен убирать непришитый ответ из отчёта быстрее, чем его
+# успели пришить. Переопределить окно может только `op_deadline_minutes`
+# самой записи отчёта (поле пришивки), но не дедлайн ожидания.
+REPORT_WINDOW_MINUTES = 24 * 60
 
 
 def _rows(path):
@@ -514,11 +523,11 @@ def cmd_stitch_report(_a=None):
         if wid in stitched_ids or wid in seen:
             continue
         seen.add(wid)
-        deadline = r.get("op_deadline_minutes") or 24 * 60
+        deadline = r.get("op_deadline_minutes") or REPORT_WINDOW_MINUTES
         try:
             deadline = int(deadline)
         except Exception:
-            deadline = 24 * 60
+            deadline = REPORT_WINDOW_MINUTES
         closed_ts = _parse_ts(r.get("closed"))
         if closed_ts is None:
             raw = r.get("since_ts")

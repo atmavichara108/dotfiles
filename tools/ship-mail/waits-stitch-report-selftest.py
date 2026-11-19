@@ -241,5 +241,17 @@ check("rep00010 — ровно одна строка отчёта",
       r.stdout.strip())
 check("STITCH-REPORT 1", "STITCH-REPORT 1" in r.stdout, r.stdout.strip())
 
+print("=== 11) op_deadline_minutes на записи переопределяет окно находки ===")
+home, env = make_home()
+row = seed_wait(home, "rep00011", since_ts=now - 5 * hour, closed_ts=now - 2 * hour)
+row["op_deadline_minutes"] = 60  # окно находки час, закрыто два часа назад → старая
+with open(os.path.join(home, "waits-done.jsonl"), "w", encoding="utf-8") as f:
+    f.write(json.dumps(row, ensure_ascii=False) + "\n")
+r = run(env, "stitch-report")
+check("rc=0", r.returncode == 0, f"rc={r.returncode}, out={r.stdout}")
+check("rep00011 ушёл в сводку старых (окно 60м < возраста 2ч)",
+      "rep00011" not in r.stdout.split("СТАРЫЕ")[0], r.stdout.strip())
+check("STITCH-REPORT 0", "STITCH-REPORT 0" in r.stdout, r.stdout.strip())
+
 print(f"=== {passed} pass, {failed} fail ===")
 sys.exit(0 if failed == 0 else 1)
