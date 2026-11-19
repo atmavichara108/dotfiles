@@ -1,7 +1,7 @@
 ---
 description: "Read-only quality, style and domain reviewer for dotfiles"
 mode: subagent
-model: anymodel/cc/claude-sonnet-5
+model: nvidia/poolside/laguna-xs-2.1
 temperature: 0.1
 steps: 30
 permission:
