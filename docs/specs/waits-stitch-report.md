@@ -59,10 +59,12 @@
 
 ## Приёмка
 
-1. `python3 tools/ship-mail/waits-stitch-report-selftest.py` — 25/25:
+1. `python3 tools/ship-mail/waits-stitch-report-selftest.py` — 35/35:
    пришитые штатно и восстановленные строки в отчёт НЕ попадают; закрытые без
    пришивки — попадают (с пометкой и командой починки); `op=close-note` — не
-   попадает; `done` даёт ВНИМАНИЕ.
+   попадает; `done` даёт ВНИМАНИЕ; строка без `closed` берёт возраст по
+   `since_ts`; строка без меток времени уходит в сводку старых; на один `id` —
+   ровно одна строка отчёта.
 2. Регресс без падений: `waits-autoping-selftest.py` (16/16),
    `waits-backoff-selftest.py` (9/9), `waits-event-at-selftest.py` (6/6),
    `waits-stitch-recovery-selftest.py` (16/16), `tests-waits-dedup.sh` (4/4),
@@ -76,4 +78,7 @@
 
 - 2026-11-19 — инцидент BF-20261119-02: инвертированный отбор. Фикс:
   `task/fix-waits-stitch-report-20261119` (`d7b7271`), запись инцидента —
-  `.opencode/memory/decisions.md` (`becfdf8`), спека — этот документ.
+  `.opencode/memory/decisions.md` (`becfdf8`), спека — этот документ
+  (`7349a70`); далее — правки по замечаниям рецензента (окно отчёта, покрытие
+  selftest, дрейф доки `report.md`) и инцидент BF-20261119-03 (субагент
+  переключил ветку в общем дереве — правило для промптов субагентам).
