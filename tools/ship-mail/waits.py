@@ -504,8 +504,10 @@ def cmd_stitch_report(_a=None):
 
     Теперь отчёт — это закрытые без пришивки строки (в журнале закрытий у id
     нет записи op=stitch/stitch-recovery), у которых в яжике ожидающего есть
-    ответ. Пометки op=close-note — не закрытия, в отчёт не идут. Живой цикл
-    24ч (op_deadline_minutes) — как у пришивок; старые строки считаются, но не
+    ответ. Пометки op=close-note — не закрытия, в отчёт не идут. Окно находки —
+    REPORT_WINDOW_MINUTES (24ч), переопределяется только op_deadline_minutes
+    самой записи; deadline_minutes ожидания окном отчёта не является (он
+    измеряет срок исполнения ожидания). Старые строки считаются, но не
     шумят подробностями.
     """
     rows = _rows(DONE)
@@ -513,7 +515,7 @@ def cmd_stitch_report(_a=None):
                     if r.get("op") in ("stitch", "stitch-recovery")}
     n = 0
     old = []
-    old_window = 24 * 60
+    old_window = REPORT_WINDOW_MINUTES
     seen = set()
     now = time.time()
     for r in rows:
