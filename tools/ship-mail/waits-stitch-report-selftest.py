@@ -206,5 +206,40 @@ check("rc=0", r.returncode == 0, f"rc={r.returncode}, out={r.stdout}")
 check("rep00007 НЕ показан", "rep00007" not in r.stdout, r.stdout.strip())
 check("STITCH-REPORT 0", "STITCH-REPORT 0" in r.stdout, r.stdout.strip())
 
+print("=== 8) нет поля closed, но свежий since_ts → попадает (fallback) ===")
+home, env = make_home()
+seed_wait(home, "rep00008", since_ts=now - 2 * hour, closed_ts=None)
+r = run(env, "stitch-report")
+check("rc=0", r.returncode == 0, f"rc={r.returncode}, out={r.stdout}")
+check("rep00008 показан", "rep00008" in r.stdout, r.stdout.strip())
+check("STITCH-REPORT 1", "STITCH-REPORT 1" in r.stdout, r.stdout.strip())
+
+print("=== 9) нет ни closed, ни since_ts → в сводку старых, не в подробности ===")
+home, env = make_home()
+bare = {"id": "rep00009", "who_waits": "ses_WAIT01", "who_owes": "ses_OWED01",
+        "what": "строка без меток времени", "state": "closed"}
+with open(os.path.join(home, "waits-done.jsonl"), "w", encoding="utf-8") as f:
+    f.write(json.dumps(bare, ensure_ascii=False) + "\n")
+r = run(env, "stitch-report")
+check("rc=0", r.returncode == 0, f"rc={r.returncode}, out={r.stdout}")
+check("rep00009 НЕ в подробностях", "rep00009" not in r.stdout.split("СТАРЫЕ")[0],
+      r.stdout.strip())
+check("есть сводка СТАРЫЕ БЕЗ ПРИШИВКИ", "СТАРЫЕ БЕЗ ПРИШИВКИ" in r.stdout,
+      r.stdout.strip())
+check("STITCH-REPORT 0", "STITCH-REPORT 0" in r.stdout, r.stdout.strip())
+
+print("=== 10) две записи журнала на один id → одна строка отчёта ===")
+home, env = make_home()
+seed_wait(home, "rep00010", since_ts=now - 5 * hour, closed_ts=now - 2 * hour)
+seed_wait(home, "rep00010", since_ts=now - 5 * hour, closed_ts=now - 90 * 60)
+seed_letter(home, "ses_WAIT01", "ses_OWED01", now - 3 * hour)
+r = run(env, "stitch-report")
+check("rc=0", r.returncode == 0, f"rc={r.returncode}, out={r.stdout}")
+check("rep00010 — ровно одна строка отчёта",
+      len([ln for ln in r.stdout.splitlines()
+           if ln.startswith("ОТВЕТ БЕЗ ПРИШИВКИ") and "rep00010" in ln]) == 1,
+      r.stdout.strip())
+check("STITCH-REPORT 1", "STITCH-REPORT 1" in r.stdout, r.stdout.strip())
+
 print(f"=== {passed} pass, {failed} fail ===")
 sys.exit(0 if failed == 0 else 1)

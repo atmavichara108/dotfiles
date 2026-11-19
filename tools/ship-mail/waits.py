@@ -504,6 +504,7 @@ def cmd_stitch_report(_a=None):
                     if r.get("op") in ("stitch", "stitch-recovery")}
     n = 0
     old = []
+    old_window = 24 * 60
     seen = set()
     now = time.time()
     for r in rows:
@@ -524,6 +525,7 @@ def cmd_stitch_report(_a=None):
             closed_ts = float(raw) if isinstance(raw, (int, float)) else None
         if closed_ts is None or (now - closed_ts) / 60.0 >= deadline:
             old.append(wid)
+            old_window = deadline
             continue
         answered_at, reply = _detect_reply(r)
         mark = "ответ найден" if reply else "ответ не найден"
@@ -539,7 +541,7 @@ def cmd_stitch_report(_a=None):
     if old:
         shown = ", ".join(str(i) for i in old[:10])
         more = " …" if len(old) > 10 else ""
-        print(f"СТАРЫЕ БЕЗ ПРИШИВКИ ({len(old)}, старше окна {deadline}м): "
+        print(f"СТАРЫЕ БЕЗ ПРИШИВКИ ({len(old)}, старше окна {old_window}м): "
               f"{shown}{more} — восстановление по требованию")
     print(f"STITCH-REPORT {n}")
     return 0
