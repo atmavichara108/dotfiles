@@ -651,6 +651,13 @@ def load_rotator_state(path: Path, max_age_min: int
     if age_min is None:
         errors["_catalog"] = "каталог ротатора: нет разборной метки ts"
         return state, errors, meta
+    if age_min < -5:
+        # Метка из будущего — часы или баг их пробега; такой каталог фактом
+        # о «сейчас» быть не может (иначе протухший файл вечно считался бы
+        # свежим).
+        errors["_catalog"] = (f"каталог ротатора: метка ts в будущем "
+                              f"({round(age_min)} мин)")
+        return state, errors, meta
     if age_min > max_age_min:
         errors["_catalog"] = (f"каталог ротатора протух ({round(age_min)} мин > "
                               f"порога {max_age_min} мин)")
@@ -664,17 +671,22 @@ def load_rotator_state(path: Path, max_age_min: int
     for pid, entry in providers.items():
         if not isinstance(entry, dict):
             continue
+        # Идентификатор провайдера приводится к нижнему регистру: id канала у
+        # ротации и providerID в OpenCode должны сойтись, иначе данные одного
+        # провайдера молча разъедутся (пин получит UNPROBEABLE вместо
+        # настоящего вердикта).
+        pid_key = str(pid).strip().lower()
         status = str(entry.get("status", "")).upper()
         models = entry.get("models")
         if status and status != "ACTIVE":
             # Не ACTIVE = «проба не дала факта» (SKIPPED/ERROR), а не «моделей
             # нет»: отсутствие модели при непроверенном провайдере — не факт.
-            errors[pid] = f"в каталоге ротатора статус {status}"
+            errors[pid_key] = f"в каталоге ротатора статус {status}"
             continue
         if not isinstance(models, list) or not models:
-            errors[pid] = "в каталоге ротатора пустой список моделей"
+            errors[pid_key] = "в каталоге ротатора пустой список моделей"
             continue
-        state[pid] = normalized_ids(models)
+        state[pid_key] = normalized_ids(models)
     return state, errors, meta
 
 
@@ -693,17 +705,19 @@ def build_evidence(direct_state: dict[str, set[str]],
     sets: dict[str, dict[str, set[str]]] = {}
     problems: dict[str, list[str]] = {}
     for prov, ids in direct_state.items():
-        sets.setdefault(prov, {})["прямая проба"] = ids
+        sets.setdefault(str(prov).strip().lower(), {})["прямая проба"] = ids
     for prov, ids in rotator_state.items():
-        sets.setdefault(prov, {})["каталог ротатора"] = ids
+        sets.setdefault(str(prov).strip().lower(), {})["каталог ротатора"] = ids
     for prov, err in direct_errors.items():
         if prov == "_catalog":
             continue
-        problems.setdefault(prov, []).append(f"прямая проба: {err}")
+        problems.setdefault(str(prov).strip().lower(), []).append(
+            f"прямая проба: {err}")
     for prov, err in rotator_errors.items():
         if prov == "_catalog":
             continue
-        problems.setdefault(prov, []).append(f"каталог ротатора: {err}")
+        problems.setdefault(str(prov).strip().lower(), []).append(
+            f"каталог ротатора: {err}")
     return sets, problems
 
 
@@ -923,9 +937,10 @@ def evaluate_pins(pins: list[tuple[str, str]], catalog: set[tuple[str, str]],
             continue  # алиасы шлюза проверяет check_aliases()
         if not source2_enabled:
             continue
-        sets = evidence.get(prov) or {}
+        prov_key = prov.strip().lower()
+        sets = evidence.get(prov_key) or {}
         if not sets:
-            why = problems.get(prov)
+            why = problems.get(prov_key)
             findings.append({"agent": agent, "pin": pin, "reason": "UNPROBEABLE",
                              "detail": "; ".join(why) if why else
                              "источник 2 не дал данных по провайдеру"})

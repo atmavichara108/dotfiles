@@ -476,6 +476,26 @@ def main() -> int:
     ok("каталог ротатора: файла нет → работает прямая проба, exit 0",
        rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
 
+    rot_case = rotator_file({"FakeProv": ["missing/model"]},
+                             name="rotator-case.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_case)
+    ok("каталог ротатора: id провайдера в другом регистре → данные всё равно сошлись",
+       rc.returncode == 0 and "SOURCE_DISAGREEMENT" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    future_ts = (datetime.datetime.now(datetime.timezone.utc)
+                 + datetime.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rot_future = rotator_file({"fakeprov": ["missing/model"]}, ts=future_ts,
+                               name="rotator-future.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_future)
+    ok("каталог ротатора: ts из будущего → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+    ok("каталог ротатора: ts из будущего — видно в выводе (не молча)",
+       "будущем" in rc.stdout, rc.stdout[:300])
+
     # Р-109: модель проверяющего в каналах алиаса → предупреждение, не блокировка
     gwdb = tmp / "gateway.db"
     con = sqlite3.connect(gwdb)
