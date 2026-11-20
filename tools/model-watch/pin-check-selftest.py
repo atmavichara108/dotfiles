@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""selftest для pin-check (BF-20261119-05).
+"""selftest для pin-check (BF-20261119-05, BF-20261120-01).
 
 Проверяет ровно то, ради чего инструмент написан:
   1. пин читается из frontmatter агента; шаблон и агент без пина — не пин;
@@ -7,7 +7,18 @@
   3. CLI: битый пин → exit 1 (гейт блокирует коммит), хорошие пины → exit 0;
   4. offline-режим (models.dev) — advisory: warns, но не блокирует;
   5. PIN_OK=1 — осознанный обход;
-  6. отчёт пишется (меты-only, без секретов).
+  6. отчёт пишется (меты-only, без секретов);
+  7. ИСТОЧНИК 2 (провайдерный список на нашем ключе): пин есть в каталоге
+     OpenCode, но нет у провайдера → MISSING_AT_PROVIDER (exit 1);
+  8. провайдер недоступен (нет ключа) → WARN, не FAIL (гейт не встаёт);
+  9. алиас шлюза: живая чат-проба с tools; 200 → живой, 404/410 → FAIL,
+     «не удалось проверить» → ALIAS_NOT_PROBED (WARN);
+ 10. факт по Р-109: модель проверяющего в каналах алиаса → предупреждение
+     (не блокировка).
+
+Сеть в selftest не используется: провайдер и шлюз — локальная фикстура
+(мини-сервер на 127.0.0.1). Базовые тесты идут с --no-provider-check, чтобы
+не зависеть от провайдеров.
 
 Запуск: python3 tools/model-watch/pin-check-selftest.py
 """
@@ -16,9 +27,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -112,9 +126,13 @@ def main() -> int:
     env = dict(os.environ)
     env["PIN_CHECK_REPORT"] = str(report)
 
-    def run(args: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess:
+    def run(args: list[str], extra_env: dict | None = None,
+            provider_check: bool = False) -> subprocess.CompletedProcess:
         e = dict(env)
         e.update(extra_env or {})
+        # Базовые тесты — без источника 2: сеть провайдеров в selftest не нужна.
+        if not provider_check:
+            args = ["--no-provider-check"] + args
         return subprocess.run([sys.executable, str(PIN_CHECK), *args],
                               capture_output=True, text=True, env=e, timeout=60)
 
@@ -225,6 +243,142 @@ def main() -> int:
               "--catalog-file", str(catalog_file)])
     ok("diff-гейт: --strict → exit 1 даже по старому битому пину",
        rc.returncode == 1, f"rc={rc.returncode} {rc.stdout[:200]}")
+
+    # --- 8. ИСТОЧНИК 2: провайдерный список + алиасы шлюза (фикстура) ------
+    class FixtureHandler(BaseHTTPRequestHandler):
+        """Мини-шлюз: /models — список моделей, /chat/completions — по alias."""
+
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path.endswith("/models"):
+                body = json.dumps(
+                    {"data": [{"id": m} for m in self.server.models]}).encode()
+                self.send_response(200)
+            else:
+                body = b"{}"
+                self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                payload = json.loads(self.rfile.read(length) or b"{}")
+            except json.JSONDecodeError:
+                payload = {}
+            model = payload.get("model", "")
+            status = self.server.alias_status.get(model, 200)
+            body = json.dumps({"model": model,
+                               "choices": [{"message": {"content": "ok"}}]}).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    server.models = ["good/model", "free-code", "gone-alias", "flaky-alias"]
+    server.alias_status = {"free-code": 200, "gone-alias": 404, "flaky-alias": 500}
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}/v1"
+
+    endpoints = tmp / "endpoints.json"
+    endpoints.write_text(json.dumps({
+        "fakeprov": {"endpoint": base, "env": "PIN_CHECK_TEST_KEY"},
+        "nokeyprov": {"endpoint": base, "env": "PIN_CHECK_ABSENT_KEY"},
+    }), encoding="utf-8")
+
+    catalog2 = tmp / "catalog2.json"
+    catalog2.write_text(json.dumps([
+        {"providerID": "fakeprov", "modelID": "good/model"},
+        {"providerID": "fakeprov", "modelID": "missing/model"},
+        {"providerID": "nokeyprov", "modelID": "anything"},
+        {"providerID": "newapi", "modelID": "free-code"},
+        {"providerID": "newapi", "modelID": "gone-alias"},
+        {"providerID": "newapi", "modelID": "flaky-alias"},
+    ]), encoding="utf-8")
+
+    env2 = {"PIN_CHECK_TEST_KEY": "test-key", "NEWAPI_API_KEY": "test-key",
+            "PIN_CHECK_CACHE": str(tmp / "cache.json")}
+    common2 = ["--catalog-file", str(catalog2), "--provider-endpoints",
+               str(endpoints), "--gateway-endpoint", base, "--no-alias-cache"]
+
+    prov_agents = tmp / "prov-agents"
+    prov_agents.mkdir()
+    (prov_agents / "good.md").write_text(
+        agent_md("fakeprov/good/model"), encoding="utf-8")
+    rc = run(["--agents-dir", str(prov_agents)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: модель есть у провайдера → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    (prov_agents / "missing.md").write_text(
+        agent_md("fakeprov/missing/model"), encoding="utf-8")
+    rc = run(["--agents-dir", str(prov_agents)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: модели нет у провайдера → MISSING_AT_PROVIDER, exit 1",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    nokey_agents = tmp / "nokey-agents"
+    nokey_agents.mkdir()
+    (nokey_agents / "nokey.md").write_text(
+        agent_md("nokeyprov/anything"), encoding="utf-8")
+    rc = run(["--agents-dir", str(nokey_agents)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: ключа нет → WARN, не FAIL (exit 0)",
+       rc.returncode == 0 and "UNPROBEABLE" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    alias_agents = tmp / "alias-agents"
+    alias_agents.mkdir()
+    (alias_agents / "ok.md").write_text(
+        agent_md("newapi/free-code"), encoding="utf-8")
+    rc = run(["--agents-dir", str(alias_agents)] + common2, env2,
+             provider_check=True)
+    ok("алиас: живая проба 200 → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    gone_agents = tmp / "gone-agents"
+    gone_agents.mkdir()
+    (gone_agents / "gone.md").write_text(
+        agent_md("newapi/gone-alias"), encoding="utf-8")
+    rc = run(["--agents-dir", str(gone_agents)] + common2, env2,
+             provider_check=True)
+    ok("алиас: проба 404 → провайдер не отдаёт → exit 1",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    flaky_agents = tmp / "flaky-agents"
+    flaky_agents.mkdir()
+    (flaky_agents / "flaky.md").write_text(
+        agent_md("newapi/flaky-alias"), encoding="utf-8")
+    rc = run(["--agents-dir", str(flaky_agents)] + common2, env2,
+             provider_check=True)
+    ok("алиас: проба не дала вердикта → ALIAS_NOT_PROBED + WARN, exit 0",
+       rc.returncode == 0 and "ALIAS_NOT_PROBED" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    # Р-109: модель проверяющего в каналах алиаса → предупреждение, не блокировка
+    gwdb = tmp / "gateway.db"
+    con = sqlite3.connect(gwdb)
+    con.execute("create table abilities (model text, channel_id integer)")
+    con.execute("create table channels (id integer, name text, model_mapping text)")
+    con.execute("insert into channels values (7, ?, ?)",
+                ("nvidia|poolside/laguna-xs-2.1|free-code",
+                 json.dumps({"free-code": "poolside/laguna-xs-2.1"})))
+    con.execute("insert into abilities values ('free-code', 7)")
+    con.commit()
+    con.close()
+    rc = run(["--agents-dir", str(alias_agents)] + common2,
+             {**env2, "GATEWAY_DB": str(gwdb)}, provider_check=True)
+    ok("Р-109: модель проверяющего в канале алиаса → предупреждение, не FAIL",
+       rc.returncode == 0 and "Р-109" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
 
     print(f"\nPIN-CHECK SELFTEST: {PASSED} passed, {len(FAILED)} failed")
     for item in FAILED:
