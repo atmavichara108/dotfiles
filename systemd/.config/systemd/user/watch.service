@@ -8,6 +8,6 @@ Type=oneshot
 # Коды: 0 чисто / 1 есть ERROR (предмет наблюдения) / 2 ввод / 3 фатальная.
 # Оповещение владельцу — dunst, по кодам 1/3 (exit 1 не молчок: сбой сто-рожа
 # должен быть виден, это мандат «бесперебойная работа»).
-ExecStart=/bin/sh -c 'out=$(/usr/bin/python3 %h/Projects/OpenCode-Vault/tools/key-rotator/watch.py); code=$?; summary=$(printf "%s" "$out" | /usr/bin/python3 %h/dotfiles/tools/model-watch/watch-summary.py); if [ $code -ne 0 ]; then /usr/bin/notify-send -u critical "Сторож шлюза: сбой (exit $code)" "$summary | детали: control-plane/telemetry/provider-health.jsonl"; fi; exit $code'
+ExecStart=/bin/sh -c 'out=$(/usr/bin/python3 %h/Projects/OpenCode-Vault/tools/key-rotator/watch.py); code=$?; summary=$(printf "%s" "$out" | /usr/bin/python3 %h/dotfiles/tools/model-watch/watch-summary.py); /usr/bin/logger -t watch-alert "exit=$code $summary"; if [ $code -ne 0 ]; then /usr/bin/notify-send -u critical "Сторож шлюза: сбой (exit $code)" "$summary | детали: control-plane/telemetry/provider-health.jsonl"; fi; exit $code'
 SuccessExitStatus=0 1
 NoNewPrivileges=yes
