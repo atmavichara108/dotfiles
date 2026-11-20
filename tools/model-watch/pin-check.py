@@ -18,12 +18,16 @@ openai-compatible провайдеров он статический, и уме�
 (24 агента стояли на nvidia/deepseek-ai/deepseek-v4.1-flash: в каталоге есть,
 у провайдера — 410 Gone).
   Источник 1 — каталог OpenCode (GET /api/model): «пин разрешается в контуре».
-  Источник 2 — список моделей провайдера НА НАШЕМ ключе (GET {endpoint}/models):
-    «модель реально обслуживается тем ключом, которым мы платим».
-Пин жив, только если он есть в обоих. Источник 2 недоступен (нет ключа,
-провайдер не отдаёт список, 403) → WARN, не FAIL: гейт не должен вставать из-за
-провайдера, который нечем проверить; молчаливый PASS без предупреждения — тот
-же дефект.
+  Источник 2 — список моделей провайдера НА НАШЕМ ключе: «модель реально
+    обслуживается тем ключом, которым мы платим». Два независимых способа
+    узнать одно и то же: (а) прямая проба GET {endpoint}/models (ключ: env →
+    vault .env → credential-store OpenCode) и (б) живой каталог Ротации
+    моделей (их формат и их слово: {ts, providers: {id: {status, models[]}}}).
+    Пин жив, только если он есть в обоих. Источник 2 недоступен (нет ключа,
+    провайдер не отдаёт список, 403) → WARN, не FAIL: гейт не должен вставать из-за
+    провайдера, который нечем проверить; молчаливый PASS без предупреждения — тот
+    же дефект. Если два способа расходятся (один протух) → SOURCE_DISAGREEMENT
+    (WARN, не FAIL): приговор флоту по одному протухшему источнику — ложь.
   Алиасы шлюза (newapi/free-code, newapi/free-general) — особый случай: их
   «провайдер» сам шлюз. Живость алиаса = алиас есть в каталоге шлюза (GET
   {gateway}/v1/models) И проходит живой чат-пробу (с tools). Плюс факт по
@@ -60,6 +64,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime
 import json
 import os
 import re
@@ -101,6 +106,19 @@ CACHE = Path(os.environ.get(
 CACHE_TTL_OK = 900   # успешная проба: кэш 15 минут (гейт не тормозит каждый коммит)
 CACHE_TTL_BAD = 60   # отказ провайдера (404/410): кэш 1 минута — починка видна сразу
 
+# --- Источник 2 (б): живой каталог Ротации моделей ----------------------------
+# Формат зафиксирован по слову Ротации моделей (волт, лог хода 20.11):
+#   {"ts": ..., "source": ..., "providers": {id: {"status": ..., "models": [...]}}}
+# — полный список моделей по КЛЮЧУ каждого провайдера.
+ROTATOR_CATALOG = Path(os.environ.get(
+    "PIN_CHECK_ROTATOR_CATALOG",
+    Path.home() / "Projects" / "OpenCode-Vault" / "control-plane" /
+    "live-model-catalog.json"))
+# Порог свежести: их сторож обновляет каталог каждые 30 минут; 180 минут —
+# терпимость к трём пропущенным циклам, дальше «протухшее» нельзя считать
+# фактом о текущей живости модели.
+ROTATOR_MAX_AGE_MIN = int(os.environ.get("PIN_CHECK_ROTATOR_MAX_AGE_MIN", "180"))
+
 # Каталог провайдеров — из волта; этот встроенный набор нужен, если волт недоступен.
 FALLBACK_PROVIDERS = {
     "nvidia": {"endpoint": "https://integrate.api.nvidia.com/v1",
@@ -114,7 +132,7 @@ FALLBACK_PROVIDERS = {
 # Вердикты: блокирующие — против них гейт падает; предупреждения — нет.
 BLOCKING_REASONS = {"MISSING_MODEL", "MISSING_PROVIDER", "MISSING_AT_PROVIDER",
                     "MALFORMED"}
-WARN_REASONS = {"UNPROBEABLE", "ALIAS_NOT_PROBED"}
+WARN_REASONS = {"UNPROBEABLE", "ALIAS_NOT_PROBED", "SOURCE_DISAGREEMENT"}
 
 
 DEFAULT_AGENT_DIRS = (
@@ -593,6 +611,102 @@ def cache_alias(alias: str, status: str) -> None:
         pass
 
 
+def load_rotator_state(path: Path, max_age_min: int
+                       ) -> tuple[dict[str, set[str]], dict[str, str], dict]:
+    """Живой каталог Ротации моделей — источник 2 (вариант б, по их слову).
+
+    Формат (их слово, волт 20.11):
+        {"ts": "…Z", "source": "probe",
+         "providers": {provider_id: {"status": "ACTIVE", "models": ["id", …]}}}
+    Возвращает: provider → нормализованные id; provider → текст ошибки
+    (значит «нечем проверить» — WARN, не FAIL); метаданные (ts, возраст, путь).
+    Ключа провайдера в файле нет — только факт «модель обслуживается нашим
+    ключом», поэтому секретов в отчёт не попадает.
+    """
+    state: dict[str, set[str]] = {}
+    errors: dict[str, str] = {}
+    meta: dict = {"path": str(path), "used": False}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        errors["_catalog"] = "файл каталога ротатора не найден"
+        return state, errors, meta
+    except (OSError, json.JSONDecodeError) as exc:
+        errors["_catalog"] = f"каталог ротатора не читается ({exc})"
+        return state, errors, meta
+    if not isinstance(raw, dict):
+        errors["_catalog"] = "каталог ротатора: неожиданный формат"
+        return state, errors, meta
+    ts = raw.get("ts")
+    age_min: float | None = None
+    if isinstance(ts, str):
+        try:
+            when = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            now = datetime.datetime.now(datetime.timezone.utc)
+            age_min = (now - when).total_seconds() / 60
+        except ValueError:
+            age_min = None
+    meta["ts"] = ts
+    meta["age_min"] = round(age_min, 1) if age_min is not None else None
+    if age_min is None:
+        errors["_catalog"] = "каталог ротатора: нет разборной метки ts"
+        return state, errors, meta
+    if age_min > max_age_min:
+        errors["_catalog"] = (f"каталог ротатора протух ({round(age_min)} мин > "
+                              f"порога {max_age_min} мин)")
+        return state, errors, meta
+    providers = raw.get("providers")
+    if not isinstance(providers, dict):
+        errors["_catalog"] = "каталог ротатора: нет раздела providers"
+        return state, errors, meta
+    meta["used"] = True
+    meta["providers"] = len(providers)
+    for pid, entry in providers.items():
+        if not isinstance(entry, dict):
+            continue
+        status = str(entry.get("status", "")).upper()
+        models = entry.get("models")
+        if status and status != "ACTIVE":
+            # Не ACTIVE = «проба не дала факта» (SKIPPED/ERROR), а не «моделей
+            # нет»: отсутствие модели при непроверенном провайдере — не факт.
+            errors[pid] = f"в каталоге ротатора статус {status}"
+            continue
+        if not isinstance(models, list) or not models:
+            errors[pid] = "в каталоге ротатора пустой список моделей"
+            continue
+        state[pid] = normalized_ids(models)
+    return state, errors, meta
+
+
+def build_evidence(direct_state: dict[str, set[str]],
+                   direct_errors: dict[str, str],
+                   rotator_state: dict[str, set[str]],
+                   rotator_errors: dict[str, str]
+                   ) -> tuple[dict[str, dict[str, set[str]]], dict[str, list[str]]]:
+    """Свести два варианта источника 2 в единые данные о живости.
+
+    provider → {название источника → id провайдера}; provider → причины
+    «нечем проверить» (WARN). Файл-уровневые проблемы каталога ротатора
+    (нет файла, протух, битый JSON) идут в отдельный словарь — они не
+    приговор конкретному провайдеру, если есть другой источник.
+    """
+    sets: dict[str, dict[str, set[str]]] = {}
+    problems: dict[str, list[str]] = {}
+    for prov, ids in direct_state.items():
+        sets.setdefault(prov, {})["прямая проба"] = ids
+    for prov, ids in rotator_state.items():
+        sets.setdefault(prov, {})["каталог ротатора"] = ids
+    for prov, err in direct_errors.items():
+        if prov == "_catalog":
+            continue
+        problems.setdefault(prov, []).append(f"прямая проба: {err}")
+    for prov, err in rotator_errors.items():
+        if prov == "_catalog":
+            continue
+        problems.setdefault(prov, []).append(f"каталог ротатора: {err}")
+    return sets, problems
+
+
 def collect_provider_state(pins: list[tuple[str, str]],
                            args: argparse.Namespace
                            ) -> tuple[dict[str, set[str]], dict[str, str]]:
@@ -780,9 +894,20 @@ def check_aliases(pins: list[tuple[str, str]], args: argparse.Namespace
 
 
 def evaluate_pins(pins: list[tuple[str, str]], catalog: set[tuple[str, str]],
-                  providers: set[str], provider_state: dict[str, set[str]],
-                  provider_errors: dict[str, str]) -> list[dict]:
-    """Вердикты по обоим источникам: каталог OpenCode + провайдерный список."""
+                  providers: set[str], evidence: dict[str, dict[str, set[str]]],
+                  problems: dict[str, list[str]],
+                  source2_enabled: bool = True) -> list[dict]:
+    """Вердикты по обоим источникам: каталог OpenCode + провайдерный список.
+
+    Источник 2 может быть проверен двумя независимыми способами (прямая
+    проба и живой каталог Ротации моделей). Правила:
+      — нет ни одного факта по провайдеру → UNPROBEABLE (WARN, не FAIL);
+      — все источники говорят «модели нет» → MISSING_AT_PROVIDER (FAIL);
+      — источники расходятся → SOURCE_DISAGREEMENT (WARN): один из них
+        протух, и судить по одному — значит ложный приговор флоту.
+    source2_enabled=False — источник 2 выключен флагом: тогда по нему
+    вердиктов нет вовсе (иначе выключенный источник выглядел бы как «сломан»).
+    """
     findings: list[dict] = []
     for agent, pin in pins:
         parts = split_pin(pin)
@@ -796,14 +921,25 @@ def evaluate_pins(pins: list[tuple[str, str]], catalog: set[tuple[str, str]],
             continue
         if prov == GATEWAY_PROVIDER_ID:
             continue  # алиасы шлюза проверяет check_aliases()
-        if prov in provider_errors:
+        if not source2_enabled:
+            continue
+        sets = evidence.get(prov) or {}
+        if not sets:
+            why = problems.get(prov)
             findings.append({"agent": agent, "pin": pin, "reason": "UNPROBEABLE",
-                             "detail": provider_errors[prov]})
+                             "detail": "; ".join(why) if why else
+                             "источник 2 не дал данных по провайдеру"})
             continue
-        known = provider_state.get(prov)
-        if known is None:
-            continue
-        if normalize_id(mid) not in known:
+        present = [src for src, ids in sets.items()
+                   if normalize_id(mid) in ids]
+        absent = [src for src, ids in sets.items()
+                  if normalize_id(mid) not in ids]
+        if present and absent:
+            findings.append({"agent": agent, "pin": pin,
+                             "reason": "SOURCE_DISAGREEMENT",
+                             "detail": (f"{', '.join(present)} — модель есть; "
+                                        f"{', '.join(absent)} — нет")})
+        elif absent:
             findings.append({"agent": agent, "pin": pin,
                              "reason": "MISSING_AT_PROVIDER",
                              "detail": f"провайдер {prov} на нашем ключе не отдаёт {mid}"})
@@ -839,6 +975,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="файл со списками моделей {provider: [id]} — вместо сети")
     parser.add_argument("--provider-endpoints", default=None,
                         help="файл с эндпоинтами {provider: {endpoint, env}}")
+    parser.add_argument("--rotator-catalog", default=str(ROTATOR_CATALOG),
+                        help="живой каталог Ротации моделей — источник 2 "
+                             "(формат: {ts, providers: {id: {status, models[]}}})")
+    parser.add_argument("--no-rotator-catalog", action="store_true",
+                        help="не читать живой каталог Ротации моделей")
+    parser.add_argument("--rotator-max-age", type=int, default=ROTATOR_MAX_AGE_MIN,
+                        help="порог свежести каталога ротатора, минут "
+                             f"(по умолчанию {ROTATOR_MAX_AGE_MIN})")
     parser.add_argument("--gateway-endpoint", default=None,
                         help="эндпоинт шлюза алиасов (по умолчанию — из каталога)")
     parser.add_argument("--no-alias-probe", action="store_true",
@@ -892,13 +1036,29 @@ def main(argv: list[str] | None = None) -> int:
 
     # Источник 2: провайдерный список моделей на НАШЕМ ключе + живая проба
     # алиаса шлюза (спека docs/specs/pin-guard.md §4.1, BF-20261120-01).
+    # Два независимых способа узнать одно и то же: прямая проба и живой
+    # каталог Ротации моделей (их формат, их слово).
     provider_state: dict[str, set[str]] = {}
     provider_errors: dict[str, str] = {}
+    rotator_state: dict[str, set[str]] = {}
+    rotator_errors: dict[str, str] = {}
+    rotator_meta: dict = {}
     r109_warnings: list[str] = []
     if not args.no_provider_check:
         provider_state, provider_errors = collect_provider_state(pins, args)
-    findings = evaluate_pins(pins, catalog, providers, provider_state,
-                             provider_errors)
+        if not args.no_rotator_catalog:
+            rotator_state, rotator_errors, rotator_meta = load_rotator_state(
+                Path(args.rotator_catalog), args.rotator_max_age)
+            # В отчёт идут только факты по провайдерам, которых мы касаемся:
+            # чужие DEGRADED/BLOCKED в отчёте гейта — шум.
+            wanted = {parts[0] for _, pin in pins
+                      if (parts := split_pin(pin))}
+            rotator_errors = {k: v for k, v in rotator_errors.items()
+                              if k == "_catalog" or k in wanted}
+    evidence, problems = build_evidence(provider_state, provider_errors,
+                                        rotator_state, rotator_errors)
+    findings = evaluate_pins(pins, catalog, providers, evidence, problems,
+                             source2_enabled=not args.no_provider_check)
     if not args.no_provider_check:
         alias_findings, r109_warnings = check_aliases(pins, args)
         findings.extend(alias_findings)
@@ -914,7 +1074,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.staged and not args.strict:
         baseline = pins_from_ref(args.baseline, Path(args.repo))
         baseline_findings = evaluate_pins(baseline, catalog, providers,
-                                          provider_state, provider_errors)
+                                          evidence, problems,
+                                          source2_enabled=not args.no_provider_check)
         if not args.no_provider_check:
             base_alias_findings, _ = check_aliases(baseline, args)
             baseline_findings.extend(base_alias_findings)
@@ -926,6 +1087,8 @@ def main(argv: list[str] | None = None) -> int:
     status = "FAIL" if new else ("WARN" if (known or r109_warnings) else "PASS")
     write_report(source, pins, findings, status, extra={
         "provider_errors": provider_errors,
+        "rotator_catalog": rotator_meta,
+        "rotator_errors": rotator_errors,
         "r109_warnings": r109_warnings,
     })
 
@@ -934,6 +1097,8 @@ def main(argv: list[str] | None = None) -> int:
             "source": source, "status": status, "pins_total": len(pins),
             "new_findings": new, "known_findings": known,
             "provider_errors": provider_errors,
+            "rotator_catalog": rotator_meta,
+            "rotator_errors": rotator_errors,
             "r109_warnings": r109_warnings},
             ensure_ascii=False, indent=2))
     else:
@@ -949,6 +1114,9 @@ def main(argv: list[str] | None = None) -> int:
                       f"(бит и до этого коммита — решение по нему не принято)")
         for warning in r109_warnings:
             print(f"  ⚠️  {warning}")
+        rotator_file_error = rotator_errors.get("_catalog")
+        if rotator_file_error:
+            print(f"  ℹ️  {rotator_file_error} — источник 2 проверен прямой пробой")
         if new:
             print(f"pin-check: FAIL — {len(new)} НОВЫХ битых пин(ов) ({source}); "
                   f"модель вне каталога = тихий фолбэк на дефолт агента")

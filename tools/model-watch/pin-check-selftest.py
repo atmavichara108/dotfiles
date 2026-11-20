@@ -24,6 +24,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import importlib.util
 import json
 import os
@@ -127,12 +128,20 @@ def main() -> int:
     env["PIN_CHECK_REPORT"] = str(report)
 
     def run(args: list[str], extra_env: dict | None = None,
-            provider_check: bool = False) -> subprocess.CompletedProcess:
+            provider_check: bool = False,
+            rotator_catalog: str | None = None) -> subprocess.CompletedProcess:
         e = dict(env)
         e.update(extra_env or {})
         # Базовые тесты — без источника 2: сеть провайдеров в selftest не нужна.
         if not provider_check:
             args = ["--no-provider-check"] + args
+        # Каталог Ротации моделей по умолчанию — боевой файл с машины: без
+        # явного --no-rotator-catalog тесты зависели бы от внешнего состояния
+        # (и однажды «позеленели» бы из-за чужого обновления файла).
+        if rotator_catalog is None:
+            args = ["--no-rotator-catalog"] + args
+        else:
+            args = ["--rotator-catalog", rotator_catalog] + args
         return subprocess.run([sys.executable, str(PIN_CHECK), *args],
                               capture_output=True, text=True, env=e, timeout=60)
 
@@ -407,6 +416,65 @@ def main() -> int:
     ok("кэш: без кэша (--no-alias-cache) отказ провайдера виден сразу → exit 1",
        rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
        f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    # --- 8. источник 2 (б): живой каталог Ротации моделей ------------------
+    # Формат — по их слову: {ts, source, providers: {id: {status, models[]}}}
+    def rotator_file(models_by_provider: dict, status: str = "ACTIVE",
+                     ts: str | None = None, name: str = "rotator.json") -> str:
+        stamp = ts or datetime.datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        payload = {"ts": stamp, "source": "probe", "providers": {
+            pid: {"status": status, "models": models}
+            for pid, models in models_by_provider.items()}}
+        path = tmp / name
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return str(path)
+
+    rot_agree = rotator_file({"fakeprov": ["missing/model"]})
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_agree)
+    ok("каталог ротатора: модель есть только у каталога ротатора → расхождение, WARN",
+       rc.returncode == 0 and "SOURCE_DISAGREEMENT" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    rot_agree_missing = rotator_file({"fakeprov": []}, name="rotator-missing.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_agree_missing)
+    ok("каталог ротатора: пустой список провайдера → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    rot_dead = rotator_file({"fakeprov": ["other/model"]}, name="rotator-dead.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_dead)
+    ok("каталог ротатора: оба источника говорят «нет модели» → FAIL",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    rot_skipped = rotator_file({"fakeprov": ["good/model"]}, status="SKIPPED",
+                                name="rotator-skipped.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_skipped)
+    ok("каталог ротатора: статус не ACTIVE → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    stale_ts = (datetime.datetime.now(datetime.timezone.utc)
+                - datetime.timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rot_stale = rotator_file({"fakeprov": ["other/model"]}, ts=stale_ts,
+                              name="rotator-stale.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_stale)
+    ok("каталог ротатора: протух → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+    ok("каталог ротатора: протухание видно в выводе (не молча)",
+       "протух" in rc.stdout, rc.stdout[:300])
+
+    rc = run(["--agents-dir", str(prov_good)] + common2, env2,
+             provider_check=True, rotator_catalog=str(tmp / "нет-такого.json"))
+    ok("каталог ротатора: файла нет → работает прямая проба, exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
 
     # Р-109: модель проверяющего в каналах алиаса → предупреждение, не блокировка
     gwdb = tmp / "gateway.db"
