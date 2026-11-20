@@ -1,7 +1,7 @@
 ---
 description: "system-ops: approval-gated high-risk host apply planner"
 mode: subagent
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: nvidia/meta/muse-glimmer-30b
 temperature: 0.1
 steps: 50
 permission:
