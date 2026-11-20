@@ -281,15 +281,25 @@ def main() -> int:
             self.wfile.write(body)
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
-    server.models = ["good/model", "free-code", "gone-alias", "flaky-alias"]
-    server.alias_status = {"free-code": 200, "gone-alias": 404, "flaky-alias": 500}
+    server.models = ["good/model", "free-code", "gone-alias", "flaky-alias",
+                      "cached-alias"]
+    server.alias_status = {"free-code": 200, "gone-alias": 404,
+                            "flaky-alias": 500, "cached-alias": 200}
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}/v1"
+
+    # Второй фикстур: провайдер, который отдаёт ПУСТОЙ список моделей.
+    empty_server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    empty_server.models = []
+    empty_server.alias_status = {}
+    threading.Thread(target=empty_server.serve_forever, daemon=True).start()
+    empty_base = f"http://127.0.0.1:{empty_server.server_address[1]}/v1"
 
     endpoints = tmp / "endpoints.json"
     endpoints.write_text(json.dumps({
         "fakeprov": {"endpoint": base, "env": "PIN_CHECK_TEST_KEY"},
         "nokeyprov": {"endpoint": base, "env": "PIN_CHECK_ABSENT_KEY"},
+        "emptyprov": {"endpoint": empty_base, "env": "PIN_CHECK_TEST_KEY"},
     }), encoding="utf-8")
 
     catalog2 = tmp / "catalog2.json"
@@ -297,9 +307,11 @@ def main() -> int:
         {"providerID": "fakeprov", "modelID": "good/model"},
         {"providerID": "fakeprov", "modelID": "missing/model"},
         {"providerID": "nokeyprov", "modelID": "anything"},
+        {"providerID": "emptyprov", "modelID": "whatever"},
         {"providerID": "newapi", "modelID": "free-code"},
         {"providerID": "newapi", "modelID": "gone-alias"},
         {"providerID": "newapi", "modelID": "flaky-alias"},
+        {"providerID": "newapi", "modelID": "cached-alias"},
     ]), encoding="utf-8")
 
     env2 = {"PIN_CHECK_TEST_KEY": "test-key", "NEWAPI_API_KEY": "test-key",
@@ -307,21 +319,33 @@ def main() -> int:
     common2 = ["--catalog-file", str(catalog2), "--provider-endpoints",
                str(endpoints), "--gateway-endpoint", base, "--no-alias-cache"]
 
-    prov_agents = tmp / "prov-agents"
-    prov_agents.mkdir()
-    (prov_agents / "good.md").write_text(
+    prov_good = tmp / "prov-good"
+    prov_good.mkdir()
+    (prov_good / "good.md").write_text(
         agent_md("fakeprov/good/model"), encoding="utf-8")
-    rc = run(["--agents-dir", str(prov_agents)] + common2, env2,
+    rc = run(["--agents-dir", str(prov_good)] + common2, env2,
              provider_check=True)
     ok("источник 2: модель есть у провайдера → exit 0",
        rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
 
-    (prov_agents / "missing.md").write_text(
+    prov_missing = tmp / "prov-missing"
+    prov_missing.mkdir()
+    (prov_missing / "missing.md").write_text(
         agent_md("fakeprov/missing/model"), encoding="utf-8")
-    rc = run(["--agents-dir", str(prov_agents)] + common2, env2,
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
              provider_check=True)
     ok("источник 2: модели нет у провайдера → MISSING_AT_PROVIDER, exit 1",
        rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    empty_agents = tmp / "empty-agents"
+    empty_agents.mkdir()
+    (empty_agents / "empty.md").write_text(
+        agent_md("emptyprov/whatever"), encoding="utf-8")
+    rc = run(["--agents-dir", str(empty_agents)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: пустой список моделей → WARN (не FAIL), exit 0",
+       rc.returncode == 0 and "UNPROBEABLE" in rc.stdout,
        f"rc={rc.returncode} {rc.stdout[:300]}")
 
     nokey_agents = tmp / "nokey-agents"
@@ -361,6 +385,27 @@ def main() -> int:
              provider_check=True)
     ok("алиас: проба не дала вердикта → ALIAS_NOT_PROBED + WARN, exit 0",
        rc.returncode == 0 and "ALIAS_NOT_PROBED" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    # Кэш живой пробы: успех кэшируется, отказ провайдера — коротким TTL.
+    cached_agents = tmp / "cached-agents"
+    cached_agents.mkdir()
+    (cached_agents / "cached.md").write_text(
+        agent_md("newapi/cached-alias"), encoding="utf-8")
+    cache_args = [a for a in common2 if a != "--no-alias-cache"]
+    rc = run(["--agents-dir", str(cached_agents)] + cache_args, env2,
+             provider_check=True)
+    ok("кэш: первая проба алиаса успешна → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+    server.alias_status["cached-alias"] = 404  # провайдер сломался
+    rc = run(["--agents-dir", str(cached_agents)] + cache_args, env2,
+             provider_check=True)
+    ok("кэш: успех взят из кэша (проба не переспрашивается зря) → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+    rc = run(["--agents-dir", str(cached_agents)] + common2, env2,
+             provider_check=True)
+    ok("кэш: без кэша (--no-alias-cache) отказ провайдера виден сразу → exit 1",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
        f"rc={rc.returncode} {rc.stdout[:300]}")
 
     # Р-109: модель проверяющего в каналах алиаса → предупреждение, не блокировка

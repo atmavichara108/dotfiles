@@ -98,7 +98,8 @@ CACHE = Path(os.environ.get(
     "PIN_CHECK_CACHE",
     Path.home() / ".local" / "state" / "opencode" / "model-watch" /
     "pin-cache.json"))
-CACHE_TTL = 900  # 15 минут — кэш живой пробы алиаса (гейт не должен тормозить)
+CACHE_TTL_OK = 900   # успешная проба: кэш 15 минут (гейт не тормозит каждый коммит)
+CACHE_TTL_BAD = 60   # отказ провайдера (404/410): кэш 1 минута — починка видна сразу
 
 # Каталог провайдеров — из волта; этот встроенный набор нужен, если волт недоступен.
 FALLBACK_PROVIDERS = {
@@ -561,14 +562,24 @@ def cache_read() -> dict:
 
 
 def cached_alias(alias: str) -> str | None:
+    """Вердикт из кэша, если он не протух.
+
+    TTL зависит от типа вердикта: успех живёт дольше (иначе каждый коммит ждёт
+    пробу), отказ провайдера — коротко (иначе починка провайдера не видна
+    минутами, и это ровно тот дефект, который кэш не должен прятать).
+    """
     entry = cache_read().get(alias)
     if not isinstance(entry, dict):
         return None
     at = entry.get("at")
-    if not isinstance(at, int) or time.time() - at > CACHE_TTL:
-        return None
     status = entry.get("status")
-    return status if status in ("ok", "provider-error", "unprobeable") else None
+    if not isinstance(at, int) or status not in ("ok", "provider-error",
+                                                  "unprobeable"):
+        return None
+    ttl = CACHE_TTL_OK if status == "ok" else CACHE_TTL_BAD
+    if time.time() - at > ttl:
+        return None
+    return status
 
 
 def cache_alias(alias: str, status: str) -> None:
@@ -621,6 +632,12 @@ def collect_provider_state(pins: list[tuple[str, str]],
         ids, err = fetch_models(spec["endpoint"], key)
         if err:
             errors[provider] = f"список моделей недоступен ({err})"
+            continue
+        if not ids:
+            # Пустой ответ неотличим от сломанного: молчаливый FAIL на весь
+            # флот провайдера — тот же дефект, что был с пустым каталогом
+            # OpenCode. Явный WARN и пропуск проверки этого провайдера.
+            errors[provider] = "пустой список моделей"
             continue
         state[provider] = normalized_ids(ids)
     return state, errors
