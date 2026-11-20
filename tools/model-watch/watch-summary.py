@@ -19,7 +19,9 @@ def summarize(raw: str) -> str:
     # ответил 200, но медленнее порога `slow_alias:<alias>:<ms>` (жёлтый).
     bad = [a.get("alias") for a in d.get("aliases", []) if not a.get("ok")]
     slow = [
-        f"{part[1]}={part[2]}мс"
+        # Единицу несёт само предупреждение (`slow_alias:<alias>:<N>ms`) —
+        # добавлять свою значило бы удвоение единиц в одном токене.
+        f"{part[1]}={part[2]}"
         for w in d.get("warnings", [])
         for part in [str(w).split(":")]
         if part[0] == "slow_alias" and len(part) >= 3
