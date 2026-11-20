@@ -1,0 +1,13 @@
+[Unit]
+Description=watch: сторож шлюза ротатора (алиасы free-code/free-general + телеметрия ошибок)
+
+[Service]
+Type=oneshot
+# Сторож Ротатора: smoke трёх контрактов через живой шлюз + скан лога шлюза
+# с классификацией ошибок по классам; health-строка в provider-health.jsonl.
+# Коды: 0 чисто / 1 есть ERROR (предмет наблюдения) / 2 ввод / 3 фатальная.
+# Оповещение владельцу — dunst, по кодам 1/3 (exit 1 не молчок: сбой сто-рожа
+# должен быть виден, это мандат «бесперебойная работа»).
+ExecStart=/bin/sh -c '/usr/bin/python3 %h/Projects/OpenCode-Vault/tools/key-rotator/watch.py; code=$?; if [ $code -ne 0 ]; then /usr/bin/notify-send -u critical "Сторож шлюза: сбой (exit $code)" "key-rotator watch.py — алерт по коду $code; детали: control-plane/telemetry/provider-health.jsonl"; fi; exit $code'
+SuccessExitStatus=0 1
+NoNewPrivileges=yes

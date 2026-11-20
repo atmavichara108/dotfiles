@@ -1,0 +1,11 @@
+[Unit]
+Description=Сторож шлюза ротатора каждые 30 минут (word владельца 20.11: поставить по дефолту и отслеживать)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
