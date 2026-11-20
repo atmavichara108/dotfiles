@@ -64,11 +64,50 @@ jev-1.13 и jev-1.13-free есть в первоисточнике models.dev и
     python3 tools/model-watch/pin-check.py --staged         # то, что в коммите
     python3 tools/model-watch/pin-check.py --strict         # любой битый пин = FAIL
     python3 tools/model-watch/pin-check.py --offline        # models.dev (advisory)
+    python3 tools/model-watch/pin-check.py --no-provider-check   # только каталог OpenCode
     python3 tools/model-watch/pin-check-selftest.py         # selftest (зелёный прогон)
 
 Каталог — только `GET /api/model` живой машины (канон метода): у
 openai-compatible провайдеров `/api/provider` пуст и это НЕ значит «моделей нет».
 Токен — `~/.config/opencode/service.json` (тот же путь, что у `wake.py`).
+
+## Два источника живости пина (с 20.11, инцидент BF-20261120-01)
+
+Каталога OpenCode мало: у openai-compatible провайдеров он статический, и
+умершие модели в нём остаются (24 агента стояли на
+`nvidia/deepseek-ai/deepseek-v4.1-flash`: в каталоге есть, у провайдера —
+`410 Gone`, EOL 2026-11-16). Поэтому:
+
+1. **Источник 1 — каталог OpenCode** (`GET /api/model`): «пин разрешается в
+   контуре».
+2. **Источник 2 — список моделей провайдера на НАШЕМ ключе**
+   (`GET {endpoint}/models`): «модель реально обслуживается тем ключом, которым
+   мы платим». Эндпоинты и id провайдеров — из каталога ротатора
+   (`~/Projects/OpenCode-Vault/tools/key-rotator/providers.json`); ключ берётся
+   в порядке: env → vault `.env` → credential-store OpenCode (`auth.json`, затем
+   `opencode.db`/таблица `credential`). Ключи в отчёт не попадают.
+
+Пин жив, только если он есть в обоих источниках. Источник 2 недоступен (нет
+ключа, провайдер не отдаёт список, `403`) → **WARN, не FAIL**: гейт не должен
+вставать из-за провайдера, который нечем проверить; молчаливый PASS без
+предупреждения — тот же дефект.
+
+**Алиасы шлюза** (`newapi/free-code`, `newapi/free-general`) — особый случай:
+их провайдер сам шлюз. Живость алиаса = алиас есть в каталоге шлюза
+(`GET {gateway}/v1/models`) **И** проходит живую чат-пробу (с tools; ответ
+`404/410` = провайдер не отдаёт → FAIL, «не удалось проверить» → WARN).
+Кэш живой пробы — 15 минут (`~/.local/state/opencode/model-watch/pin-cache.json`),
+чтобы гейт не тормозил каждый коммит.
+
+**Факт по Р-109 (предупреждение, не блокировка):** если модель проверяющего
+входит в каналы алиаса (БД шлюза `~/.local/share/newapi/one-api.db`, таблица
+`channels.model_mapping`), печатается строка с id канала. На 20.11 это
+вскрыто: каналы 30 и 33 — `poolside/laguna-xs-2.1` (модель reviewer'а), канал
+39 — `recursive/flint-v1.0` (модель verifier'а).
+
+Вердикты: `MISSING_MODEL`, `MISSING_PROVIDER`, `MISSING_AT_PROVIDER`,
+`MALFORMED` — блокируют; `UNPROBEABLE`, `ALIAS_NOT_PROBED` — предупреждения.
+Спека: `docs/specs/pin-guard.md` (§4.1, §4.4, §5).
 
 Diff-гейт: в режиме `--staged` блокируется только НОВЫЙ битый пин (не битый в
 HEAD). Уже сломанный пин печатается как ⚠️, но не блокирует чужие коммиты —
