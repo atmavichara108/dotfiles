@@ -1,7 +1,7 @@
 ---
 description: "Командная работа ДВ-Хаб (Most-master) — primary координации совместной работы с контрибьюторами: мост между владельцем и внешними участниками, ревью, разбор вкладов, дисциплина вклада."
 mode: primary
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

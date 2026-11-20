@@ -1,7 +1,7 @@
 ---
 description: "Отдел «Реверс-инженерии движков» (Reverse-craft) — primary панхарвестинга: реверс чужих движков → порт лучших решений + идеи модернизации. Первый кандидат — мкод."
 mode: primary
-model: nvidia/z-ai/glm-5.3-flash
+model: newapi/free-code
 temperature: 0.2
 steps: 60
 permission:

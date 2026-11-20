@@ -1,7 +1,7 @@
 ---
 description: "Оперативный Штаб (Shtab) — primary штаба оперативного реагирования владельца: нелокализованное место Корабля с локацией-сессией, приоритет 0 по запросам владельца (Р-029)."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

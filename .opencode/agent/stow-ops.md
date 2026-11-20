@@ -1,7 +1,7 @@
 ---
 description: Специалист по файловым операциям dotfiles. Массовый stow, реструктуризация пакетов, исправление дрейфа, создание симлинков, миграция конфигов из ~/.config в dotfiles.
 mode: subagent
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-general
 temperature: 0.1
 steps: 50
 permission:

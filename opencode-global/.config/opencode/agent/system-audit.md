@@ -1,7 +1,7 @@
 ---
 description: "system-audit: глобальный read-only аудит системы и экосистемы по sourced evidence"
 mode: subagent
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.1
 steps: 40
 permission:

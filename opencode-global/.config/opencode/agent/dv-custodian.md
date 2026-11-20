@@ -1,7 +1,7 @@
 ---
 description: "Смотритель ДВ-Хаб (Dv-custodian) — primary смотрительства проекта ДВ-Хаб: два репозитория (dv-hub код/платформа + dv-project база знания), порядок дерева, развитие проекта. Красная линия: чужие незакоммиченные правки — только через tree-cop."
 mode: primary
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

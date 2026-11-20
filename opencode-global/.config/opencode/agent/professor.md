@@ -1,7 +1,7 @@
 ---
 description: "Университет Агентских Систем (УАС) — Professor: primary ведомства-куратора агентского контура: стандарты, реестры, роутинг, каталог провайдеров. Слово владельца — только через него в канон."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

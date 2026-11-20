@@ -1,7 +1,7 @@
 ---
 description: "Control-top (Top-manager) — primary панели владельца SSA: портфель продуктов, маршрутизация, приоритет 0 по запросам владельца; доклады — простым языком, без команд и хешей."
 mode: primary
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

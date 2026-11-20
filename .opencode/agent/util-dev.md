@@ -1,7 +1,7 @@
 ---
 description: Специалист по утилитам. Макросы, нотификации (dunst), rofi-меню, sxhkd, btop, neofetch, wal, weathr.
 mode: subagent
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-code
 temperature: 0.1
 steps: 40
 permission:

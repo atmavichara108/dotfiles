@@ -3,7 +3,7 @@ description: Единственный primary продуктового Цеха 
 mode: primary
 source: control
 # schema-version: 1
-model: nvidia/stepfun-ai/step-5-preview
+model: newapi/free-code
 temperature: 0.2
 steps: 40
 permission:

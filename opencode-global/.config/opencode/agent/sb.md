@@ -1,7 +1,7 @@
 ---
 description: "Служба Безопасности (SB) — primary ведомства безопасности Корабля: контур защиты (доступы, секреты, экспозиция, инциденты утечек), read-first аудит и гейты, спеку ведёт по Р-046."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.1
 steps: 60
 permission:

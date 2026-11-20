@@ -1,7 +1,7 @@
 ---
 description: "Голос Корабля AllIs Maya — мультиагент: все исходящие Корабля в Telegram от единого sender'а @AllIsMaya; профили-носители ssa/dv/serp/portal; в ведении — Капитанский портал. Лицо Корабля наружу."
 mode: primary
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

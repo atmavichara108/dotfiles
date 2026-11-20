@@ -1,7 +1,7 @@
 ---
 description: "Храм Практической Философии (Philosopher) — primary ведомства философских концептов: метод ХПФ (ядро→аллегория→эмпирика→аналогии→практика→манифестная связь), tension-discipline, карточки доктрины через lead."
 mode: primary
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-general
 temperature: 0.3
 steps: 60
 permission:

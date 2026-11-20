@@ -1,7 +1,7 @@
 ---
 description: "UI/UX-Dev — субагент Отдела «Приложений» Apps-dev: UI/UX-решения и консультации для Ship/КРУК, окна Mail Hub и Global Inbox, тайлы, референс pip-boy v8-BIS «Командный центр». Границы: Служитель Обсидиан — только обсидиан/плагины; владение Ship — Apps-dev; приёмка у владельца."
 mode: subagent
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

@@ -3,7 +3,7 @@ description: "SerO Служитель Обсидиан — primary-агент э
 mode: primary
 temperature: 0.2
 steps: 120
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 permission:
   doom_loop: ask
   external_directory:

@@ -1,7 +1,7 @@
 ---
 description: Bash-специалист. Пишет/правит shell-скрипты, автоматизации, хуки, cron-задачи, systemd-юниты.
 mode: subagent
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-code
 temperature: 0.1
 steps: 40
 permission:

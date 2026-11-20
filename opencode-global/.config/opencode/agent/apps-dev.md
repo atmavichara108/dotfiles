@@ -1,7 +1,7 @@
 ---
 description: "Отдел «Приложений» (Apps-dev) — primary потока создания полноценных приложений: контейнер-отсек → свой репо + агентский слой → кластер при >3. Подотдел ИЦ; graduating — Ability Lab."
 mode: primary
-model: nvidia/deepseek-ai/deepseek-v4.1-flash
+model: newapi/free-code
 temperature: 0.2
 steps: 60
 permission:

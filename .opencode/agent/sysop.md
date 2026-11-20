@@ -1,7 +1,7 @@
 ---
 description: "Оператор-оркестратор Manjaro. Единственный primary в dotfiles: анализирует, проектирует, пишет конфиги и по необходимости запускает субагентов через task."
 mode: primary
-model: opencode/muse-spark-1.3-contributor-free
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:
