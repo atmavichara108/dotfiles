@@ -241,8 +241,7 @@
       "settings": { "baseURL": "http://localhost:3000/v1" },
       "models": {
         "free-code": { "name": "Free Code (gateway)", "tool_call": true, "temperature": true },
-        "free-general": { "name": "Free General (gateway)", "tool_call": true, "temperature": true },
-        "free-vision": { "name": "Free Vision (gateway)", "attachment": true, "tool_call": true, "temperature": true }
+        "free-general": { "name": "Free General (gateway)", "attachment": true, "tool_call": true, "temperature": true }
       }
     },
     "amd-radeon": {
