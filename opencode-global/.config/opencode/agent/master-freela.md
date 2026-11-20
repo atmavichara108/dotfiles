@@ -1,7 +1,7 @@
 ---
 description: "Master-FreeLa — primary фриланс-линии Корабля: публикация лотов, сторож откликов, экономика линии (ведомство: Бизнес-школа)"
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

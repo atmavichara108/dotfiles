@@ -1,7 +1,7 @@
 ---
 description: "Инженерный Центр (ИЦ) — primary департамента разработки dotfiles: интеграция, фичи, операционное ядро. Создаёт новое; чинит сломанное — через поток Мастерской (Mechanic)."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-code
 temperature: 0.2
 steps: 60
 permission:

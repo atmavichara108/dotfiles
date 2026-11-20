@@ -1,7 +1,7 @@
 ---
 description: "Бизнес-школа Корабля — коммерческая и экономическая плоскость: ведение коммерческих проектов, ресурсно-ориентированная экономика, финансовый учёт и бухгалтерия, бизнес-наставничество."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

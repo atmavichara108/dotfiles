@@ -1,7 +1,7 @@
 ---
 description: "Senior-dev — субагент разработки Офиса Серплюкс: код, тесты, багфиксы в serp с живым прогоном; отчитывается Serp-office. Красная линия: credentials.json не читать НИКОГДА."
 mode: subagent
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-code
 temperature: 0.2
 steps: 60
 permission:

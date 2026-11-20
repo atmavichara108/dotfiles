@@ -1,5 +1,6 @@
 ---
 description: "emergency — единственная аварийная дверь агентного контура: только аварийный выход, не рабочая роль. Вызывается по имени; в Tab-цикле не показан (hidden)."
+model: newapi/free-code
 mode: primary
 hidden: true
 temperature: 0.1

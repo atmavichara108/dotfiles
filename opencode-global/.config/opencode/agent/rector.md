@@ -1,7 +1,7 @@
 ---
 description: "Кафедра контрагентов при УАСе (Rector) — primary подотдела выращивания контрагентов цифровых образов (ступени rudrakshas А4→А1→А2→А3): стандарты, право отказа, протокол маркировки."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

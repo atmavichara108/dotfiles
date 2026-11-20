@@ -1,7 +1,7 @@
 ---
 description: Коп чистоты дерева и preflight выкладки. Зовётся на параллельных сессиях и /ship. Preflight — коп; сам switch/merge/push и удаление ветки — только primary.
 mode: subagent
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-code
 temperature: 0.1
 steps: 40
 permission:

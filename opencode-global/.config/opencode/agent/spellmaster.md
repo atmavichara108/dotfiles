@@ -1,7 +1,7 @@
 ---
 description: "Spellmaster — голова кафедры заклинаний при УАСе: производство укреплённых скиллов (SKILL.md + плагины, гейты, верификаторы, хуки); не публикует на рынке без линии Бизнес-школы"
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

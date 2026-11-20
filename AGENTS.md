@@ -81,24 +81,37 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 
 | Агент | Тип | Роль | Модель (ярус) |
 |-------|-----|------|---------------|
-| **sysop** | primary | Оператор-оркестратор Manjaro: планирует, пишет, делегирует субагентам | `opencode/muse-spark-1.3-contributor-free` · Free |
-| **qtile-dev** | subagent | Qtile (WM, виджеты, Python) | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
-| **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
-| **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
-| **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
-| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `vercel/recursive/flint-v1.0` · Free (пин по решению Ротатора 19.11: прежний `nvidia/moonshotai/kimi-k2.6` в каталоге отсутствовал) |
-| **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `nvidia/meta/muse-glimmer-30b` · Free |
-| **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `nvidia/meta/muse-glimmer-30b` · Free |
-| **system-ops** | subagent (global) | approval-gated high-risk apply planning | `nvidia/deepseek-ai/deepseek-v4.1-flash` · Strategic |
-| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `nvidia/poolside/laguna-xs-2.1` · Free (пин по решению Ротатора 19.11: прежний провайдер AnyModel выкинут словом владельца 18.11) |
-| **researcher** | subagent (global) | Read-only research: code, files, git, docs, web | `opencode-go/glm-5.3-flash` · Go |
-| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `nvidia/meta/muse-glimmer-30b` · Free |
+| **sysop** | primary | Оператор-оркестратор Manjaro: планирует, пишет, делегирует субагентам | `newapi/free-general` · Ротатор (алиас шлюза) |
+| **qtile-dev** | subagent | Qtile (WM, виджеты, Python) | `newapi/free-code` · Ротатор (алиас шлюза) |
+| **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `newapi/free-code` · Ротатор (алиас шлюза) |
+| **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `newapi/free-code` · Ротатор (алиас шлюза) |
+| **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `newapi/free-general` · Ротатор (алиас шлюза) |
+| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `vercel/recursive/flint-v1.0` · **вне алиаса** (Р-109: проверяющий ≠ линия-исполнитель) |
+| **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `newapi/free-code` · Ротатор (алиас шлюза) |
+| **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `newapi/free-general` · Ротатор (алиас шлюза) |
+| **system-ops** | subagent (global) | approval-gated high-risk apply planning | `newapi/free-code` · Ротатор (алиас шлюза) |
+| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `nvidia/poolside/laguna-xs-2.1` · **вне алиаса** (Р-109: проверяющий ≠ линия-исполнитель) |
+| **researcher** | subagent (global) | Read-only research: code, files, git, docs, web | `newapi/free-general` · Ротатор (алиас шлюза) |
+| **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `newapi/free-general` · Ротатор (алиас шлюза) |
 
 
 Таблица выше — зеркало фактических пинов: для dotfiles-агентов с локальным
 файлом `.opencode/agent/<имя>.md` действует локальный пин (он перекрывает
 глобальный слой `opencode-global/.config/opencode/agent/`), для глобальных
 агентов — глобальный. Проверено 19.11.
+
+**Перепин флота 19–20.11:** 24 агента стояли на `nvidia/deepseek-ai/deepseek-v4.1-flash` —
+модель у провайдера nvidia **мертва**: прямой вызов → `410 Gone` («end of life on
+2026-11-16»). Имя модели было взято у AMD Radeon и приклеено к nvidia — это мой
+дефект переноса. **По решению владельца 20.11 (вариант Б: универсальный ротатор
+по дефолту; basis: quoted — волт, Р-Д-031) весь флот переведён на алиасы шлюза:**
+coding → `newapi/free-code`, general → `newapi/free-general`. Исключения (вне
+алиаса — Р-109: проверяющий ≠ линия-исполнитель): reviewer —
+`nvidia/poolside/laguna-xs-2.1`, verifier — `vercel/recursive/flint-v1.0`.
+**Урок про гейт:** `pin-check` смотрит каталог OpenCode (`GET /api/model`), а в
+нём мёртвая модель ещё числится живой — каталог провайдера (`GET /v1/models` на
+нашем ключе: 32 модели, `deepseek*` отсутствует) и каталог OpenCode расходятся.
+Живость пина = модель в каталоге **и** живая проба у провайдера.
 Роутинг субагентов задаёт primary `sysop`: `task(agent=…)` под конкретную задачу. Нет задачи из чьей-то зоны → primary делает сам, для несвойственной себе работы не молча отдаёт `general`.
 
 Canonical global system-audit prompt: `opencode-global/.config/opencode/agent/system-audit.md`

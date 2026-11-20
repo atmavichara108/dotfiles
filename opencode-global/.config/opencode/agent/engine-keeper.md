@@ -1,7 +1,7 @@
 ---
 description: "Отдел «Движков» (Engine-keeper) — primary подключения и обслуживания движков: подключение новых, обновления, сбор багов наружу. Подотдел ИЦ; первое дело — накат мкода."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-code
 temperature: 0.2
 steps: 60
 permission:

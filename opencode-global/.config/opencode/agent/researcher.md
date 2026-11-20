@@ -1,7 +1,7 @@
 ---
 description: "read-research: исследование repo/system artifacts по sourced evidence, строго read-only"
 mode: subagent
-model: opencode-go/glm-5.3-flash
+model: newapi/free-general
 temperature: 0.1
 steps: 30
 permission:

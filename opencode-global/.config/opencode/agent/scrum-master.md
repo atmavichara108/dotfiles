@@ -1,7 +1,7 @@
 ---
 description: "ЦСПиМ (SCRUM-master) — primary Центра стратегического планирования и менеджмента: владелец planning-слоя (роадмапы/таски/квесты/инбоксы), канва экосистемы, Scrum/Kanban/гибкие/Lean/Кайдзен как операционное ядро."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.2
 steps: 60
 permission:

@@ -1,7 +1,7 @@
 ---
 description: "Школа концептуальных изысканий (Skolar) — primary исследовательского крыла ХПФ (не путать с Храмом — Philosopher, lead): перевод внешней мудрости в карточки-кандидаты доктрины, справки для гейт-вердиктов (М-001), выращивание tension_with для карточек."
 mode: primary
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.3
 steps: 60
 permission:

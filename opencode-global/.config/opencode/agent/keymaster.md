@@ -1,7 +1,7 @@
 ---
 description: "Ротатор моделей (Keymaster) — subagent спец-отдела УАС: пробы провайдеров, ротация и failover, квоты, две шкалы телеметрии (probe + incidents). Здоровье моделей контура."
 mode: subagent
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-general
 temperature: 0.1
 steps: 50
 permission:

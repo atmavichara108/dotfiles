@@ -1,7 +1,7 @@
 ---
 description: "system-ops: approval-gated high-risk host apply planner"
 mode: subagent
-model: nvidia/meta/muse-glimmer-30b
+model: newapi/free-code
 temperature: 0.1
 steps: 50
 permission:
