@@ -771,24 +771,48 @@ def collect_provider_state(pins: list[tuple[str, str]],
     return state, errors
 
 
-def checker_models() -> dict[str, str]:
-    """Модели проверяющих — из живого слоя (fallback — константы Р-109)."""
+CHECKER_ROLES = ("reviewer", "verifier")
+CHECKER_FALLBACKS = {"reviewer": "nvidia/poolside/laguna-xs-2.1",
+                      "verifier": "vercel/recursive/flint-v1.0"}
+
+
+def checker_pins(args: argparse.Namespace | None = None) -> dict[str, str]:
+    """Пины проверяющих: явные → живой слой → константы Р-109.
+
+    Явное значение (--checker-pin / PIN_CHECK_CHECKERS) нужно для изоляции
+    selftest от живого слоя. Пины могут быть алиасами шлюза (слово владельца
+    21.11, Р-Д-033: все субагенты через newapi) — тогда Р-109 считается по
+    цепочкам шлюза (§4.7 спеки).
+    """
+    explicit: dict[str, str] = {}
+    for item in getattr(args, "checker_pin", None) or []:
+        if "=" in item:
+            role, pin = item.split("=", 1)
+            role, pin = role.strip(), pin.strip()
+            if role and pin:
+                explicit[role] = pin
+    for item in os.environ.get("PIN_CHECK_CHECKERS", "").split(","):
+        item = item.strip()
+        if "=" in item:
+            role, pin = item.split("=", 1)
+            role, pin = role.strip(), pin.strip()
+            if role and pin:
+                explicit.setdefault(role, pin)
     out: dict[str, str] = {}
-    for role, fallback in (("reviewer", "poolside/laguna-xs-2.1"),
-                           ("verifier", "recursive/flint-v1.0")):
-        pin = None
-        try:
-            pin = parse_pin((LIVE_AGENT_DIR / f"{role}.md").read_text(
-                encoding="utf-8", errors="replace"))
-        except OSError:
-            pin = None
-        parts = split_pin(pin) if pin else None
-        out[role] = parts[1] if parts else fallback
+    for role in CHECKER_ROLES:
+        pin = explicit.get(role)
+        if not pin:
+            try:
+                pin = parse_pin((LIVE_AGENT_DIR / f"{role}.md").read_text(
+                    encoding="utf-8", errors="replace"))
+            except OSError:
+                pin = None
+        out[role] = pin or CHECKER_FALLBACKS[role]
     return out
 
 
-def r109_conflicts(aliases: list[str]) -> list[str]:
-    """Р-109: модель проверяющего в каналах алиаса (факт, не блокировка)."""
+def gateway_alias_rows(aliases: list[str]) -> list[tuple]:
+    """Каналы шлюза, входящие в алиасы: (alias, id, имя, model_mapping)."""
     if not aliases or not GATEWAY_DB.exists():
         return []
     try:
@@ -804,20 +828,93 @@ def r109_conflicts(aliases: list[str]) -> list[str]:
             con.close()
     except Exception:
         return []
-    checkers = checker_models()
+    return rows
+
+
+def _same_model(a: str, served: set[str]) -> bool:
+    """Совпадение модели с одной из отдаваемых каналом (с/без префикса)."""
+    cm = normalize_id(a)
+    tails = {s.split("/")[-1] for s in served}
+    return cm in served or cm.split("/")[-1] in tails
+
+
+def r109_conflicts(aliases: list[str], pins: list[tuple[str, str]],
+                   args: argparse.Namespace | None = None) -> list[str]:
+    """Р-109: проверяющий и исполнитель не должны делить модель или алиас.
+
+    Факт, не блокировка (спека §4.7). Учитывает и прямые пины проверяющих,
+    и алиасы шлюза: сейчас все субагенты идут через newapi (Р-Д-033).
+    """
     warnings: list[str] = []
+    if not aliases:
+        return warnings
+    checkers = checker_pins(args)
+    checker_alias: dict[str, str] = {}
+    checker_direct: dict[str, str] = {}
+    for role, pin in checkers.items():
+        parts = split_pin(pin)
+        if not parts:
+            continue
+        prov, mid = parts
+        if prov == GATEWAY_PROVIDER_ID:
+            checker_alias[role] = mid
+        else:
+            checker_direct[role] = mid
+
+    # 1. оба проверяющих на одном алиасе — проверки не независимы
+    if checker_alias and len(set(checker_alias.values())) < len(checker_alias):
+        shared = ", ".join(sorted(set(checker_alias.values())))
+        warnings.append(
+            f"Р-109: оба проверяющих на одном алиасе шлюза ({shared}) — "
+            "проверки не независимы")
+
+    # 2. алиас проверяющего стоит у другого агента — независимость не гарантирована
+    agents_by_alias: dict[str, set[str]] = {}
+    for agent, pin in pins:
+        parts = split_pin(pin)
+        if parts and parts[0] == GATEWAY_PROVIDER_ID:
+            agents_by_alias.setdefault(parts[1], set()).add(agent)
+    for role, alias in checker_alias.items():
+        others = sorted(agents_by_alias.get(alias, set()) - set(CHECKER_ROLES))
+        if others:
+            sample = ", ".join(others[:5]) + ("…" if len(others) > 5 else "")
+            warnings.append(
+                f"Р-109: проверяющий {role} на алиасе {alias}, который стоит ещё у "
+                f"{len(others)} агентов ({sample}) — независимость проверки не "
+                "гарантирована")
+
+    rows = gateway_alias_rows(aliases)
+    served_by_alias: dict[str, set[str]] = {}
     for model, cid, cname, mapping in rows:
         try:
             mapping_obj = json.loads(mapping) if mapping else {}
         except (TypeError, json.JSONDecodeError):
             mapping_obj = {}
         served = {normalize_id(v) for v in (mapping_obj or {}).values()}
-        for role, cmodel in checkers.items():
-            cm = normalize_id(cmodel)
-            if cm in served or cm.split("/")[-1] in {s.split("/")[-1] for s in served}:
+        served_by_alias.setdefault(model, set()).update(served)
+        # 4. прямой пин проверяющего отдаётся каналом алиаса (как раньше)
+        for role, cmodel in checker_direct.items():
+            if _same_model(cmodel, served):
                 warnings.append(
                     f"Р-109: канал {cid} ({cname}) в алиасе {model} отдаёт "
                     f"модель проверяющего {role}: {cmodel}")
+
+    # 3. модель другого агента в цепочке алиаса проверяющего
+    for role, alias in checker_alias.items():
+        served = served_by_alias.get(alias, set())
+        if not served:
+            continue
+        for agent, pin in pins:
+            if agent in CHECKER_ROLES:
+                continue
+            parts = split_pin(pin)
+            if not parts or parts[0] == GATEWAY_PROVIDER_ID:
+                continue
+            if _same_model(parts[1], served):
+                warnings.append(
+                    f"Р-109: в цепочке алиаса {alias} (проверяющий {role}) есть "
+                    f"модель {parts[1]} — она стоит у {agent}")
+
     unique: list[str] = []
     for item in warnings:
         if item not in unique:
@@ -903,7 +1000,7 @@ def check_aliases(pins: list[tuple[str, str]], args: argparse.Namespace
                                  "reason": "ALIAS_NOT_PROBED",
                                  "detail": f"живая проба не дала вердикта ({detail or status})"})
 
-    warnings.extend(r109_conflicts(aliases))
+    warnings.extend(r109_conflicts(aliases, pins, args))
     return findings, warnings
 
 
@@ -1004,6 +1101,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="не делать живую чат-пробу алиасов")
     parser.add_argument("--no-alias-cache", action="store_true",
                         help="не использовать кэш живой пробы алиасов")
+    parser.add_argument("--checker-pin", action="append", default=[],
+                        metavar="ROLE=provider/model",
+                        help="пин проверяющего явно (для изоляции тестов); "
+                             "можно указать несколько раз")
     args = parser.parse_args(argv)
 
     if os.environ.get("PIN_OK") == "1":
