@@ -1,7 +1,7 @@
 ---
 description: "Верификатор dotfiles. Проверяет применимость изменений перед apply: синтаксис, dry-run stow, конфликты симлинков. Не редактирует, только вердикт PASS/FAIL."
 mode: subagent
-model: vercel/recursive/flint-v1.0
+model: newapi/free-code
 temperature: 0.1
 steps: 80
 permission:

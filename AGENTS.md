@@ -86,11 +86,11 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 | **bash-dev** | subagent | Bash-скрипты, автоматизация, хуки, cron, systemd | `newapi/free-code` · Ротатор (алиас шлюза) |
 | **util-dev** | subagent | Утилиты (макросы, нотификации, rofi, dunst) | `newapi/free-code` · Ротатор (алиас шлюза) |
 | **stow-ops** | subagent | Stow-операции, реструктуризация, миграция, дрейф | `newapi/free-general` · Ротатор (алиас шлюза) |
-| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `vercel/recursive/flint-v1.0` · **вне алиаса** (Р-109: проверяющий ≠ линия-исполнитель) |
+| **verifier** | subagent | Верификатор применимости (синтаксис, stow dry-run) — dotfiles-specific | `newapi/free-code` · Ротатор (алиас шлюза) |
 | **tree-cop** | subagent (global) | Коп чистоты дерева и выкладки ветки (параллельные сессии, /ship) | `newapi/free-code` · Ротатор (алиас шлюза) |
 | **system-audit** | subagent (global) | read-only аудит системы/экосистемы | `newapi/free-general` · Ротатор (алиас шлюза) |
 | **system-ops** | subagent (global) | approval-gated high-risk apply planning | `newapi/free-code` · Ротатор (алиас шлюза) |
-| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `nvidia/poolside/laguna-xs-2.1` · **вне алиаса** (Р-109: проверяющий ≠ линия-исполнитель) |
+| **reviewer** | subagent (global) | read-only quality/style/domain reviewer | `newapi/free-general` · Ротатор (алиас шлюза) |
 | **researcher** | subagent (global) | Read-only research: code, files, git, docs, web | `newapi/free-general` · Ротатор (алиас шлюза) |
 | **meta** | subagent (global) | правка агентной инфраструктуры OpenCode | `newapi/free-general` · Ротатор (алиас шлюза) |
 
@@ -105,9 +105,18 @@ Manjaro dotfiles, управляемые через **GNU Stow**. OpenCode зд�
 2026-11-16»). Имя модели было взято у AMD Radeon и приклеено к nvidia — это мой
 дефект переноса. **По решению владельца 20.11 (вариант Б: универсальный ротатор
 по дефолту; basis: quoted — волт, Р-Д-031) весь флот переведён на алиасы шлюза:**
-coding → `newapi/free-code`, general → `newapi/free-general`. Исключения (вне
-алиаса — Р-109: проверяющий ≠ линия-исполнитель): reviewer —
-`nvidia/poolside/laguna-xs-2.1`, verifier — `vercel/recursive/flint-v1.0`.
+coding → `newapi/free-code`, general → `newapi/free-general`.
+**21.11 — слово владельца «используй для всех субагентов newapi» (basis: quoted;
+волт, Р-Д-033): исключения сняты — теперь и reviewer, и verifier идут через шлюз**
+(reviewer → `newapi/free-general`, verifier → `newapi/free-code`). Смысл Р-109
+(проверяющий ≠ модель автора) сохраняется через разные алиасы и разные цепочки
+шлюза: `free-general` → `nvidia/nemotron-3.5-super-vl-120b-a12b` (90),
+`free-code` → `nvidia/meta/muse-glimmer-30b` (60) → `nvidia/nemotron-3-ultra-550b`
+(55) → openrouter (50) → amd-radeon (45/44) → vercel (35); модель автора
+(`minimaxai/minimax-m3.1-flash`) в цепочке `free-general` стоит ниже (60) — риск
+падения на неё учтён. Буквальное требование Р-109 «разные провайдеры у двух
+проверяющих» внутри одного шлюза невыполнимо — это отклонение зафиксировано
+открыто, а не спрятано.
 **Урок про гейт:** `pin-check` смотрит каталог OpenCode (`GET /api/model`), а в
 нём мёртвая модель ещё числится живой — каталог провайдера (`GET /v1/models` на
 нашем ключе: 32 модели, `deepseek*` отсутствует) и каталог OpenCode расходятся.
