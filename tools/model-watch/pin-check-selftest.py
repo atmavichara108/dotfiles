@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""selftest для pin-check (BF-20261119-05).
+"""selftest для pin-check (BF-20261119-05, BF-20261120-01).
 
 Проверяет ровно то, ради чего инструмент написан:
   1. пин читается из frontmatter агента; шаблон и агент без пина — не пин;
@@ -7,18 +7,33 @@
   3. CLI: битый пин → exit 1 (гейт блокирует коммит), хорошие пины → exit 0;
   4. offline-режим (models.dev) — advisory: warns, но не блокирует;
   5. PIN_OK=1 — осознанный обход;
-  6. отчёт пишется (меты-only, без секретов).
+  6. отчёт пишется (меты-only, без секретов);
+  7. ИСТОЧНИК 2 (провайдерный список на нашем ключе): пин есть в каталоге
+     OpenCode, но нет у провайдера → MISSING_AT_PROVIDER (exit 1);
+  8. провайдер недоступен (нет ключа) → WARN, не FAIL (гейт не встаёт);
+  9. алиас шлюза: живая чат-проба с tools; 200 → живой, 404/410 → FAIL,
+     «не удалось проверить» → ALIAS_NOT_PROBED (WARN);
+ 10. факт по Р-109: модель проверяющего в каналах алиаса → предупреждение
+     (не блокировка).
+
+Сеть в selftest не используется: провайдер и шлюз — локальная фикстура
+(мини-сервер на 127.0.0.1). Базовые тесты идут с --no-provider-check, чтобы
+не зависеть от провайдеров.
 
 Запуск: python3 tools/model-watch/pin-check-selftest.py
 """
 from __future__ import annotations
 
+import datetime
 import importlib.util
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -112,9 +127,21 @@ def main() -> int:
     env = dict(os.environ)
     env["PIN_CHECK_REPORT"] = str(report)
 
-    def run(args: list[str], extra_env: dict | None = None) -> subprocess.CompletedProcess:
+    def run(args: list[str], extra_env: dict | None = None,
+            provider_check: bool = False,
+            rotator_catalog: str | None = None) -> subprocess.CompletedProcess:
         e = dict(env)
         e.update(extra_env or {})
+        # Базовые тесты — без источника 2: сеть провайдеров в selftest не нужна.
+        if not provider_check:
+            args = ["--no-provider-check"] + args
+        # Каталог Ротации моделей по умолчанию — боевой файл с машины: без
+        # явного --no-rotator-catalog тесты зависели бы от внешнего состояния
+        # (и однажды «позеленели» бы из-за чужого обновления файла).
+        if rotator_catalog is None:
+            args = ["--no-rotator-catalog"] + args
+        else:
+            args = ["--rotator-catalog", rotator_catalog] + args
         return subprocess.run([sys.executable, str(PIN_CHECK), *args],
                               capture_output=True, text=True, env=e, timeout=60)
 
@@ -225,6 +252,266 @@ def main() -> int:
               "--catalog-file", str(catalog_file)])
     ok("diff-гейт: --strict → exit 1 даже по старому битому пину",
        rc.returncode == 1, f"rc={rc.returncode} {rc.stdout[:200]}")
+
+    # --- 8. ИСТОЧНИК 2: провайдерный список + алиасы шлюза (фикстура) ------
+    class FixtureHandler(BaseHTTPRequestHandler):
+        """Мини-шлюз: /models — список моделей, /chat/completions — по alias."""
+
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path.endswith("/models"):
+                body = json.dumps(
+                    {"data": [{"id": m} for m in self.server.models]}).encode()
+                self.send_response(200)
+            else:
+                body = b"{}"
+                self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                payload = json.loads(self.rfile.read(length) or b"{}")
+            except json.JSONDecodeError:
+                payload = {}
+            model = payload.get("model", "")
+            status = self.server.alias_status.get(model, 200)
+            body = json.dumps({"model": model,
+                               "choices": [{"message": {"content": "ok"}}]}).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    server.models = ["good/model", "free-code", "gone-alias", "flaky-alias",
+                      "cached-alias"]
+    server.alias_status = {"free-code": 200, "gone-alias": 404,
+                            "flaky-alias": 500, "cached-alias": 200}
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_address[1]}/v1"
+
+    # Второй фикстур: провайдер, который отдаёт ПУСТОЙ список моделей.
+    empty_server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    empty_server.models = []
+    empty_server.alias_status = {}
+    threading.Thread(target=empty_server.serve_forever, daemon=True).start()
+    empty_base = f"http://127.0.0.1:{empty_server.server_address[1]}/v1"
+
+    endpoints = tmp / "endpoints.json"
+    endpoints.write_text(json.dumps({
+        "fakeprov": {"endpoint": base, "env": "PIN_CHECK_TEST_KEY"},
+        "nokeyprov": {"endpoint": base, "env": "PIN_CHECK_ABSENT_KEY"},
+        "emptyprov": {"endpoint": empty_base, "env": "PIN_CHECK_TEST_KEY"},
+    }), encoding="utf-8")
+
+    catalog2 = tmp / "catalog2.json"
+    catalog2.write_text(json.dumps([
+        {"providerID": "fakeprov", "modelID": "good/model"},
+        {"providerID": "fakeprov", "modelID": "missing/model"},
+        {"providerID": "nokeyprov", "modelID": "anything"},
+        {"providerID": "emptyprov", "modelID": "whatever"},
+        {"providerID": "newapi", "modelID": "free-code"},
+        {"providerID": "newapi", "modelID": "gone-alias"},
+        {"providerID": "newapi", "modelID": "flaky-alias"},
+        {"providerID": "newapi", "modelID": "cached-alias"},
+    ]), encoding="utf-8")
+
+    env2 = {"PIN_CHECK_TEST_KEY": "test-key", "NEWAPI_API_KEY": "test-key",
+            "PIN_CHECK_CACHE": str(tmp / "cache.json")}
+    common2 = ["--catalog-file", str(catalog2), "--provider-endpoints",
+               str(endpoints), "--gateway-endpoint", base, "--no-alias-cache"]
+
+    prov_good = tmp / "prov-good"
+    prov_good.mkdir()
+    (prov_good / "good.md").write_text(
+        agent_md("fakeprov/good/model"), encoding="utf-8")
+    rc = run(["--agents-dir", str(prov_good)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: модель есть у провайдера → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    prov_missing = tmp / "prov-missing"
+    prov_missing.mkdir()
+    (prov_missing / "missing.md").write_text(
+        agent_md("fakeprov/missing/model"), encoding="utf-8")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: модели нет у провайдера → MISSING_AT_PROVIDER, exit 1",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    empty_agents = tmp / "empty-agents"
+    empty_agents.mkdir()
+    (empty_agents / "empty.md").write_text(
+        agent_md("emptyprov/whatever"), encoding="utf-8")
+    rc = run(["--agents-dir", str(empty_agents)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: пустой список моделей → WARN (не FAIL), exit 0",
+       rc.returncode == 0 and "UNPROBEABLE" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    nokey_agents = tmp / "nokey-agents"
+    nokey_agents.mkdir()
+    (nokey_agents / "nokey.md").write_text(
+        agent_md("nokeyprov/anything"), encoding="utf-8")
+    rc = run(["--agents-dir", str(nokey_agents)] + common2, env2,
+             provider_check=True)
+    ok("источник 2: ключа нет → WARN, не FAIL (exit 0)",
+       rc.returncode == 0 and "UNPROBEABLE" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    alias_agents = tmp / "alias-agents"
+    alias_agents.mkdir()
+    (alias_agents / "ok.md").write_text(
+        agent_md("newapi/free-code"), encoding="utf-8")
+    rc = run(["--agents-dir", str(alias_agents)] + common2, env2,
+             provider_check=True)
+    ok("алиас: живая проба 200 → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    gone_agents = tmp / "gone-agents"
+    gone_agents.mkdir()
+    (gone_agents / "gone.md").write_text(
+        agent_md("newapi/gone-alias"), encoding="utf-8")
+    rc = run(["--agents-dir", str(gone_agents)] + common2, env2,
+             provider_check=True)
+    ok("алиас: проба 404 → провайдер не отдаёт → exit 1",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    flaky_agents = tmp / "flaky-agents"
+    flaky_agents.mkdir()
+    (flaky_agents / "flaky.md").write_text(
+        agent_md("newapi/flaky-alias"), encoding="utf-8")
+    rc = run(["--agents-dir", str(flaky_agents)] + common2, env2,
+             provider_check=True)
+    ok("алиас: проба не дала вердикта → ALIAS_NOT_PROBED + WARN, exit 0",
+       rc.returncode == 0 and "ALIAS_NOT_PROBED" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    # Кэш живой пробы: успех кэшируется, отказ провайдера — коротким TTL.
+    cached_agents = tmp / "cached-agents"
+    cached_agents.mkdir()
+    (cached_agents / "cached.md").write_text(
+        agent_md("newapi/cached-alias"), encoding="utf-8")
+    cache_args = [a for a in common2 if a != "--no-alias-cache"]
+    rc = run(["--agents-dir", str(cached_agents)] + cache_args, env2,
+             provider_check=True)
+    ok("кэш: первая проба алиаса успешна → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+    server.alias_status["cached-alias"] = 404  # провайдер сломался
+    rc = run(["--agents-dir", str(cached_agents)] + cache_args, env2,
+             provider_check=True)
+    ok("кэш: успех взят из кэша (проба не переспрашивается зря) → exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+    rc = run(["--agents-dir", str(cached_agents)] + common2, env2,
+             provider_check=True)
+    ok("кэш: без кэша (--no-alias-cache) отказ провайдера виден сразу → exit 1",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    # --- 8. источник 2 (б): живой каталог Ротации моделей ------------------
+    # Формат — по их слову: {ts, source, providers: {id: {status, models[]}}}
+    def rotator_file(models_by_provider: dict, status: str = "ACTIVE",
+                     ts: str | None = None, name: str = "rotator.json") -> str:
+        stamp = ts or datetime.datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        payload = {"ts": stamp, "source": "probe", "providers": {
+            pid: {"status": status, "models": models}
+            for pid, models in models_by_provider.items()}}
+        path = tmp / name
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return str(path)
+
+    rot_agree = rotator_file({"fakeprov": ["missing/model"]})
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_agree)
+    ok("каталог ротатора: модель есть только у каталога ротатора → расхождение, WARN",
+       rc.returncode == 0 and "SOURCE_DISAGREEMENT" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    rot_agree_missing = rotator_file({"fakeprov": []}, name="rotator-missing.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_agree_missing)
+    ok("каталог ротатора: пустой список провайдера → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    rot_dead = rotator_file({"fakeprov": ["other/model"]}, name="rotator-dead.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_dead)
+    ok("каталог ротатора: оба источника говорят «нет модели» → FAIL",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    rot_skipped = rotator_file({"fakeprov": ["good/model"]}, status="SKIPPED",
+                                name="rotator-skipped.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_skipped)
+    ok("каталог ротатора: статус не ACTIVE → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    stale_ts = (datetime.datetime.now(datetime.timezone.utc)
+                - datetime.timedelta(hours=6)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rot_stale = rotator_file({"fakeprov": ["other/model"]}, ts=stale_ts,
+                              name="rotator-stale.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_stale)
+    ok("каталог ротатора: протух → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+    ok("каталог ротатора: протухание видно в выводе (не молча)",
+       "протух" in rc.stdout, rc.stdout[:300])
+
+    rc = run(["--agents-dir", str(prov_good)] + common2, env2,
+             provider_check=True, rotator_catalog=str(tmp / "нет-такого.json"))
+    ok("каталог ротатора: файла нет → работает прямая проба, exit 0",
+       rc.returncode == 0, f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    rot_case = rotator_file({"FakeProv": ["missing/model"]},
+                             name="rotator-case.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_case)
+    ok("каталог ротатора: id провайдера в другом регистре → данные всё равно сошлись",
+       rc.returncode == 0 and "SOURCE_DISAGREEMENT" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    future_ts = (datetime.datetime.now(datetime.timezone.utc)
+                 + datetime.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rot_future = rotator_file({"fakeprov": ["missing/model"]}, ts=future_ts,
+                               name="rotator-future.json")
+    rc = run(["--agents-dir", str(prov_missing)] + common2, env2,
+             provider_check=True, rotator_catalog=rot_future)
+    ok("каталог ротатора: ts из будущего → не приговор, решает прямая проба",
+       rc.returncode == 1 and "MISSING_AT_PROVIDER" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+    ok("каталог ротатора: ts из будущего — видно в выводе (не молча)",
+       "будущем" in rc.stdout, rc.stdout[:300])
+
+    # Р-109: модель проверяющего в каналах алиаса → предупреждение, не блокировка
+    gwdb = tmp / "gateway.db"
+    con = sqlite3.connect(gwdb)
+    con.execute("create table abilities (model text, channel_id integer)")
+    con.execute("create table channels (id integer, name text, model_mapping text)")
+    con.execute("insert into channels values (7, ?, ?)",
+                ("nvidia|poolside/laguna-xs-2.1|free-code",
+                 json.dumps({"free-code": "poolside/laguna-xs-2.1"})))
+    con.execute("insert into abilities values ('free-code', 7)")
+    con.commit()
+    con.close()
+    rc = run(["--agents-dir", str(alias_agents)] + common2,
+             {**env2, "GATEWAY_DB": str(gwdb)}, provider_check=True)
+    ok("Р-109: модель проверяющего в канале алиаса → предупреждение, не FAIL",
+       rc.returncode == 0 and "Р-109" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
 
     print(f"\nPIN-CHECK SELFTEST: {PASSED} passed, {len(FAILED)} failed")
     for item in FAILED:
