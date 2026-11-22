@@ -1,7 +1,7 @@
 ---
 description: Strict acceptance verifier. Checks work against DoD. Returns PASS/FAIL, never edits.
 mode: subagent
-model: vercel/recursive/flint-v1.0
+model: newapi/free-code
 temperature: 0.1
 steps: 80
 permission:

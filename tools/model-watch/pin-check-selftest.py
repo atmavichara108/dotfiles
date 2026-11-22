@@ -290,8 +290,8 @@ def main() -> int:
             self.wfile.write(body)
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
-    server.models = ["good/model", "free-code", "gone-alias", "flaky-alias",
-                      "cached-alias"]
+    server.models = ["good/model", "free-code", "free-general", "gone-alias",
+                      "flaky-alias", "cached-alias"]
     server.alias_status = {"free-code": 200, "gone-alias": 404,
                             "flaky-alias": 500, "cached-alias": 200}
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -318,6 +318,7 @@ def main() -> int:
         {"providerID": "nokeyprov", "modelID": "anything"},
         {"providerID": "emptyprov", "modelID": "whatever"},
         {"providerID": "newapi", "modelID": "free-code"},
+        {"providerID": "newapi", "modelID": "free-general"},
         {"providerID": "newapi", "modelID": "gone-alias"},
         {"providerID": "newapi", "modelID": "flaky-alias"},
         {"providerID": "newapi", "modelID": "cached-alias"},
@@ -507,10 +508,55 @@ def main() -> int:
     con.execute("insert into abilities values ('free-code', 7)")
     con.commit()
     con.close()
-    rc = run(["--agents-dir", str(alias_agents)] + common2,
+    rc = run(["--agents-dir", str(alias_agents)] + common2
+             + ["--checker-pin", "reviewer=nvidia/poolside/laguna-xs-2.1"],
              {**env2, "GATEWAY_DB": str(gwdb)}, provider_check=True)
     ok("Р-109: модель проверяющего в канале алиаса → предупреждение, не FAIL",
        rc.returncode == 0 and "Р-109" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    # Р-109 при алиас-пинах (слово владельца 21.11, Р-Д-033): субагенты идут
+    # через шлюз, поэтому проверяющий определяется алиасом, а не прямой моделью.
+    rc = run(["--agents-dir", str(alias_agents)] + common2
+             + ["--checker-pin", "reviewer=newapi/free-code",
+                "--checker-pin", "verifier=newapi/free-code"],
+             {**env2, "GATEWAY_DB": str(gwdb)}, provider_check=True)
+    ok("Р-109: оба проверяющих на одном алиасе → предупреждение",
+       rc.returncode == 0 and "не независимы" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    alias_author = tmp / "alias-author"
+    alias_author.mkdir()
+    (alias_author / "author.md").write_text(
+        agent_md("newapi/free-general"), encoding="utf-8")
+    rc = run(["--agents-dir", str(alias_author)] + common2
+             + ["--checker-pin", "reviewer=newapi/free-general"],
+             {**env2, "GATEWAY_DB": str(gwdb)}, provider_check=True)
+    ok("Р-109: алиас проверяющего стоит у другого агента → предупреждение",
+       rc.returncode == 0 and "независимость проверки не гарантирована" in rc.stdout,
+       f"rc={rc.returncode} {rc.stdout[:300]}")
+
+    gwdb2 = tmp / "gateway2.db"
+    con = sqlite3.connect(gwdb2)
+    con.execute("create table abilities (model text, channel_id integer)")
+    con.execute("create table channels (id integer, name text, model_mapping text)")
+    con.execute("insert into channels values (8, ?, ?)",
+                ("fakeprov|good/model|free-code",
+                 json.dumps({"free-code": "good/model"})))
+    con.execute("insert into abilities values ('free-code', 8)")
+    con.commit()
+    con.close()
+    chain_agents = tmp / "chain-agents"
+    chain_agents.mkdir()
+    (chain_agents / "author.md").write_text(
+        agent_md("fakeprov/good/model"), encoding="utf-8")
+    (chain_agents / "ok.md").write_text(
+        agent_md("newapi/free-code"), encoding="utf-8")
+    rc = run(["--agents-dir", str(chain_agents)] + common2
+             + ["--checker-pin", "reviewer=newapi/free-code"],
+             {**env2, "GATEWAY_DB": str(gwdb2)}, provider_check=True)
+    ok("Р-109: модель автора в цепочке алиаса проверяющего → предупреждение",
+       rc.returncode == 0 and "в цепочке алиаса" in rc.stdout,
        f"rc={rc.returncode} {rc.stdout[:300]}")
 
     print(f"\nPIN-CHECK SELFTEST: {PASSED} passed, {len(FAILED)} failed")
